@@ -16,8 +16,8 @@ internal sealed class EmbeddingModelGuard(RagEngine engine)
         {
             if (_compatible) return;
             await engine.EnsureReadyAsync(ct).ConfigureAwait(false);
-            var stored = await engine.Manifests.FindOtherModelIdAsync(engine.EmbeddingModelId, ct).ConfigureAwait(false);
-            if (stored is not null) throw new EmbeddingModelMismatchException(stored, engine.EmbeddingModelId);
+            var (found, stored) = await engine.Manifests.FindOtherModelAsync(engine.EmbeddingModelId, ct).ConfigureAwait(false);
+            if (found) throw new EmbeddingModelMismatchException(stored, engine.EmbeddingModelId);
             _compatible = true;
         }
         finally

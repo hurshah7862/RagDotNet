@@ -10,7 +10,7 @@ public interface IRagAdmin
     /// <exception cref="InvalidOperationException">The embedding generator's dimensions differ from the configured dimensions.</exception>
     Task<ReindexResult> ReindexAsync(IProgress<ReindexProgress>? progress = null, CancellationToken cancellationToken = default);
 
-    /// <summary>Deletes a document from the named partition, ignoring any access scope.</summary>
+    /// <summary>Deletes a document from the named partition, ignoring any access scope. It works during an embedding model mismatch, since it writes no vectors.</summary>
     /// <param name="documentId">The document id.</param>
     /// <param name="partition">The partition values; null or empty for the unpartitioned document.</param>
     /// <param name="cancellationToken">Cancellation token.</param>

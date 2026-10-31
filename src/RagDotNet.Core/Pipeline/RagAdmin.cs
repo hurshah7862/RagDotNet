@@ -16,7 +16,12 @@ internal sealed class RagAdmin(RagEngine engine) : IRagAdmin
         var probed = false;
         int reindexed = 0, skipped = 0, chunkTotal = 0;
 
-        await foreach (var m in engine.Manifests.ListAsync(r => (int)r["ChunkCount"]! >= 0, ct).ConfigureAwait(false))
+        // Materialize first: writing manifests while paging could skip or revisit documents.
+        var all = new List<Storage.ManifestRecord>();
+        await foreach (var listed in engine.Manifests.ListAsync(r => (int)r["ChunkCount"]! >= 0, ct).ConfigureAwait(false))
+            all.Add(listed);
+
+        foreach (var m in all)
         {
             if (m.EmbeddingModelId == engine.EmbeddingModelId)
             {
@@ -37,7 +42,7 @@ internal sealed class RagAdmin(RagEngine engine) : IRagAdmin
                 {
                     var records = await engine.Chunks.GetAsync(keys.Skip(start).Take(batchSize), false, ct).ConfigureAwait(false);
                     if (records.Count == 0) continue;
-                    var inputs = records.Select(r => EmbeddingText.For(HeadingPath(r), r.TryGetValue("Text", out var t) ? t as string ?? "" : "")).ToList();
+                    var inputs = records.Select(r => EmbeddingText.For(HeadingPath(r), RequireText(m.DocumentId, r))).ToList();
                     var result = await engine.Embedder.GenerateAsync(inputs, cancellationToken: ct).ConfigureAwait(false);
                     if (result.Count != inputs.Count)
                         throw new InvalidOperationException($"The embedding generator returned {result.Count} embeddings for {inputs.Count} inputs.");
@@ -108,6 +113,12 @@ internal sealed class RagAdmin(RagEngine engine) : IRagAdmin
             throw new InvalidOperationException(
                 $"The embedding generator returned {probe[0].Vector.Length} dimensions, but {engine.Options.EmbeddingDimensions} are configured. Reindexing into a different dimension requires a new collection.");
     }
+
+    private static string RequireText(string documentId, Dictionary<string, object?> r) =>
+        r.TryGetValue("Text", out var t) && t is string s
+            ? s
+            : throw new InvalidOperationException(
+                $"Chunk {Convert.ToInt32(r["ChunkIndex"], System.Globalization.CultureInfo.InvariantCulture)} of document '{documentId}' has no stored text and cannot be re-embedded.");
 
     private static IReadOnlyList<string> HeadingPath(Dictionary<string, object?> r) =>
         r.TryGetValue("HeadingPath", out var h) && h is string s && s.Length > 0 ? s.Split(" > ") : [];
