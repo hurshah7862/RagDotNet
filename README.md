@@ -39,7 +39,7 @@ var rag = new RagPipelineBuilder()
 
 await rag.IngestAsync(DocumentSource.FromFile("guide.md"));
 RagAnswer answer = await rag.AskAsync("How do I install on Linux?");
-foreach (var c in answer.Citations) Console.WriteLine($"[{c.Number}] {c.Chunk.SourceName} - {c.Location}");
+foreach (var c in answer.Citations) Console.WriteLine($"[{c.Number}] {c.Chunk.SourceName} — {c.Location}");
 ```
 
 `IRagPipeline` exposes `IngestAsync`, `IngestManyAsync`, `DeleteDocumentAsync`, `RetrieveAsync`, `AskAsync` and `AskStreamingAsync`. Text and Markdown readers are built in.

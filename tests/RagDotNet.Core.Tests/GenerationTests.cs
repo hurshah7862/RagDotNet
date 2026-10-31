@@ -41,6 +41,9 @@ public class GenerationTests
         Assert.Equal(1, citation.Number);
         Assert.Equal(answer.RetrievedChunks[0].ChunkKey, citation.Chunk.ChunkKey);
         Assert.Equal("Install > Linux", citation.Location);
+        Assert.EndsWith(
+            "Question: how do I install on linux\n\nAnswer using only the documents above. Put the number of each document you use in square brackets right after the sentence it supports, like [1].",
+            UserMessage(chat));
     }
 
     [Fact]

@@ -16,6 +16,9 @@ public sealed class DefaultRagPromptBuilder : IRagPromptBuilder
         "Cite the documents you use with their numbers in square brackets, like [1] or [1, 2]. " +
         "If the documents do not contain the answer, reply exactly: " + NotAnsweredText;
 
+    private const string CitationReminder =
+        "Answer using only the documents above. Put the number of each document you use in square brackets right after the sentence it supports, like [1].";
+
     /// <inheritdoc />
     public IList<ChatMessage> Build(RagPromptContext context)
     {
@@ -39,7 +42,7 @@ public sealed class DefaultRagPromptBuilder : IRagPromptBuilder
               .Append("\n</document>\n");
         }
 
-        sb.Append("\nQuestion: ").Append(context.Question);
+        sb.Append("\nQuestion: ").Append(context.Question).Append("\n\n").Append(CitationReminder);
         return [new ChatMessage(ChatRole.System, SystemPrompt), new ChatMessage(ChatRole.User, sb.ToString())];
     }
 

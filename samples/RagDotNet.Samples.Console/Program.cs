@@ -38,32 +38,41 @@ var files = Directory.EnumerateFiles(args[0], "*", SearchOption.AllDirectories)
     .Order(StringComparer.Ordinal)
     .ToList();
 
-foreach (string file in files)
+try
 {
-    var result = await pipeline.IngestAsync(DocumentSource.FromFile(file));
-    Console.WriteLine($"{result.DocumentId}: {result.Status}, {result.ChunkCount} chunks, {result.Warnings.Count} warnings");
+    foreach (string file in files)
+    {
+        var result = await pipeline.IngestAsync(DocumentSource.FromFile(file));
+        Console.WriteLine($"{result.DocumentId}: {result.Status}, {result.ChunkCount} chunks, {result.Warnings.Count} warnings");
+    }
+
+    while (true)
+    {
+        Console.Write("\nQuestion (empty line to exit): ");
+        string? question = Console.ReadLine();
+        if (string.IsNullOrWhiteSpace(question)) break;
+
+        RagDotNet.Generation.RagAnswer? final = null;
+        await foreach (var update in pipeline.AskStreamingAsync(question))
+        {
+            if (update.Text is not null) Console.Write(update.Text);
+            if (update.Final is not null) final = update.Final;
+        }
+
+        Console.WriteLine();
+        if (final is null) continue;
+        if (!final.IsAnswered) Console.WriteLine("(no answer found in the documents)");
+        foreach (var c in final.Citations)
+        {
+            Console.WriteLine($"[{c.Number}] {c.Chunk.SourceName} — {c.Location}");
+        }
+    }
 }
-
-while (true)
+catch (HttpRequestException ex)
 {
-    Console.Write("\nQuestion (empty line to exit): ");
-    string? question = Console.ReadLine();
-    if (string.IsNullOrWhiteSpace(question)) break;
-
-    RagDotNet.Generation.RagAnswer? final = null;
-    await foreach (var update in pipeline.AskStreamingAsync(question))
-    {
-        if (update.Text is not null) Console.Write(update.Text);
-        if (update.Final is not null) final = update.Final;
-    }
-
-    Console.WriteLine();
-    if (final is null) continue;
-    if (!final.IsAnswered) Console.WriteLine("(no answer found in the documents)");
-    foreach (var c in final.Citations)
-    {
-        Console.WriteLine($"[{c.Number}] {c.Chunk.SourceName} — {c.Location}");
-    }
+    Console.Error.WriteLine("Could not reach the model provider — is `ollama serve` running and are the models pulled?");
+    Console.Error.WriteLine(ex.Message);
+    return 1;
 }
 
 return 0;
