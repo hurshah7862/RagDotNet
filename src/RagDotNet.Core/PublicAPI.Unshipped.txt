@@ -1,4 +1,40 @@
 #nullable enable
+RagDotNet.Chunking.Chunk
+RagDotNet.Chunking.Chunk.<Clone>$() -> RagDotNet.Chunking.Chunk!
+RagDotNet.Chunking.Chunk.Chunk(int Index, string! Text, System.Collections.Generic.IReadOnlyList<string!>! HeadingPath, int? PageStart, int? PageEnd, int TokenCount) -> void
+RagDotNet.Chunking.Chunk.Deconstruct(out int Index, out string! Text, out System.Collections.Generic.IReadOnlyList<string!>! HeadingPath, out int? PageStart, out int? PageEnd, out int TokenCount) -> void
+RagDotNet.Chunking.Chunk.Equals(RagDotNet.Chunking.Chunk? other) -> bool
+RagDotNet.Chunking.Chunk.HeadingPath.get -> System.Collections.Generic.IReadOnlyList<string!>!
+RagDotNet.Chunking.Chunk.HeadingPath.init -> void
+RagDotNet.Chunking.Chunk.Index.get -> int
+RagDotNet.Chunking.Chunk.Index.init -> void
+RagDotNet.Chunking.Chunk.PageEnd.get -> int?
+RagDotNet.Chunking.Chunk.PageEnd.init -> void
+RagDotNet.Chunking.Chunk.PageStart.get -> int?
+RagDotNet.Chunking.Chunk.PageStart.init -> void
+RagDotNet.Chunking.Chunk.Text.get -> string!
+RagDotNet.Chunking.Chunk.Text.init -> void
+RagDotNet.Chunking.Chunk.TokenCount.get -> int
+RagDotNet.Chunking.Chunk.TokenCount.init -> void
+RagDotNet.Chunking.ChunkingOptions
+RagDotNet.Chunking.ChunkingOptions.<Clone>$() -> RagDotNet.Chunking.ChunkingOptions!
+RagDotNet.Chunking.ChunkingOptions.ChunkingOptions() -> void
+RagDotNet.Chunking.ChunkingOptions.Equals(RagDotNet.Chunking.ChunkingOptions? other) -> bool
+RagDotNet.Chunking.ChunkingOptions.MaxTokens.get -> int
+RagDotNet.Chunking.ChunkingOptions.MaxTokens.init -> void
+RagDotNet.Chunking.ChunkingOptions.OverlapRatio.get -> double
+RagDotNet.Chunking.ChunkingOptions.OverlapRatio.init -> void
+RagDotNet.Chunking.ChunkingOptions.Strategy.get -> RagDotNet.Chunking.ChunkingStrategy
+RagDotNet.Chunking.ChunkingOptions.Strategy.init -> void
+RagDotNet.Chunking.ChunkingStrategy
+RagDotNet.Chunking.ChunkingStrategy.StructureAware = 0 -> RagDotNet.Chunking.ChunkingStrategy
+RagDotNet.Chunking.IChunker
+RagDotNet.Chunking.IChunker.ChunkAsync(RagDotNet.Documents.ParsedDocument! document, RagDotNet.Chunking.ChunkingOptions! options, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<RagDotNet.Chunking.Chunk!>!>!
+RagDotNet.Chunking.IChunker.Strategy.get -> RagDotNet.Chunking.ChunkingStrategy
+RagDotNet.Chunking.StructureAwareChunker
+RagDotNet.Chunking.StructureAwareChunker.ChunkAsync(RagDotNet.Documents.ParsedDocument! document, RagDotNet.Chunking.ChunkingOptions! options, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<RagDotNet.Chunking.Chunk!>!>!
+RagDotNet.Chunking.StructureAwareChunker.Strategy.get -> RagDotNet.Chunking.ChunkingStrategy
+RagDotNet.Chunking.StructureAwareChunker.StructureAwareChunker(Microsoft.ML.Tokenizers.Tokenizer! tokenizer) -> void
 RagDotNet.Diagnostics.RagTelemetry
 RagDotNet.Documents.BlockKind
 RagDotNet.Documents.BlockKind.Code = 4 -> RagDotNet.Documents.BlockKind
@@ -78,6 +114,12 @@ RagDotNet.Readers.PlainTextReader.PlainTextReader() -> void
 RagDotNet.Readers.PlainTextReader.ReadAsync(System.IO.Stream! stream, RagDotNet.Documents.DocumentReadContext! context, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<RagDotNet.Documents.ParsedDocument!>!
 const RagDotNet.Diagnostics.RagTelemetry.ActivitySourceName = "RagDotNet" -> string!
 const RagDotNet.Diagnostics.RagTelemetry.MeterName = "RagDotNet" -> string!
+override RagDotNet.Chunking.Chunk.Equals(object? obj) -> bool
+override RagDotNet.Chunking.Chunk.GetHashCode() -> int
+override RagDotNet.Chunking.Chunk.ToString() -> string!
+override RagDotNet.Chunking.ChunkingOptions.Equals(object? obj) -> bool
+override RagDotNet.Chunking.ChunkingOptions.GetHashCode() -> int
+override RagDotNet.Chunking.ChunkingOptions.ToString() -> string!
 override RagDotNet.Documents.DocumentBlock.Equals(object? obj) -> bool
 override RagDotNet.Documents.DocumentBlock.GetHashCode() -> int
 override RagDotNet.Documents.DocumentBlock.ToString() -> string!
@@ -90,6 +132,10 @@ override RagDotNet.Documents.IngestWarning.ToString() -> string!
 override RagDotNet.Documents.ParsedDocument.Equals(object? obj) -> bool
 override RagDotNet.Documents.ParsedDocument.GetHashCode() -> int
 override RagDotNet.Documents.ParsedDocument.ToString() -> string!
+static RagDotNet.Chunking.Chunk.operator !=(RagDotNet.Chunking.Chunk? left, RagDotNet.Chunking.Chunk? right) -> bool
+static RagDotNet.Chunking.Chunk.operator ==(RagDotNet.Chunking.Chunk? left, RagDotNet.Chunking.Chunk? right) -> bool
+static RagDotNet.Chunking.ChunkingOptions.operator !=(RagDotNet.Chunking.ChunkingOptions? left, RagDotNet.Chunking.ChunkingOptions? right) -> bool
+static RagDotNet.Chunking.ChunkingOptions.operator ==(RagDotNet.Chunking.ChunkingOptions? left, RagDotNet.Chunking.ChunkingOptions? right) -> bool
 static RagDotNet.Documents.DocumentBlock.operator !=(RagDotNet.Documents.DocumentBlock? left, RagDotNet.Documents.DocumentBlock? right) -> bool
 static RagDotNet.Documents.DocumentBlock.operator ==(RagDotNet.Documents.DocumentBlock? left, RagDotNet.Documents.DocumentBlock? right) -> bool
 static RagDotNet.Documents.DocumentReadContext.operator !=(RagDotNet.Documents.DocumentReadContext? left, RagDotNet.Documents.DocumentReadContext? right) -> bool
