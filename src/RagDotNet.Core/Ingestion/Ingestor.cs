@@ -88,7 +88,7 @@ internal sealed class Ingestor(RagEngine engine)
         var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         var highWater = Math.Max(Math.Max(existing?.ChunkHighWater ?? 0, existing?.ChunkCount ?? 0), total);
         var pending = existing is not null
-            ? existing with { ChunkHighWater = highWater }
+            ? existing with { ContentHash = "", ChunkHighWater = highWater } // dirty marker: never matches a real hash
             : new ManifestRecord(docKey, s.DocumentId, scope.PartitionKey, partitionValues, "", "", engine.EmbeddingModelId,
                 0, sourceName, now, options.ContentStorage, "", highWater);
         await engine.Manifests.UpsertAsync(pending, ct).ConfigureAwait(false);
@@ -103,7 +103,7 @@ internal sealed class Ingestor(RagEngine engine)
 
         p?.Report(new IngestProgress(s.DocumentId, IngestStage.Completed, total, total));
         engine.Logger.LogDebug("Ingested document {DocumentId}: {ChunkCount} chunks", s.DocumentId, total);
-        return new IngestResult(s.DocumentId, existing is null || existing.ContentHash.Length == 0 ? IngestStatus.Created : IngestStatus.Updated, total, warnings);
+        return new IngestResult(s.DocumentId, existing is null || (existing.ContentHash.Length == 0 && existing.ChunkCount == 0) ?IngestStatus.Created : IngestStatus.Updated, total, warnings);
     }
 
     public async Task<bool> DeleteAsync(string documentId, ResolvedScope scope, CancellationToken ct)

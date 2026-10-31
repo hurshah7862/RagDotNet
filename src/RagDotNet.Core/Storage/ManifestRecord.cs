@@ -2,6 +2,7 @@ using RagDotNet.Content;
 
 namespace RagDotNet.Storage;
 
+/// <remarks>An empty ContentHash means an ingest is incomplete (in progress or crashed); it never matches a real hash.</remarks>
 internal sealed record ManifestRecord(
     string Key,
     string DocumentId,

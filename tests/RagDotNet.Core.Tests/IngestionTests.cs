@@ -273,6 +273,44 @@ public class IngestionTests
         Assert.Empty(await ExistingKeys(failing, "doc", 6));
     }
 
+    private static async Task<List<string>> Texts(VectorStore store, int count)
+    {
+        var chunks = store.GetDynamicCollection("test", RecordDefinitions.Chunks(StoreOptions()));
+        var texts = new List<string>();
+        await foreach (var r in chunks.GetAsync(Enumerable.Range(0, count).Select(i => (object)("doc:" + i)).ToList(), new RecordRetrievalOptions { IncludeVectors = false }, Ct))
+            texts.Add((string)r["Text"]!);
+        texts.Sort(StringComparer.Ordinal);
+        return texts;
+    }
+
+    [Fact]
+    public async Task Reingesting_A_after_crashed_ingest_of_B_restores_A()
+    {
+        var failing = new FailingVectorStore(new InMemoryVectorStore());
+        var (rag, _, _, _, _) = Create(builder: b => b.UseVectorStore(failing, "test", 64));
+        await rag.IngestAsync(Md("doc", Sections(3, "Alpha")), cancellationToken: Ct);
+
+        failing.FailManifestUpsertIn = 2;
+        await Assert.ThrowsAsync<IOException>(() => rag.IngestAsync(Md("doc", Sections(3, "Beta")), cancellationToken: Ct));
+
+        var r = await rag.IngestAsync(Md("doc", Sections(3, "Alpha")), cancellationToken: Ct);
+        Assert.Equal(IngestStatus.Updated, r.Status);
+        var (fresh, _, _, _, freshStore) = Create();
+        await fresh.IngestAsync(Md("doc", Sections(3, "Alpha")), cancellationToken: Ct);
+        Assert.Equal(await Texts(freshStore, 3), await Texts(failing, 3));
+    }
+
+    [Fact]
+    public async Task Retry_after_crashed_first_ingest_reports_Created()
+    {
+        var failing = new FailingVectorStore(new InMemoryVectorStore());
+        var (rag, _, _, _, _) = Create(builder: b => b.UseVectorStore(failing, "test", 64));
+        failing.FailManifestUpsertIn = 2;
+        await Assert.ThrowsAsync<IOException>(() => rag.IngestAsync(Md("doc", Sections(2)), cancellationToken: Ct));
+        var r = await rag.IngestAsync(Md("doc", Sections(2)), cancellationToken: Ct);
+        Assert.Equal(IngestStatus.Created, r.Status);
+    }
+
     [Fact]
     public async Task Changed_metadata_with_same_bytes_is_Updated_and_restamps_chunks()
     {
