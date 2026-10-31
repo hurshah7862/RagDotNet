@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/RagDotNet.Core/RagDotNet.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/RagDotNet.Core.Tests/RagDotNet.Core.Tests.csproj" />
+  </Folder>
+</Solution>

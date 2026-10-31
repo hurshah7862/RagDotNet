@@ -1,0 +1,4 @@
+#nullable enable
+const RagDotNet.Diagnostics.RagTelemetry.ActivitySourceName = "RagDotNet" -> string!
+const RagDotNet.Diagnostics.RagTelemetry.MeterName = "RagDotNet" -> string!
+RagDotNet.Diagnostics.RagTelemetry
