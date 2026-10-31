@@ -1,4 +1,5 @@
 using RagDotNet.Documents;
+using RagDotNet.Generation;
 using RagDotNet.Ingestion;
 using RagDotNet.Retrieval;
 
@@ -38,4 +39,20 @@ public interface IRagPipeline
     /// <exception cref="ArgumentException">The query is empty or whitespace, or the filter is invalid.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><see cref="RetrievalOptions.TopK"/> is outside 1 to 100.</exception>
     Task<IReadOnlyList<RetrievedChunk>> RetrieveAsync(string query, RetrievalOptions? options = null, CancellationToken cancellationToken = default);
+
+    /// <summary>Answers a question from the ingested documents.</summary>
+    /// <param name="question">The question.</param>
+    /// <param name="options">Per-call options.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The answer; <see cref="RagAnswer.IsAnswered"/> is false, without a model call, when nothing was retrieved.</returns>
+    /// <exception cref="InvalidOperationException">No chat client is configured. Call <c>UseChatClient</c>.</exception>
+    Task<RagAnswer> AskAsync(string question, AskOptions? options = null, CancellationToken cancellationToken = default);
+
+    /// <summary>Answers a question and streams the answer. Yields one update per non-empty text delta, then a final update with the complete answer. When nothing is retrieved, yields only the final update.</summary>
+    /// <param name="question">The question.</param>
+    /// <param name="options">Per-call options.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The updates.</returns>
+    /// <exception cref="InvalidOperationException">No chat client is configured. Call <c>UseChatClient</c>.</exception>
+    IAsyncEnumerable<RagAnswerUpdate> AskStreamingAsync(string question, AskOptions? options = null, CancellationToken cancellationToken = default);
 }

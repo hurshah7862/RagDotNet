@@ -117,7 +117,7 @@ public sealed class RagPipelineBuilder
         if (_options.PartitionKeys.Count > 0 && _scope is null)
             throw new InvalidOperationException($"Partition keys [{string.Join(", ", _options.PartitionKeys)}] require an access scope. Call UseAccessScope().");
         _engine ??= CreateEngine(_embedder, _store);
-        return new RagPipeline(_engine, _scope);
+        return new RagPipeline(_engine, _scope, _chat);
     }
 
     /// <summary>Builds the admin interface over the same engine as <see cref="Build"/>. Admin operations ignore any access scope.</summary>

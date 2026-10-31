@@ -253,7 +253,67 @@ RagDotNet.Filtering.RagFilter.OrFilter.Filters.get -> System.Collections.Generic
 RagDotNet.Filtering.RagFilter.OrFilter.Filters.init -> void
 RagDotNet.Filtering.RagFilter.OrFilter.OrFilter(System.Collections.Generic.IReadOnlyList<RagDotNet.Filtering.RagFilter!>! Filters) -> void
 RagDotNet.Filtering.RagFilter.RagFilter(RagDotNet.Filtering.RagFilter! original) -> void
+RagDotNet.Generation.AskOptions
+RagDotNet.Generation.AskOptions.<Clone>$() -> RagDotNet.Generation.AskOptions!
+RagDotNet.Generation.AskOptions.AskOptions() -> void
+RagDotNet.Generation.AskOptions.ChatOptions.get -> Microsoft.Extensions.AI.ChatOptions?
+RagDotNet.Generation.AskOptions.ChatOptions.init -> void
+RagDotNet.Generation.AskOptions.Equals(RagDotNet.Generation.AskOptions? other) -> bool
+RagDotNet.Generation.AskOptions.MaxContextTokens.get -> int?
+RagDotNet.Generation.AskOptions.MaxContextTokens.init -> void
+RagDotNet.Generation.AskOptions.Retrieval.get -> RagDotNet.Retrieval.RetrievalOptions?
+RagDotNet.Generation.AskOptions.Retrieval.init -> void
+RagDotNet.Generation.Citation
+RagDotNet.Generation.Citation.<Clone>$() -> RagDotNet.Generation.Citation!
+RagDotNet.Generation.Citation.Chunk.get -> RagDotNet.Retrieval.RetrievedChunk!
+RagDotNet.Generation.Citation.Chunk.init -> void
+RagDotNet.Generation.Citation.Citation(int Number, RagDotNet.Retrieval.RetrievedChunk! Chunk, string! Location) -> void
+RagDotNet.Generation.Citation.Deconstruct(out int Number, out RagDotNet.Retrieval.RetrievedChunk! Chunk, out string! Location) -> void
+RagDotNet.Generation.Citation.Equals(RagDotNet.Generation.Citation? other) -> bool
+RagDotNet.Generation.Citation.Location.get -> string!
+RagDotNet.Generation.Citation.Location.init -> void
+RagDotNet.Generation.Citation.Number.get -> int
+RagDotNet.Generation.Citation.Number.init -> void
+RagDotNet.Generation.DefaultRagPromptBuilder
+RagDotNet.Generation.DefaultRagPromptBuilder.Build(RagDotNet.Generation.RagPromptContext! context) -> System.Collections.Generic.IList<Microsoft.Extensions.AI.ChatMessage!>!
+RagDotNet.Generation.DefaultRagPromptBuilder.DefaultRagPromptBuilder() -> void
+RagDotNet.Generation.DefaultRagPromptBuilder.IsUnanswered(string! answerText) -> bool
 RagDotNet.Generation.IRagPromptBuilder
+RagDotNet.Generation.IRagPromptBuilder.Build(RagDotNet.Generation.RagPromptContext! context) -> System.Collections.Generic.IList<Microsoft.Extensions.AI.ChatMessage!>!
+RagDotNet.Generation.IRagPromptBuilder.IsUnanswered(string! answerText) -> bool
+RagDotNet.Generation.RagAnswer
+RagDotNet.Generation.RagAnswer.<Clone>$() -> RagDotNet.Generation.RagAnswer!
+RagDotNet.Generation.RagAnswer.Citations.get -> System.Collections.Generic.IReadOnlyList<RagDotNet.Generation.Citation!>!
+RagDotNet.Generation.RagAnswer.Citations.init -> void
+RagDotNet.Generation.RagAnswer.Deconstruct(out string! Text, out System.Collections.Generic.IReadOnlyList<RagDotNet.Generation.Citation!>! Citations, out System.Collections.Generic.IReadOnlyList<RagDotNet.Retrieval.RetrievedChunk!>! RetrievedChunks, out Microsoft.Extensions.AI.UsageDetails? Usage, out bool IsAnswered) -> void
+RagDotNet.Generation.RagAnswer.Equals(RagDotNet.Generation.RagAnswer? other) -> bool
+RagDotNet.Generation.RagAnswer.IsAnswered.get -> bool
+RagDotNet.Generation.RagAnswer.IsAnswered.init -> void
+RagDotNet.Generation.RagAnswer.RagAnswer(string! Text, System.Collections.Generic.IReadOnlyList<RagDotNet.Generation.Citation!>! Citations, System.Collections.Generic.IReadOnlyList<RagDotNet.Retrieval.RetrievedChunk!>! RetrievedChunks, Microsoft.Extensions.AI.UsageDetails? Usage, bool IsAnswered) -> void
+RagDotNet.Generation.RagAnswer.RetrievedChunks.get -> System.Collections.Generic.IReadOnlyList<RagDotNet.Retrieval.RetrievedChunk!>!
+RagDotNet.Generation.RagAnswer.RetrievedChunks.init -> void
+RagDotNet.Generation.RagAnswer.Text.get -> string!
+RagDotNet.Generation.RagAnswer.Text.init -> void
+RagDotNet.Generation.RagAnswer.Usage.get -> Microsoft.Extensions.AI.UsageDetails?
+RagDotNet.Generation.RagAnswer.Usage.init -> void
+RagDotNet.Generation.RagAnswerUpdate
+RagDotNet.Generation.RagAnswerUpdate.<Clone>$() -> RagDotNet.Generation.RagAnswerUpdate!
+RagDotNet.Generation.RagAnswerUpdate.Deconstruct(out string? Text, out RagDotNet.Generation.RagAnswer? Final) -> void
+RagDotNet.Generation.RagAnswerUpdate.Equals(RagDotNet.Generation.RagAnswerUpdate? other) -> bool
+RagDotNet.Generation.RagAnswerUpdate.Final.get -> RagDotNet.Generation.RagAnswer?
+RagDotNet.Generation.RagAnswerUpdate.Final.init -> void
+RagDotNet.Generation.RagAnswerUpdate.RagAnswerUpdate(string? Text, RagDotNet.Generation.RagAnswer? Final) -> void
+RagDotNet.Generation.RagAnswerUpdate.Text.get -> string?
+RagDotNet.Generation.RagAnswerUpdate.Text.init -> void
+RagDotNet.Generation.RagPromptContext
+RagDotNet.Generation.RagPromptContext.<Clone>$() -> RagDotNet.Generation.RagPromptContext!
+RagDotNet.Generation.RagPromptContext.ContextChunks.get -> System.Collections.Generic.IReadOnlyList<RagDotNet.Retrieval.RetrievedChunk!>!
+RagDotNet.Generation.RagPromptContext.ContextChunks.init -> void
+RagDotNet.Generation.RagPromptContext.Deconstruct(out string! Question, out System.Collections.Generic.IReadOnlyList<RagDotNet.Retrieval.RetrievedChunk!>! ContextChunks) -> void
+RagDotNet.Generation.RagPromptContext.Equals(RagDotNet.Generation.RagPromptContext? other) -> bool
+RagDotNet.Generation.RagPromptContext.Question.get -> string!
+RagDotNet.Generation.RagPromptContext.Question.init -> void
+RagDotNet.Generation.RagPromptContext.RagPromptContext(string! Question, System.Collections.Generic.IReadOnlyList<RagDotNet.Retrieval.RetrievedChunk!>! ContextChunks) -> void
 RagDotNet.Ingestion.IngestOptions
 RagDotNet.Ingestion.IngestOptions.<Clone>$() -> RagDotNet.Ingestion.IngestOptions!
 RagDotNet.Ingestion.IngestOptions.Chunking.get -> RagDotNet.Chunking.ChunkingOptions?
@@ -301,6 +361,8 @@ RagDotNet.Pipeline.IRagAdmin.DeleteDocumentAsync(string! documentId, System.Coll
 RagDotNet.Pipeline.IRagAdmin.GetStatsAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<RagDotNet.Pipeline.RagStats!>!
 RagDotNet.Pipeline.IRagAdmin.ReindexAsync(System.IProgress<RagDotNet.Pipeline.ReindexProgress!>? progress = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<RagDotNet.Pipeline.ReindexResult!>!
 RagDotNet.Pipeline.IRagPipeline
+RagDotNet.Pipeline.IRagPipeline.AskAsync(string! question, RagDotNet.Generation.AskOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<RagDotNet.Generation.RagAnswer!>!
+RagDotNet.Pipeline.IRagPipeline.AskStreamingAsync(string! question, RagDotNet.Generation.AskOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Collections.Generic.IAsyncEnumerable<RagDotNet.Generation.RagAnswerUpdate!>!
 RagDotNet.Pipeline.IRagPipeline.DeleteDocumentAsync(string! documentId, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
 RagDotNet.Pipeline.IRagPipeline.IngestAsync(RagDotNet.Documents.DocumentSource! source, RagDotNet.Ingestion.IngestOptions? options = null, System.IProgress<RagDotNet.Ingestion.IngestProgress!>? progress = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<RagDotNet.Ingestion.IngestResult!>!
 RagDotNet.Pipeline.IRagPipeline.IngestManyAsync(System.Collections.Generic.IEnumerable<RagDotNet.Documents.DocumentSource!>! sources, RagDotNet.Ingestion.IngestOptions? options = null, System.IProgress<RagDotNet.Ingestion.IngestProgress!>? progress = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<RagDotNet.Ingestion.IngestResult!>!>!
@@ -401,6 +463,7 @@ RagDotNet.Storage.RagKeyType.String = 0 -> RagDotNet.Storage.RagKeyType
 abstract RagDotNet.Filtering.RagFilter.<Clone>$() -> RagDotNet.Filtering.RagFilter!
 const RagDotNet.Diagnostics.RagTelemetry.ActivitySourceName = "RagDotNet" -> string!
 const RagDotNet.Diagnostics.RagTelemetry.MeterName = "RagDotNet" -> string!
+const RagDotNet.Generation.DefaultRagPromptBuilder.NotAnsweredText = "I don't know based on the provided documents." -> string!
 override RagDotNet.Access.AccessScope.Equals(object? obj) -> bool
 override RagDotNet.Access.AccessScope.GetHashCode() -> int
 override RagDotNet.Access.AccessScope.ToString() -> string!
@@ -452,6 +515,21 @@ override RagDotNet.Filtering.RagFilter.OrFilter.Equals(object? obj) -> bool
 override RagDotNet.Filtering.RagFilter.OrFilter.GetHashCode() -> int
 override RagDotNet.Filtering.RagFilter.OrFilter.ToString() -> string!
 override RagDotNet.Filtering.RagFilter.ToString() -> string!
+override RagDotNet.Generation.AskOptions.Equals(object? obj) -> bool
+override RagDotNet.Generation.AskOptions.GetHashCode() -> int
+override RagDotNet.Generation.AskOptions.ToString() -> string!
+override RagDotNet.Generation.Citation.Equals(object? obj) -> bool
+override RagDotNet.Generation.Citation.GetHashCode() -> int
+override RagDotNet.Generation.Citation.ToString() -> string!
+override RagDotNet.Generation.RagAnswer.Equals(object? obj) -> bool
+override RagDotNet.Generation.RagAnswer.GetHashCode() -> int
+override RagDotNet.Generation.RagAnswer.ToString() -> string!
+override RagDotNet.Generation.RagAnswerUpdate.Equals(object? obj) -> bool
+override RagDotNet.Generation.RagAnswerUpdate.GetHashCode() -> int
+override RagDotNet.Generation.RagAnswerUpdate.ToString() -> string!
+override RagDotNet.Generation.RagPromptContext.Equals(object? obj) -> bool
+override RagDotNet.Generation.RagPromptContext.GetHashCode() -> int
+override RagDotNet.Generation.RagPromptContext.ToString() -> string!
 override RagDotNet.Ingestion.IngestOptions.Equals(object? obj) -> bool
 override RagDotNet.Ingestion.IngestOptions.GetHashCode() -> int
 override RagDotNet.Ingestion.IngestOptions.ToString() -> string!
@@ -524,6 +602,16 @@ static RagDotNet.Filtering.RagFilter.operator !=(RagDotNet.Filtering.RagFilter? 
 static RagDotNet.Filtering.RagFilter.operator &(RagDotNet.Filtering.RagFilter! left, RagDotNet.Filtering.RagFilter! right) -> RagDotNet.Filtering.RagFilter!
 static RagDotNet.Filtering.RagFilter.operator ==(RagDotNet.Filtering.RagFilter? left, RagDotNet.Filtering.RagFilter? right) -> bool
 static RagDotNet.Filtering.RagFilter.operator |(RagDotNet.Filtering.RagFilter! left, RagDotNet.Filtering.RagFilter! right) -> RagDotNet.Filtering.RagFilter!
+static RagDotNet.Generation.AskOptions.operator !=(RagDotNet.Generation.AskOptions? left, RagDotNet.Generation.AskOptions? right) -> bool
+static RagDotNet.Generation.AskOptions.operator ==(RagDotNet.Generation.AskOptions? left, RagDotNet.Generation.AskOptions? right) -> bool
+static RagDotNet.Generation.Citation.operator !=(RagDotNet.Generation.Citation? left, RagDotNet.Generation.Citation? right) -> bool
+static RagDotNet.Generation.Citation.operator ==(RagDotNet.Generation.Citation? left, RagDotNet.Generation.Citation? right) -> bool
+static RagDotNet.Generation.RagAnswer.operator !=(RagDotNet.Generation.RagAnswer? left, RagDotNet.Generation.RagAnswer? right) -> bool
+static RagDotNet.Generation.RagAnswer.operator ==(RagDotNet.Generation.RagAnswer? left, RagDotNet.Generation.RagAnswer? right) -> bool
+static RagDotNet.Generation.RagAnswerUpdate.operator !=(RagDotNet.Generation.RagAnswerUpdate? left, RagDotNet.Generation.RagAnswerUpdate? right) -> bool
+static RagDotNet.Generation.RagAnswerUpdate.operator ==(RagDotNet.Generation.RagAnswerUpdate? left, RagDotNet.Generation.RagAnswerUpdate? right) -> bool
+static RagDotNet.Generation.RagPromptContext.operator !=(RagDotNet.Generation.RagPromptContext? left, RagDotNet.Generation.RagPromptContext? right) -> bool
+static RagDotNet.Generation.RagPromptContext.operator ==(RagDotNet.Generation.RagPromptContext? left, RagDotNet.Generation.RagPromptContext? right) -> bool
 static RagDotNet.Ingestion.IngestOptions.operator !=(RagDotNet.Ingestion.IngestOptions? left, RagDotNet.Ingestion.IngestOptions? right) -> bool
 static RagDotNet.Ingestion.IngestOptions.operator ==(RagDotNet.Ingestion.IngestOptions? left, RagDotNet.Ingestion.IngestOptions? right) -> bool
 static RagDotNet.Ingestion.IngestProgress.operator !=(RagDotNet.Ingestion.IngestProgress? left, RagDotNet.Ingestion.IngestProgress? right) -> bool

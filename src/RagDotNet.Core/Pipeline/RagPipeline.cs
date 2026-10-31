@@ -1,11 +1,15 @@
+using System.Runtime.CompilerServices;
+using System.Text;
+using Microsoft.Extensions.AI;
 using RagDotNet.Access;
 using RagDotNet.Documents;
+using RagDotNet.Generation;
 using RagDotNet.Ingestion;
 using RagDotNet.Retrieval;
 
 namespace RagDotNet.Pipeline;
 
-internal sealed class RagPipeline(RagEngine engine, IAccessScope? accessScope = null) : IRagPipeline
+internal sealed class RagPipeline(RagEngine engine, IAccessScope? accessScope = null, IChatClient? chatClient = null) : IRagPipeline
 {
     internal RagEngine Engine => engine;
 
@@ -50,5 +54,83 @@ internal sealed class RagPipeline(RagEngine engine, IAccessScope? accessScope = 
         ArgumentException.ThrowIfNullOrWhiteSpace(query);
         var scope = await engine.ResolveScopeAsync(accessScope, cancellationToken).ConfigureAwait(false);
         return await engine.Retriever.RetrieveAsync(query, scope, options ?? new RetrievalOptions(), cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<RagAnswer> AskAsync(string question, AskOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        var chat = RequireChat(question);
+        var (prompt, context, retrieved) = await PrepareAsync(question, options, cancellationToken).ConfigureAwait(false);
+        if (prompt is null) return NotAnswered(retrieved);
+
+        var response = await chat.GetResponseAsync(prompt, options?.ChatOptions, cancellationToken).ConfigureAwait(false);
+        return BuildAnswer(response.Text, response.Usage, context, retrieved);
+    }
+
+    public IAsyncEnumerable<RagAnswerUpdate> AskStreamingAsync(string question, AskOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        var chat = RequireChat(question);
+        return StreamAsync(chat, question, options, cancellationToken);
+    }
+
+    private async IAsyncEnumerable<RagAnswerUpdate> StreamAsync(IChatClient chat, string question, AskOptions? options, [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        var (prompt, context, retrieved) = await PrepareAsync(question, options, cancellationToken).ConfigureAwait(false);
+        if (prompt is null)
+        {
+            yield return new RagAnswerUpdate(null, NotAnswered(retrieved));
+            yield break;
+        }
+
+        var text = new StringBuilder();
+        UsageDetails? usage = null;
+        await foreach (var update in chat.GetStreamingResponseAsync(prompt, options?.ChatOptions, cancellationToken).ConfigureAwait(false))
+        {
+            foreach (var content in update.Contents)
+                if (content is UsageContent u) usage = u.Details;
+
+            var delta = update.Text;
+            if (string.IsNullOrEmpty(delta)) continue;
+            text.Append(delta);
+            yield return new RagAnswerUpdate(delta, null);
+        }
+
+        yield return new RagAnswerUpdate(null, BuildAnswer(text.ToString(), usage, context, retrieved));
+    }
+
+    private IChatClient RequireChat(string question)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(question);
+        return chatClient ?? throw new InvalidOperationException("No chat client configured. Call UseChatClient() with an IChatClient to use AskAsync.");
+    }
+
+    private async Task<(IList<ChatMessage>? Prompt, IReadOnlyList<RetrievedChunk> Context, IReadOnlyList<RetrievedChunk> Retrieved)> PrepareAsync(string question, AskOptions? options, CancellationToken ct)
+    {
+        var scope = await engine.ResolveScopeAsync(accessScope, ct).ConfigureAwait(false);
+        var retrieved = await engine.Retriever.RetrieveAsync(question, scope, options?.Retrieval ?? new RetrievalOptions(), ct).ConfigureAwait(false);
+        if (retrieved.Count == 0) return (null, [], retrieved);
+
+        var budget = options?.MaxContextTokens ?? engine.Options.MaxContextTokens;
+        var context = ContextBudget.Select(retrieved, budget, engine.Tokens);
+        var builder = engine.Options.Prompt ?? new DefaultRagPromptBuilder();
+        return (builder.Build(new RagPromptContext(question, context)), context, retrieved);
+    }
+
+    private static RagAnswer NotAnswered(IReadOnlyList<RetrievedChunk> retrieved) =>
+        new(DefaultRagPromptBuilder.NotAnsweredText, [], retrieved, null, false);
+
+    private RagAnswer BuildAnswer(string text, UsageDetails? usage, IReadOnlyList<RetrievedChunk> context, IReadOnlyList<RetrievedChunk> retrieved)
+    {
+        var citations = CitationParser.Parse(text, context.Count)
+            .Select(n => new Citation(n, context[n - 1], Locate(context[n - 1])))
+            .ToList();
+        var builder = engine.Options.Prompt ?? new DefaultRagPromptBuilder();
+        return new RagAnswer(text, citations, retrieved, usage, !builder.IsUnanswered(text));
+    }
+
+    private static string Locate(RetrievedChunk c)
+    {
+        if (c.PageStart is { } start)
+            return c.PageEnd is { } end && end != start ? $"pp. {start}–{end}" : $"p. {start}";
+        return c.HeadingPath.Count > 0 ? string.Join(" > ", c.HeadingPath) : c.SourceName;
     }
 }
