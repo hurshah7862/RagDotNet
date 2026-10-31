@@ -55,7 +55,12 @@ public sealed class DocumentSource
     public string? Title { get; set; }
 
     /// <summary>Arbitrary metadata stored with the document.</summary>
-    public IDictionary<string, object?> Metadata { get; init; } = new Dictionary<string, object?>();
+    /// <exception cref="ArgumentNullException">The value is null.</exception>
+    public IDictionary<string, object?> Metadata
+    {
+        get;
+        init => field = value ?? throw new ArgumentNullException(nameof(value));
+    } = new Dictionary<string, object?>();
 
     private static void ValidateId(string documentId)
     {

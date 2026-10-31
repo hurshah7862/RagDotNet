@@ -27,7 +27,8 @@ internal static class Hashing
         int i => "n:" + i.ToString(CultureInfo.InvariantCulture),
         long l => "n:" + l.ToString(CultureInfo.InvariantCulture),
         DateTimeOffset d => "d:" + d.ToString("O", CultureInfo.InvariantCulture),
-        string[] a => "a:" + string.Join(",", a.Select(e => e is null ? "~" : Uri.EscapeDataString(e))),
+        // Count, then each element length-prefixed, so [] differs from [""] and no two arrays share an encoding.
+        string[] a => "a" + a.Length.ToString(CultureInfo.InvariantCulture) + ":" + string.Concat(a.Select(Format)),
         _ => throw new ArgumentException($"Unsupported metadata value type '{v.GetType()}'."),
     };
 

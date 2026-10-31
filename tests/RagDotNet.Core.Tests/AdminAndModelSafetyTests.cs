@@ -200,6 +200,9 @@ public class AdminAndModelSafetyTests
         Assert.True(await admin.DeleteDocumentAsync("d1", new Dictionary<string, string> { ["tenant"] = "a" }, Ct));
         Assert.False(await admin.DeleteDocumentAsync("d1", new Dictionary<string, string> { ["tenant"] = "a" }, Ct));
         await Assert.ThrowsAsync<ArgumentException>(() => admin.DeleteDocumentAsync("d1", new Dictionary<string, string> { ["other"] = "a" }, Ct));
+        var missing = await Assert.ThrowsAsync<ArgumentException>(() => admin.DeleteDocumentAsync("d2", null, Ct));
+        Assert.Contains("tenant", missing.Message);
+        await Assert.ThrowsAsync<ArgumentException>(() => admin.DeleteDocumentAsync("d2", new Dictionary<string, string>(), Ct));
 
         var stats = await admin.GetStatsAsync(Ct);
         Assert.Equal(1, stats.Partitions.Single(p => p.Partition["tenant"] == "a").DocumentCount);
@@ -217,7 +220,7 @@ public class AdminAndModelSafetyTests
             Inputs.AddRange(list);
             var r = await inner.GenerateAsync(list, options, cancellationToken);
             var o = new Microsoft.Extensions.AI.GeneratedEmbeddings<Microsoft.Extensions.AI.Embedding<float>>();
-            foreach (var e in r) o.Add(new Microsoft.Extensions.AI.Embedding<float>(e.Vector.ToArray().Reverse().ToArray()));
+            foreach (var e in r) o.Add(new Microsoft.Extensions.AI.Embedding<float>(Enumerable.Reverse(e.Vector.ToArray()).ToArray()));
             return o;
         }
 
@@ -285,7 +288,7 @@ public class AdminAndModelSafetyTests
         Assert.Equal("other", after["EmbeddingModelId"]);
         Assert.Equal("Install > Linux > Debian", after["HeadingPath"]);
         Assert.Equal(before["Text"], after["Text"]);
-        Assert.Equal(beforeVector.Reverse().ToArray(), ((ReadOnlyMemory<float>)after["Embedding"]!).ToArray());
+        Assert.Equal(Enumerable.Reverse(beforeVector).ToArray(), ((ReadOnlyMemory<float>)after["Embedding"]!).ToArray());
         Assert.NotEqual(beforeVector, ((ReadOnlyMemory<float>)after["Embedding"]!).ToArray());
         Assert.Equal(ingestInput, reverse.Inputs.Last()); // same embedding input as a fresh ingest
         Assert.Contains("Install > Linux > Debian", ingestInput);

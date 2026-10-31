@@ -118,6 +118,31 @@ public class IngestionTests
     }
 
     [Fact]
+    public async Task Null_element_in_string_array_metadata_throws()
+    {
+        var (rag, _, _, _, _) = Create(o => o.Metadata.Add<string[]>("tags"));
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            rag.IngestAsync(Md("a", "# A\n\ntext", new Dictionary<string, object?> { ["tags"] = new string?[] { "x", null } }), cancellationToken: Ct));
+        Assert.Contains("tags", ex.Message);
+        Assert.Contains("null", ex.Message);
+    }
+
+    [Fact]
+    public async Task Changing_string_array_metadata_between_empty_and_blank_element_is_Updated()
+    {
+        var (rag, _, _, _, _) = Create(o => o.Metadata.Add<string[]>("tags"));
+        await rag.IngestAsync(Md("a", "# A\n\ntext", new Dictionary<string, object?> { ["tags"] = Array.Empty<string>() }), cancellationToken: Ct);
+        var r = await rag.IngestAsync(Md("a", "# A\n\ntext", new Dictionary<string, object?> { ["tags"] = new[] { "" } }), cancellationToken: Ct);
+        Assert.Equal(IngestStatus.Updated, r.Status);
+    }
+
+    [Fact]
+    public void Document_source_metadata_cannot_be_set_to_null()
+    {
+        Assert.Throws<ArgumentNullException>(() => new DocumentSource("a", new MemoryStream(), "a.txt") { Metadata = null! });
+    }
+
+    [Fact]
     public async Task Declared_metadata_is_stored_on_every_chunk()
     {
         var (rag, _, _, _, store) = Create(o => { o.Metadata.Add<string>("team"); o.Metadata.Add<long>("rev"); o.Metadata.Add<bool>("draft"); });

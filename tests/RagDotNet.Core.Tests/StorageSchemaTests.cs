@@ -43,6 +43,25 @@ public class StorageSchemaTests
         Assert.Equal(0b10, bytes[8] >> 6);
     }
 
+    public static TheoryData<string[], string[]> DistinctStringArrays() => new()
+    {
+        { [], [""] },
+        { [""], ["", ""] },
+        { ["a,b"], ["a", "b"] },
+        { ["a"], ["a", ""] },
+        { ["ab", "c"], ["a", "bc"] },
+        { ["1:a"], ["a"] },
+    };
+
+    [Theory]
+    [MemberData(nameof(DistinctStringArrays))]
+    public void Metadata_hash_distinguishes_distinct_string_arrays(string[] a, string[] b)
+    {
+        static string Hash(string[] v) => Hashing.MetadataHash(new Dictionary<string, object?> { ["tags"] = v });
+        Assert.NotEqual(Hash(a), Hash(b));
+        Assert.Equal(Hash(a), Hash([.. a]));
+    }
+
     [Fact]
     public void Chunking_hash_changes_with_max_tokens_and_tokenizer()
     {

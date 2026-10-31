@@ -78,7 +78,7 @@ internal sealed class RagAdmin(RagEngine engine) : IRagAdmin
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(documentId);
         IReadOnlyDictionary<string, string> values = partition ?? new Dictionary<string, string>();
-        if (values.Count > 0)
+        if (values.Count > 0 || engine.Options.PartitionKeys.Count > 0)
         {
             var expected = new HashSet<string>(engine.Options.PartitionKeys, StringComparer.Ordinal);
             if (!expected.SetEquals(values.Keys))
