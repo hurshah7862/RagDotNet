@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using Microsoft.Extensions.Logging;
 using RagDotNet.Access;
 using RagDotNet.Chunking;
@@ -112,10 +113,28 @@ internal sealed class Ingestor(RagEngine engine)
         var existing = await engine.Manifests.GetAsync(scope.PartitionKey, documentId, ct).ConfigureAwait(false);
         if (existing is null) return false;
 
+        // The scope's read filter must authorize the document. A document with no chunks cannot be authorized.
+        if (scope.HasScopeFilter && !await IsVisibleAsync(scope, documentId, ct).ConfigureAwait(false))
+            return false;
+
         // Chunks first, so a crash leaves the manifest and a retry finishes the job.
         await DeleteRangeAsync(scope, documentId, 0, Math.Max(existing.ChunkCount, existing.ChunkHighWater), ct).ConfigureAwait(false);
         await engine.Manifests.DeleteAsync(scope.PartitionKey, documentId, ct).ConfigureAwait(false);
         return true;
+    }
+
+    private async Task<bool> IsVisibleAsync(ResolvedScope scope, string documentId, CancellationToken ct)
+    {
+        var translated = RagFilterTranslator.Translate(scope.Filter, engine.Options.Metadata, out var matchesNothing);
+        if (matchesNothing || translated is null) return false;
+
+        var p = translated.Parameters[0];
+        var idCheck = Expression.Equal(
+            Expression.Convert(Expression.Property(p, "Item", Expression.Constant("DocumentId")), typeof(string)),
+            Expression.Constant(documentId));
+        var body = Expression.AndAlso(translated.Body, idCheck);
+        var filter = Expression.Lambda<Func<Dictionary<string, object?>, bool>>(body, p);
+        return await engine.Chunks.AnyAsync(filter, ct).ConfigureAwait(false);
     }
 
     private Task DeleteRangeAsync(ResolvedScope scope, string documentId, int from, int to, CancellationToken ct) =>

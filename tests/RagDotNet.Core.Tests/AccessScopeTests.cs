@@ -74,6 +74,108 @@ public class AccessScopeTests
         Assert.Contains("zulu", after[0].Text);
     }
 
+    private static IDictionary<string, object?> Groups(params string[] g) => new Dictionary<string, object?> { ["groups"] = g };
+
+    [Fact]
+    public async Task Delete_with_a_scope_filter_that_excludes_the_document_returns_false()
+    {
+        var (rag, scope) = CreateScoped(o => o.Metadata.Add<string[]>("groups"));
+        scope.Current = Tenant("a");
+        await rag.IngestAsync(Md("d1", "alpha beta", Groups("g1")), cancellationToken: Ct);
+
+        scope.Current = Tenant("a", RagFilter.ContainsAny("groups", ["g2"]));
+        Assert.False(await rag.DeleteDocumentAsync("d1", Ct));
+
+        scope.Current = Tenant("a", RagFilter.ContainsAny("groups", ["g1"]));
+        Assert.Single(await rag.RetrieveAsync("alpha beta", cancellationToken: Ct));
+    }
+
+    [Fact]
+    public async Task Delete_with_a_no_groups_scope_touches_nothing()
+    {
+        var (rag, scope) = CreateScoped(o => o.Metadata.Add<string[]>("groups"));
+        scope.Current = Tenant("a");
+        await rag.IngestAsync(Md("d1", "alpha beta", Groups("g1")), cancellationToken: Ct);
+
+        scope.Current = Tenant("a", RagFilter.ContainsAny("groups", []));
+        Assert.False(await rag.DeleteDocumentAsync("d1", Ct));
+
+        scope.Current = Tenant("a");
+        Assert.Single(await rag.RetrieveAsync("alpha beta", cancellationToken: Ct));
+    }
+
+    [Fact]
+    public async Task Delete_with_a_matching_scope_filter_deletes()
+    {
+        var (rag, scope) = CreateScoped(o => o.Metadata.Add<string[]>("groups"));
+        scope.Current = Tenant("a");
+        await rag.IngestAsync(Md("d1", "alpha beta", Groups("g1")), cancellationToken: Ct);
+
+        scope.Current = Tenant("a", RagFilter.ContainsAny("groups", ["g1"]));
+        Assert.True(await rag.DeleteDocumentAsync("d1", Ct));
+
+        scope.Current = Tenant("a");
+        Assert.Empty(await rag.RetrieveAsync("alpha beta", cancellationToken: Ct));
+    }
+
+    [Fact]
+    public async Task Delete_of_an_empty_document_under_a_scope_filter_returns_false()
+    {
+        var (rag, scope) = CreateScoped(o => o.Metadata.Add<string[]>("groups"));
+        scope.Current = Tenant("a");
+        var r = await rag.IngestAsync(Md("empty", "   ", Groups("g1")), cancellationToken: Ct);
+        Assert.Equal(0, r.ChunkCount);
+
+        scope.Current = Tenant("a", RagFilter.ContainsAny("groups", ["g1"]));
+        Assert.False(await rag.DeleteDocumentAsync("empty", Ct));
+
+        scope.Current = Tenant("a");
+        Assert.True(await rag.DeleteDocumentAsync("empty", Ct));
+    }
+
+    [Fact]
+    public void Partition_keys_without_a_scope_throw_at_build()
+    {
+        var ex = Assert.Throws<InvalidOperationException>(
+            () => Create(o => { o.Metadata.Add<string>("tenant"); o.PartitionKeys.Add("tenant"); }));
+        Assert.Contains("access scope", ex.Message);
+    }
+
+    [Fact]
+    public async Task Caller_filter_cannot_widen_the_partition()
+    {
+        var (rag, scope) = CreateScoped();
+        scope.Current = Tenant("a");
+        await rag.IngestAsync(Md("d1", "alpha beta"), cancellationToken: Ct);
+        scope.Current = Tenant("b");
+        await rag.IngestAsync(Md("d1", "alpha beta"), cancellationToken: Ct);
+
+        scope.Current = Tenant("a");
+        Assert.Empty(await rag.RetrieveAsync("alpha beta", new Retrieval.RetrievalOptions { Filter = RagFilter.Eq("tenant", "b") }, Ct));
+        var widened = await rag.RetrieveAsync(
+            "alpha beta", new Retrieval.RetrievalOptions { Filter = RagFilter.Or(RagFilter.Eq("tenant", "b"), RagFilter.Eq("tenant", "a")) }, Ct);
+        Assert.Equal("a", Assert.Single(widened).Metadata["tenant"]);
+    }
+
+    [Fact]
+    public async Task Pipelines_sharing_an_engine_keep_their_own_scopes()
+    {
+        var scopeA = new MutableScope { Current = Tenant("a") };
+        var scopeB = new MutableScope { Current = Tenant("b") };
+        var (pa, builder, _, _, _) = Create(
+            o => { o.Metadata.Add<string>("tenant"); o.PartitionKeys.Add("tenant"); },
+            b => b.UseAccessScope(scopeA));
+        var pb = builder.UseAccessScope(scopeB).Build();
+
+        await pa.IngestAsync(Md("d1", "alpha beta"), cancellationToken: Ct);
+        await pb.IngestAsync(Md("d1", "zulu yankee"), cancellationToken: Ct);
+
+        Assert.Contains("alpha", Assert.Single(await pa.RetrieveAsync("alpha beta", cancellationToken: Ct)).Text);
+        Assert.Contains("zulu", Assert.Single(await pb.RetrieveAsync("alpha beta", cancellationToken: Ct)).Text);
+        Assert.Equal(2, scopeA.Calls);
+        Assert.Equal(2, scopeB.Calls);
+    }
+
     [Fact]
     public async Task Partition_values_override_caller_metadata()
     {
@@ -160,14 +262,14 @@ public class AccessScopeTests
     public async Task Invalid_partition_values_throw()
     {
         var (rag, scope) = CreateScoped();
-        foreach (var bad in new[] { "", "\uD800" })
-        {
-            scope.Current = Tenant(bad);
-            await Assert.ThrowsAnyAsync<Exception>(() => rag.IngestAsync(Md("d", "x"), cancellationToken: Ct));
-        }
+        scope.Current = Tenant("");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => rag.IngestAsync(Md("d", "x"), cancellationToken: Ct));
+
+        scope.Current = Tenant("\uD800");
+        await Assert.ThrowsAsync<ArgumentException>(() => rag.IngestAsync(Md("d", "x"), cancellationToken: Ct));
 
         scope.Current = new AccessScope(new Dictionary<string, string> { ["tenant"] = null! });
-        await Assert.ThrowsAnyAsync<Exception>(() => rag.RetrieveAsync("alpha", cancellationToken: Ct));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => rag.RetrieveAsync("alpha", cancellationToken: Ct));
     }
 
     [Fact]

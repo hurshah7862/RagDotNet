@@ -24,7 +24,7 @@ public interface IRagPipeline
     /// <exception cref="ArgumentException">Two sources share a document id.</exception>
     Task<IReadOnlyList<IngestResult>> IngestManyAsync(IEnumerable<DocumentSource> sources, IngestOptions? options = null, IProgress<IngestProgress>? progress = null, CancellationToken cancellationToken = default);
 
-    /// <summary>Deletes a document's chunks and manifest.</summary>
+    /// <summary>Deletes a document's chunks and manifest. With an access scope that has a read filter, only a document whose chunks match that filter can be deleted; a document with no chunks cannot be authorized and is not deleted.</summary>
     /// <param name="documentId">The document id.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>True when the document existed.</returns>

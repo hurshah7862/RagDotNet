@@ -96,14 +96,16 @@ public sealed class RagPipelineBuilder
 
     /// <summary>Builds the pipeline. Repeated calls share one engine.</summary>
     /// <returns>The pipeline.</returns>
-    /// <exception cref="InvalidOperationException">The embedding generator or vector store is missing.</exception>
+    /// <exception cref="InvalidOperationException">The embedding generator or vector store is missing, or partition keys are configured without an access scope.</exception>
     /// <exception cref="NotSupportedException">External content storage is selected; it throws until a content store is configured.</exception>
     public IRagPipeline Build()
     {
         if (_embedder is null) throw new InvalidOperationException("No embedding generator configured. Call UseEmbeddingGenerator().");
         if (_store is null) throw new InvalidOperationException("No vector store configured. Call UseVectorStore().");
+        if (_options.PartitionKeys.Count > 0 && _scope is null)
+            throw new InvalidOperationException($"Partition keys [{string.Join(", ", _options.PartitionKeys)}] require an access scope. Call UseAccessScope().");
         _engine ??= CreateEngine(_embedder, _store);
-        return new RagPipeline(_engine);
+        return new RagPipeline(_engine, _scope);
     }
 
     internal IChatClient? ChatClient => _chat;
@@ -116,6 +118,6 @@ public sealed class RagPipelineBuilder
         var logger = (_loggerFactory ?? NullLoggerFactory.Instance).CreateLogger("RagDotNet");
         return new RagEngine(
             _options, readers, new StructureAwareChunker(tokenizer), new TokenCounter(tokenizer), tokenizerName,
-            embedder, new ChunkStore(store, _options), new ManifestStore(store, _options), logger, _scope);
+            embedder, new ChunkStore(store, _options), new ManifestStore(store, _options), logger);
     }
 }

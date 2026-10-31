@@ -14,6 +14,12 @@ public class RetrievalTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
+    private sealed class FixedScope(string tenant) : IAccessScope
+    {
+        public ValueTask<AccessScope> GetScopeAsync(CancellationToken cancellationToken) =>
+            new(new AccessScope(new Dictionary<string, string> { ["tenant"] = tenant }));
+    }
+
     private static IDictionary<string, object?> Tenant(string t) => new Dictionary<string, object?> { ["tenant"] = t };
 
     [Fact]
@@ -151,11 +157,13 @@ public class RetrievalTests
     [Fact]
     public async Task Chunk_key_includes_partition_values_read_from_metadata()
     {
-        var (pipeline, _, _, _, _) = Create(o =>
-        {
-            o.Metadata.Add<string>("tenant");
-            o.PartitionKeys.Add("tenant");
-        });
+        var (pipeline, _, _, _, _) = Create(
+            o =>
+            {
+                o.Metadata.Add<string>("tenant");
+                o.PartitionKeys.Add("tenant");
+            },
+            b => b.UseAccessScope(new FixedScope("a b")));
         await pipeline.IngestAsync(Md("doc one", "alpha beta", Tenant("a b")), cancellationToken: Ct);
 
         var results = await pipeline.RetrieveAsync("alpha beta", cancellationToken: Ct);
@@ -169,6 +177,7 @@ public class RetrievalTests
     {
         var embedder = new FakeEmbeddingGenerator(64);
         var store = new FailingVectorStore(new InMemoryVectorStore());
+        var partitioned = false;
         var builder = new RagPipelineBuilder()
             .UseEmbeddingGenerator(embedder)
             .UseChatClient(new FakeChatClient())
@@ -177,7 +186,9 @@ public class RetrievalTests
             {
                 o.Metadata.Add<string>("tenant").Add<string>("kind").Add<string[]>("groups");
                 configure?.Invoke(o);
+                partitioned = o.PartitionKeys.Count > 0;
             });
+        if (partitioned) builder.UseAccessScope(new FixedScope("a"));
         return ((RagPipeline)builder.Build(), embedder, store);
     }
 

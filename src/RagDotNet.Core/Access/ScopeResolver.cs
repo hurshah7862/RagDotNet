@@ -4,17 +4,18 @@ using RagDotNet.Storage;
 
 namespace RagDotNet.Access;
 
-internal sealed record ResolvedScope(IReadOnlyDictionary<string, string> Partition, string PartitionKey, RagFilter? Filter)
+internal sealed record ResolvedScope(IReadOnlyDictionary<string, string> Partition, string PartitionKey, RagFilter? Filter, bool HasScopeFilter = false)
 {
     public static ResolvedScope None { get; } = new(new Dictionary<string, string>(), "", null);
 }
 
-internal sealed class ScopeResolver(IAccessScope? scope, RagOptions options, ManifestStore manifests)
+/// <remarks>Shared and thread-safe; holds only the unscoped-data check cache. The scope provider is passed per call.</remarks>
+internal sealed class ScopeResolver(RagOptions options, ManifestStore manifests)
 {
     private readonly SemaphoreSlim _checkLock = new(1, 1);
     private volatile bool _unscopedCheckPassed;
 
-    public async ValueTask<ResolvedScope> ResolveAsync(CancellationToken ct)
+    public async ValueTask<ResolvedScope> ResolveAsync(IAccessScope? scope, CancellationToken ct)
     {
         if (scope is null) return ResolvedScope.None;
 
@@ -51,7 +52,7 @@ internal sealed class ScopeResolver(IAccessScope? scope, RagOptions options, Man
             .ToList();
         if (s.Filter is not null) parts.Add(s.Filter);
         RagFilter filter = parts.Count == 1 ? parts[0] : new RagFilter.AndFilter(parts);
-        return new ResolvedScope(partition, partitionKey, filter);
+        return new ResolvedScope(partition, partitionKey, filter, s.Filter is not null);
     }
 
     private async Task EnsureNoUnscopedDataAsync(CancellationToken ct)
