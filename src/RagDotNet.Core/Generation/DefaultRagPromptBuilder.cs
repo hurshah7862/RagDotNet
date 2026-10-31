@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Security;
 using System.Text;
 using Microsoft.Extensions.AI;
@@ -28,10 +27,7 @@ public sealed class DefaultRagPromptBuilder : IRagPromptBuilder
             sb.Append("<document id=\"").Append(i + 1).Append("\" source=\"").Append(Attr(c.SourceName)).Append('"');
             if (c.PageStart is { } start)
             {
-                var page = c.PageEnd is { } end && end != start
-                    ? $"{start}-{end}"
-                    : start.ToString(CultureInfo.InvariantCulture);
-                sb.Append(" page=\"").Append(page).Append('"');
+                sb.Append(" page=\"").Append(PageLocation.Format(start, c.PageEnd)).Append('"');
             }
             else if (c.HeadingPath.Count > 0)
             {
@@ -39,7 +35,7 @@ public sealed class DefaultRagPromptBuilder : IRagPromptBuilder
             }
 
             sb.Append(">\n")
-              .Append(c.Text.Replace("</document", "&lt;/document", StringComparison.OrdinalIgnoreCase))
+              .Append(EscapeText(c.Text))
               .Append("\n</document>\n");
         }
 
@@ -50,6 +46,10 @@ public sealed class DefaultRagPromptBuilder : IRagPromptBuilder
     /// <inheritdoc />
     public bool IsUnanswered(string answerText) =>
         answerText.AsSpan().Trim().StartsWith(NotAnsweredText, StringComparison.OrdinalIgnoreCase);
+
+    private static string EscapeText(string text) =>
+        text.Replace("</document", "&lt;/document", StringComparison.OrdinalIgnoreCase)
+            .Replace("<document", "&lt;document", StringComparison.OrdinalIgnoreCase);
 
     private static string Attr(string value) => SecurityElement.Escape(value) ?? string.Empty;
 }

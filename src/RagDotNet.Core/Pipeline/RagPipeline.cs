@@ -58,7 +58,7 @@ internal sealed class RagPipeline(RagEngine engine, IAccessScope? accessScope = 
 
     public async Task<RagAnswer> AskAsync(string question, AskOptions? options = null, CancellationToken cancellationToken = default)
     {
-        var chat = RequireChat(question);
+        var chat = RequireChat(question, options);
         var (prompt, context, retrieved) = await PrepareAsync(question, options, cancellationToken).ConfigureAwait(false);
         if (prompt is null) return NotAnswered(retrieved);
 
@@ -68,7 +68,7 @@ internal sealed class RagPipeline(RagEngine engine, IAccessScope? accessScope = 
 
     public IAsyncEnumerable<RagAnswerUpdate> AskStreamingAsync(string question, AskOptions? options = null, CancellationToken cancellationToken = default)
     {
-        var chat = RequireChat(question);
+        var chat = RequireChat(question, options);
         return StreamAsync(chat, question, options, cancellationToken);
     }
 
@@ -97,9 +97,11 @@ internal sealed class RagPipeline(RagEngine engine, IAccessScope? accessScope = 
         yield return new RagAnswerUpdate(null, BuildAnswer(text.ToString(), usage, context, retrieved));
     }
 
-    private IChatClient RequireChat(string question)
+    private IChatClient RequireChat(string question, AskOptions? options)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(question);
+        if (options?.MaxContextTokens is <= 0)
+            throw new ArgumentOutOfRangeException("MaxContextTokens", options.MaxContextTokens, "MaxContextTokens must be greater than zero.");
         return chatClient ?? throw new InvalidOperationException("No chat client configured. Call UseChatClient() with an IChatClient to use AskAsync.");
     }
 
@@ -124,13 +126,12 @@ internal sealed class RagPipeline(RagEngine engine, IAccessScope? accessScope = 
             .Select(n => new Citation(n, context[n - 1], Locate(context[n - 1])))
             .ToList();
         var builder = engine.Options.Prompt ?? new DefaultRagPromptBuilder();
-        return new RagAnswer(text, citations, retrieved, usage, !builder.IsUnanswered(text));
+        return new RagAnswer(text, citations, retrieved, usage, !string.IsNullOrWhiteSpace(text) && !builder.IsUnanswered(text));
     }
 
     private static string Locate(RetrievedChunk c)
     {
-        if (c.PageStart is { } start)
-            return c.PageEnd is { } end && end != start ? $"pp. {start}–{end}" : $"p. {start}";
+        if (c.PageStart is { } start) return PageLocation.Format(start, c.PageEnd);
         return c.HeadingPath.Count > 0 ? string.Join(" > ", c.HeadingPath) : c.SourceName;
     }
 }
