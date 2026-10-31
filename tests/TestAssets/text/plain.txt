@@ -1,0 +1,5 @@
+Quarterly maintenance notes
+
+The build server was restored after the weekend outage. All pipelines are green again.
+
+Next steps: rotate the signing keys and archive the old logs.

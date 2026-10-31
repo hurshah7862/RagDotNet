@@ -1,4 +1,101 @@
 #nullable enable
+RagDotNet.Diagnostics.RagTelemetry
+RagDotNet.Documents.BlockKind
+RagDotNet.Documents.BlockKind.Code = 4 -> RagDotNet.Documents.BlockKind
+RagDotNet.Documents.BlockKind.Heading = 0 -> RagDotNet.Documents.BlockKind
+RagDotNet.Documents.BlockKind.List = 2 -> RagDotNet.Documents.BlockKind
+RagDotNet.Documents.BlockKind.Paragraph = 1 -> RagDotNet.Documents.BlockKind
+RagDotNet.Documents.BlockKind.Table = 3 -> RagDotNet.Documents.BlockKind
+RagDotNet.Documents.DocumentBlock
+RagDotNet.Documents.DocumentBlock.<Clone>$() -> RagDotNet.Documents.DocumentBlock!
+RagDotNet.Documents.DocumentBlock.Deconstruct(out RagDotNet.Documents.BlockKind Kind, out string! Text, out System.Collections.Generic.IReadOnlyList<string!>! HeadingPath, out int? PageNumber) -> void
+RagDotNet.Documents.DocumentBlock.DocumentBlock(RagDotNet.Documents.BlockKind Kind, string! Text, System.Collections.Generic.IReadOnlyList<string!>! HeadingPath, int? PageNumber = null) -> void
+RagDotNet.Documents.DocumentBlock.Equals(RagDotNet.Documents.DocumentBlock? other) -> bool
+RagDotNet.Documents.DocumentBlock.HeadingPath.get -> System.Collections.Generic.IReadOnlyList<string!>!
+RagDotNet.Documents.DocumentBlock.HeadingPath.init -> void
+RagDotNet.Documents.DocumentBlock.Kind.get -> RagDotNet.Documents.BlockKind
+RagDotNet.Documents.DocumentBlock.Kind.init -> void
+RagDotNet.Documents.DocumentBlock.PageNumber.get -> int?
+RagDotNet.Documents.DocumentBlock.PageNumber.init -> void
+RagDotNet.Documents.DocumentBlock.Text.get -> string!
+RagDotNet.Documents.DocumentBlock.Text.init -> void
+RagDotNet.Documents.DocumentReadContext
+RagDotNet.Documents.DocumentReadContext.<Clone>$() -> RagDotNet.Documents.DocumentReadContext!
+RagDotNet.Documents.DocumentReadContext.ContentType.get -> string?
+RagDotNet.Documents.DocumentReadContext.ContentType.init -> void
+RagDotNet.Documents.DocumentReadContext.Deconstruct(out string! FileName, out string? ContentType) -> void
+RagDotNet.Documents.DocumentReadContext.DocumentReadContext(string! FileName, string? ContentType) -> void
+RagDotNet.Documents.DocumentReadContext.Equals(RagDotNet.Documents.DocumentReadContext? other) -> bool
+RagDotNet.Documents.DocumentReadContext.FileName.get -> string!
+RagDotNet.Documents.DocumentReadContext.FileName.init -> void
+RagDotNet.Documents.DocumentSource
+RagDotNet.Documents.DocumentSource.ContentType.get -> string?
+RagDotNet.Documents.DocumentSource.DocumentId.get -> string!
+RagDotNet.Documents.DocumentSource.DocumentSource(string! documentId, System.IO.Stream! stream, string! fileName, string? contentType = null) -> void
+RagDotNet.Documents.DocumentSource.FileName.get -> string!
+RagDotNet.Documents.DocumentSource.FilePath.get -> string?
+RagDotNet.Documents.DocumentSource.Metadata.get -> System.Collections.Generic.IDictionary<string!, object?>!
+RagDotNet.Documents.DocumentSource.Metadata.init -> void
+RagDotNet.Documents.DocumentSource.Stream.get -> System.IO.Stream?
+RagDotNet.Documents.DocumentSource.Title.get -> string?
+RagDotNet.Documents.DocumentSource.Title.set -> void
+RagDotNet.Documents.IDocumentReader
+RagDotNet.Documents.IDocumentReader.CanRead(string? contentType, string! fileName) -> bool
+RagDotNet.Documents.IDocumentReader.ReadAsync(System.IO.Stream! stream, RagDotNet.Documents.DocumentReadContext! context, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<RagDotNet.Documents.ParsedDocument!>!
+RagDotNet.Documents.IngestWarning
+RagDotNet.Documents.IngestWarning.<Clone>$() -> RagDotNet.Documents.IngestWarning!
+RagDotNet.Documents.IngestWarning.Code.get -> string!
+RagDotNet.Documents.IngestWarning.Code.init -> void
+RagDotNet.Documents.IngestWarning.Deconstruct(out string! Code, out string! Message, out int? PageNumber) -> void
+RagDotNet.Documents.IngestWarning.Equals(RagDotNet.Documents.IngestWarning? other) -> bool
+RagDotNet.Documents.IngestWarning.IngestWarning(string! Code, string! Message, int? PageNumber = null) -> void
+RagDotNet.Documents.IngestWarning.Message.get -> string!
+RagDotNet.Documents.IngestWarning.Message.init -> void
+RagDotNet.Documents.IngestWarning.PageNumber.get -> int?
+RagDotNet.Documents.IngestWarning.PageNumber.init -> void
+RagDotNet.Documents.ParsedDocument
+RagDotNet.Documents.ParsedDocument.<Clone>$() -> RagDotNet.Documents.ParsedDocument!
+RagDotNet.Documents.ParsedDocument.Blocks.get -> System.Collections.Generic.IReadOnlyList<RagDotNet.Documents.DocumentBlock!>!
+RagDotNet.Documents.ParsedDocument.Blocks.init -> void
+RagDotNet.Documents.ParsedDocument.Deconstruct(out System.Collections.Generic.IReadOnlyList<RagDotNet.Documents.DocumentBlock!>! Blocks, out string? Title) -> void
+RagDotNet.Documents.ParsedDocument.Equals(RagDotNet.Documents.ParsedDocument? other) -> bool
+RagDotNet.Documents.ParsedDocument.ParsedDocument(System.Collections.Generic.IReadOnlyList<RagDotNet.Documents.DocumentBlock!>! Blocks, string? Title = null) -> void
+RagDotNet.Documents.ParsedDocument.Title.get -> string?
+RagDotNet.Documents.ParsedDocument.Title.init -> void
+RagDotNet.Documents.ParsedDocument.Warnings.get -> System.Collections.Generic.IReadOnlyList<RagDotNet.Documents.IngestWarning!>!
+RagDotNet.Documents.ParsedDocument.Warnings.init -> void
+RagDotNet.Documents.UnsupportedDocumentException
+RagDotNet.Documents.UnsupportedDocumentException.ContentType.get -> string?
+RagDotNet.Documents.UnsupportedDocumentException.FileName.get -> string!
+RagDotNet.Documents.UnsupportedDocumentException.UnsupportedDocumentException(string! fileName, string? contentType) -> void
+RagDotNet.Readers.MarkdownReader
+RagDotNet.Readers.MarkdownReader.CanRead(string? contentType, string! fileName) -> bool
+RagDotNet.Readers.MarkdownReader.MarkdownReader() -> void
+RagDotNet.Readers.MarkdownReader.ReadAsync(System.IO.Stream! stream, RagDotNet.Documents.DocumentReadContext! context, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<RagDotNet.Documents.ParsedDocument!>!
+RagDotNet.Readers.PlainTextReader
+RagDotNet.Readers.PlainTextReader.CanRead(string? contentType, string! fileName) -> bool
+RagDotNet.Readers.PlainTextReader.PlainTextReader() -> void
+RagDotNet.Readers.PlainTextReader.ReadAsync(System.IO.Stream! stream, RagDotNet.Documents.DocumentReadContext! context, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<RagDotNet.Documents.ParsedDocument!>!
 const RagDotNet.Diagnostics.RagTelemetry.ActivitySourceName = "RagDotNet" -> string!
 const RagDotNet.Diagnostics.RagTelemetry.MeterName = "RagDotNet" -> string!
-RagDotNet.Diagnostics.RagTelemetry
+override RagDotNet.Documents.DocumentBlock.Equals(object? obj) -> bool
+override RagDotNet.Documents.DocumentBlock.GetHashCode() -> int
+override RagDotNet.Documents.DocumentBlock.ToString() -> string!
+override RagDotNet.Documents.DocumentReadContext.Equals(object? obj) -> bool
+override RagDotNet.Documents.DocumentReadContext.GetHashCode() -> int
+override RagDotNet.Documents.DocumentReadContext.ToString() -> string!
+override RagDotNet.Documents.IngestWarning.Equals(object? obj) -> bool
+override RagDotNet.Documents.IngestWarning.GetHashCode() -> int
+override RagDotNet.Documents.IngestWarning.ToString() -> string!
+override RagDotNet.Documents.ParsedDocument.Equals(object? obj) -> bool
+override RagDotNet.Documents.ParsedDocument.GetHashCode() -> int
+override RagDotNet.Documents.ParsedDocument.ToString() -> string!
+static RagDotNet.Documents.DocumentBlock.operator !=(RagDotNet.Documents.DocumentBlock? left, RagDotNet.Documents.DocumentBlock? right) -> bool
+static RagDotNet.Documents.DocumentBlock.operator ==(RagDotNet.Documents.DocumentBlock? left, RagDotNet.Documents.DocumentBlock? right) -> bool
+static RagDotNet.Documents.DocumentReadContext.operator !=(RagDotNet.Documents.DocumentReadContext? left, RagDotNet.Documents.DocumentReadContext? right) -> bool
+static RagDotNet.Documents.DocumentReadContext.operator ==(RagDotNet.Documents.DocumentReadContext? left, RagDotNet.Documents.DocumentReadContext? right) -> bool
+static RagDotNet.Documents.DocumentSource.FromFile(string! path, string? documentId = null) -> RagDotNet.Documents.DocumentSource!
+static RagDotNet.Documents.IngestWarning.operator !=(RagDotNet.Documents.IngestWarning? left, RagDotNet.Documents.IngestWarning? right) -> bool
+static RagDotNet.Documents.IngestWarning.operator ==(RagDotNet.Documents.IngestWarning? left, RagDotNet.Documents.IngestWarning? right) -> bool
+static RagDotNet.Documents.ParsedDocument.operator !=(RagDotNet.Documents.ParsedDocument? left, RagDotNet.Documents.ParsedDocument? right) -> bool
+static RagDotNet.Documents.ParsedDocument.operator ==(RagDotNet.Documents.ParsedDocument? left, RagDotNet.Documents.ParsedDocument? right) -> bool

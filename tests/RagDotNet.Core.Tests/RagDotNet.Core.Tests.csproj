@@ -14,6 +14,9 @@
     <Using Include="Xunit" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="../TestAssets/**" CopyToOutputDirectory="PreserveNewest" LinkBase="TestAssets" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\..\src\RagDotNet.Core\RagDotNet.Core.csproj" />
   </ItemGroup>
 </Project>
