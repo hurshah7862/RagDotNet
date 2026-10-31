@@ -1,8 +1,10 @@
 # RagDotNet — Design
 
-**Status:** Approved
-**Date:** 2026-10-18
+**Status:** Revision 2 — approved 2026-10-31 (rev 1 approved 2026-10-18)
+**Date:** 2026-10-18, revised 2026-10-31
 **Owner:** HAS
+
+**Revision 2** changes the access model (optional scope with full access when absent, a common area shared by all tenants, per-user permissions), makes reindex coordinate with concurrent writes, adds custom chunkers, adds an own SQLite connector package, and records what stage 1 actually built where it refined this spec.
 
 Decisions marked *(builder's call)* were made by the assistant during design, not by the owner. They can be revisited without asking.
 
@@ -42,12 +44,13 @@ Microsoft's options either do too much (Kernel Memory: its own abstractions and 
 5. Multi-turn chat: follow-up questions are rewritten into standalone ones before retrieval.
 6. Query transformation: condense, multi-query, HyDE.
 7. Idempotent document lifecycle: upsert by ID with change detection, delete, metadata filters.
-8. Enforced access scoping when the app opts in: hard tenant partitions plus per-user read filters.
+8. Access decided by the app *(owner's decision)*: an optional `IAccessScope`. Without one, callers have full access. With one: hard tenant partitions, a common area every tenant can read, per-user read filters, and per-user permissions (read, write, delete).
 9. Background ingestion queue for hosted apps.
 10. OpenTelemetry-compatible tracing and metrics with no OpenTelemetry package dependency.
 11. A retrieval evaluation harness (recall@k) to choose defaults with evidence.
 12. Zero configuration to start, with options and interfaces to tune and extend.
 13. Chunk text stored in the vector database by default, with an opt-in mode that keeps it in the app's own database instead, linked by the same chunk key.
+14. Custom chunkers: apps can register their own chunker and make it the default or use it per content type or per call; StructureAware stays the built-in default *(owner's decision)*.
 
 ### Non-goals (v1)
 
@@ -61,7 +64,7 @@ Microsoft's options either do too much (Kernel Memory: its own abstractions and 
 
 - Core pulling in heavy or native dependencies (PDF parsers, Tesseract, Lucene, Hosting).
 - Core depending on a preview package.
-- Silently wrong results: mixing vectors from different embedding models, silently skipping pages that have no text, or bypassing a registered access scope.
+- Silently wrong results: mixing vectors from different embedding models, silently skipping pages that have no text, bypassing a registered access scope, or letting a user change what they cannot read.
 - A public API that forces DI on scripts and tests.
 
 ---
@@ -74,7 +77,10 @@ Microsoft's options either do too much (Kernel Memory: its own abstractions and 
 - **Dev machine:** Windows, Core Ultra 7 266V, 16 GB RAM, Intel Arc 140V iGPU (no CUDA). The .NET 10 SDK, .NET 8 runtime, Docker, and Ollama are installed.
 - **Local models:** `nomic-embed-text` (768 dimensions) and `llama3.2:3b` (about 38 tokens/s on CPU) via Ollama.
 - Unit tests and CI must never need a model, network access, or Docker.
-- **Supported vector stores (v1)** *(owner's decision)*: InMemory, Qdrant, PostgreSQL (pgvector), SQLite (sqlite-vec), Redis, and SQL Server. Each has an integration test. Other Microsoft.Extensions.VectorData connectors are best-effort: anything they can't express (for example a filter operator) throws a clear error and is never silently dropped.
+- **Supported vector stores (v1)** *(owner's decision)*: InMemory, Qdrant, PostgreSQL (pgvector), SQLite (sqlite-vec), Redis, and SQL Server. Each has an integration test.
+  - InMemory, Qdrant, PostgreSQL, Redis, and SQL Server use the maintained `CommunityToolkit.VectorData.*` connectors. (The older `Microsoft.SemanticKernel.Connectors.*` packages are built on VectorData 10.1 and fail at runtime against current versions.)
+  - SQLite has no maintained connector for current VectorData, so RagDotNet ships its own: `RagDotNet.VectorData.Sqlite` (see 4) *(owner's decision)*.
+  - Core depends on `Microsoft.Extensions.VectorData.Abstractions` **10.8.2** or later, the version the maintained connectors are built on *(builder's call, made in stage 1)*. Other Microsoft.Extensions.VectorData connectors are best-effort: anything they can't express (for example a filter operator) throws a clear error and is never silently dropped.
 
 ---
 
@@ -90,8 +96,9 @@ Microsoft's options either do too much (Kernel Memory: its own abstractions and 
 | `RagDotNet.Keyword.Lucene` | File-persisted `IKeywordIndex` | Lucene.NET 4.8 (**prerelease**, so this package ships as prerelease) |
 | `RagDotNet.Hosting` | Background ingestion queue (`IHostedService`) | Microsoft.Extensions.Hosting.Abstractions |
 | `RagDotNet.DataIngestion` | Adapters for Microsoft.Extensions.DataIngestion readers and chunkers | Microsoft.Extensions.DataIngestion (**preview**, so this package ships as prerelease) |
+| `RagDotNet.VectorData.Sqlite` | A Microsoft.Extensions.VectorData connector (`VectorStore`) for SQLite with sqlite-vec, covering **what RagDotNet needs** *(owner's decision)*: dynamic collections, the filters RagDotNet emits (including `ContainsAny`), filtered `GetAsync` with paging, and FTS5 keyword hybrid search. Typed (POCO/attribute) mapping is out of scope for v1 | Microsoft.Data.Sqlite; sqlite-vec natives bundled for win-x64, linux-x64, and osx-arm64 (only Windows is tested locally until CI) |
 
-Core contains no parser, native, or preview dependency.
+Core contains no parser, native, or preview dependency. Every package beyond Core is opt-in: an app that doesn't install `RagDotNet.VectorData.Sqlite` (or any other add-on) never downloads or loads it, so it adds no load.
 
 ---
 
@@ -128,9 +135,11 @@ flowchart LR
 
 1. The caller calls `IngestAsync(DocumentSource source, IngestOptions? options)`.
    - `DocumentSource` holds: `DocumentId` (string, caller-supplied and stable), `Stream` or file path, `ContentType` / file name, and `Metadata` (`IDictionary<string, object?>`).
-2. **Change detection:** the library computes a SHA-256 hash of the raw bytes, plus a hash of the effective chunking configuration *(builder's call)*.
-   - The lookup reads the document's manifest record (see 5.2). If it exists and both hashes match, nothing happens and the result is `Unchanged`.
-   - Otherwise the write order is: new chunks, then the manifest (with the new chunk count), then old chunks whose index is at or above the new count are deleted. A crash at any point leaves a state that a retry converges from. Chunk keys are deterministic (`{DocumentId}:{ChunkIndex}`, or `{partition}|{DocumentId}:{ChunkIndex}` when an access scope is registered; see 5.8), hashed to a Guid for stores that need Guid keys, so overwriting is natural. The existence and hash lookup is scoped to the caller's partition.
+2. **Change detection:** the library computes SHA-256 hashes of the raw bytes, of the effective chunking configuration (including the chunker's name and version), and of the validated metadata *(builder's call)*.
+   - The lookup reads the document's manifest record (see 5.2). If it exists and all three hashes match, nothing happens and the result is `Unchanged`. A metadata-only change is an update, so filter and access values never go stale.
+   - Otherwise the write sequence is *(builder's call, made in stage 1)*: (a) mark the manifest in progress (empty content hash) and raise its `ChunkHighWater` to cover old and new chunk counts; (b) write the new chunks; (c) write the manifest with the new hashes and count; (d) delete chunks from the new count up to the high-water mark; (e) lower the high-water mark. A crash at any point leaves a state that a retry, or a delete, converges from.
+   - **Per-document lock:** ingest, delete, and reindex of the same document (same partition and DocumentId) are serialized within a process. Writers in different processes must not write the same document at the same time; the docs say so.
+   - **Keys:** chunk keys are deterministic: `{DocumentId}:{ChunkIndex}` in the common area and `{partition}|{DocumentId}:{ChunkIndex}` in a tenant partition (see 5.8). The DocumentId is URI-escaped inside keys so a crafted id can never collide with another partition's keys. Keys are hashed to a Guid for stores that need Guid keys. The existence and hash lookup is scoped to the target area.
 3. **Reader selection:** the first registered `IDocumentReader` whose `CanRead(contentType, fileName)` returns true. Text and Markdown readers are in Core. Unknown formats throw `UnsupportedDocumentException`.
 4. **Reader output:** a `ParsedDocument`, which is an ordered list of blocks (heading, paragraph, list, table, code), each with `PageNumber?` and `HeadingPath` (for example `["Install", "Linux"]`).
 5. **OCR:** if an `IOcrProvider` is registered and a reader reports a page or image with no extractable text, the provider produces text for it. If no provider is registered, the page is **reported as a warning** in `IngestResult.Warnings`. It is never silently skipped.
@@ -144,10 +153,19 @@ Also provided:
 
 - `IngestManyAsync` ingests several documents with bounded parallelism.
 - `DeleteDocumentAsync(documentId)` deletes from the vector store and the keyword index. The access scope applies (see 5.8).
+- `IRagAdmin.ForScope(AccessScope)` returns a pipeline bound to an explicit scope, for code with no request-scoped user, such as a background job that indexes one tenant's files. It lives on `IRagAdmin` so request code, which only gets `IRagPipeline`, can't switch tenants *(owner's decision)*.
 - `IRagAdmin.ReindexAsync()` re-embeds every stored chunk, across all partitions, from its stored text with the currently configured embedding generator, then updates `EmbeddingModelId`. It does not re-read the source files. It lives on `IRagAdmin` (see 5.8) because it bypasses the access scope *(builder's call)*.
   - **Same dimensions only** *(owner's decision)*: if the new generator's vector size differs from `EmbeddingDimensions`, it throws before writing anything. The docs say to create a new collection and ingest again in that case.
-  - It is the only operation allowed to write chunks under a model ID that differs from the stored one.
-  - While it runs, or if it stops partway, normal calls throw `EmbeddingModelMismatchException` because the stored model IDs are mixed. This is intended. Running it again resumes: documents already on the new model ID are skipped *(builder's call)*.
+  - Only reindex, and ingest while a reindex to the configured model is in progress, may write chunks under a model ID that differs from the stored one.
+  - **Coordination with writes** *(owner's decision on intent; mechanism is builder's call)*:
+    - Reindex writes a reindex marker (target model ID, start time) into the manifest collection when it starts and removes it when it finishes. The marker is visible to every process using the collection.
+    - While the marker names the configured model, ingest and delete are **allowed**: they take the per-document lock, so a write to the document being re-embedded waits for it, and new chunks are embedded with the new model. Reindex then skips documents already on the new model.
+    - While the marker exists, retrieval and asking throw `ReindexInProgressException`, so mixed-model results are never returned.
+    - Writes are not queued in memory: a long reindex would make an in-memory queue unbounded and it would be lost on restart. Apps that need writes held until reindex finishes pause their `IIngestionQueue` (see 5.12).
+  - If reindex stops partway, the marker stays; normal reads keep failing until reindex is run again, which resumes and skips documents already on the new model *(builder's call)*.
+  - **Marker rules** *(builder's call)*: reindex starts or resumes only when there is no marker or the marker names the configured model. One reindex runs at a time: the marker carries an owner id and a heartbeat, and a marker whose heartbeat is older than 5 minutes may be taken over. A process configured with a model other than the marker's target gets `EmbeddingModelMismatchException` on every pipeline call.
+  - **Several processes** *(owner's decision: best effort plus documentation)*: locks work only inside one process and vector stores have no compare-and-swap, so a write from another process can race with reindex on the same document. Reindex re-reads each document's manifest just before writing it and skips the document if it changed since it was read. Processes notice a marker or a model change within a short window: the model and marker check is cached for `ModelCheckInterval` (default 5 seconds) instead of for the life of the process. The docs tell multi-instance deployments to pause other writers (for example the background queue) during reindex, and to restart every instance after switching the embedding model.
+  - Without a marker (a model switch with no reindex started), every pipeline call throws `EmbeddingModelMismatchException`, as before. Admin delete and stats keep working during a mismatch, because they write no vectors.
 
 ### 5.2 Storage schema (owned by the library)
 
@@ -155,8 +173,9 @@ The library defines one record shape using `VectorStoreCollectionDefinition`, so
 
 | Field | Type | Notes |
 |---|---|---|
-| `Key` | `string` or `Guid` (config: `KeyType`) | Deterministic from DocumentId + ChunkIndex (plus partition when scoped; see 5.8) |
+| `Key` | `string` or `Guid` (config: `KeyType`) | Deterministic from area + DocumentId + ChunkIndex (see 5.1) |
 | `DocumentId` | string | Filterable |
+| `Partition` | string | Canonical partition string; empty for the common area. Filterable, so reads can match "own partition or common" in one store query *(builder's call)* |
 | `ChunkIndex` | int | |
 | `Text` | string | Full-text indexed (enables store-native hybrid search). Not present in external content mode (see 5.15) |
 | `ContentHash` | string | Document-level hash |
@@ -177,9 +196,16 @@ Apps configure only `CollectionName`, `EmbeddingDimensions`, `KeyType`, and the 
 | `Key` | Deterministic from partition + DocumentId |
 | `DocumentId`, partition keys | Filterable |
 | `ContentHash`, `ChunkingHash`, `EmbeddingModelId` | Change detection and model safety |
+| `Partition` | Canonical partition string; empty for the common area |
+| `MetadataHash` | Change detection for metadata-only updates |
+| `meta_*` | The document's declared metadata values, so access checks can be made against the manifest, including for documents with no chunks *(builder's call)* |
 | `ChunkCount` | Lets stale chunks be deleted by computed key, and lets reindex and keyword rebuilds enumerate chunk keys |
-| `SourceName`, `UpdatedAt` | Display and stats |
+| `ChunkHighWater` | Upper bound of chunk keys that may exist; covers crashed or in-progress writes (see 5.1) |
+| `ContentStorage` | The content storage mode the collection was created with (see 5.15) |
+| `SourceName`, `UpdatedAtUnixMs` | Display and stats |
 | `Placeholder` | A 1-dimension vector, because some stores require every collection to have one |
+
+An empty `ContentHash` marks an ingest that is in progress or crashed; such a manifest never matches, so the next ingest redoes the work.
 
 VectorData collections can't count or list records cheaply, so the manifest is what stats, reindexing, keyword-index rebuilds, and the Lucene consistency check read. Enumerating manifests uses filtered `GetAsync` with paging, which all six supported stores provide.
 
@@ -187,11 +213,13 @@ VectorData collections can't count or list records cheaply, so the manifest is w
 
 - Every chunk stores `EmbeddingModelId`. It comes from the generator's metadata (`EmbeddingGeneratorMetadata.DefaultModelId`) or `RagOptions.EmbeddingModelId`; the explicit option wins.
 - On first use, the pipeline samples manifest records. If any stored `EmbeddingModelId` differs from the configured one, it throws `EmbeddingModelMismatchException`, naming both IDs and pointing to `IRagAdmin.ReindexAsync()`.
-- Writing a new chunk under a different model ID is also refused.
+- Writing a new chunk under a different model ID is also refused, except while a reindex to the configured model is in progress (see 5.1).
+- A stored model ID that is missing or null counts as a mismatch (fail closed).
+- The check result is cached for `ModelCheckInterval` (default 5 seconds; see 5.1), not for the life of the process.
 
 ### 5.4 Chunking
 
-`IChunker.ChunkAsync(ParsedDocument, ChunkingOptions, CancellationToken) → IReadOnlyList<Chunk>`
+`IChunker { string Name; string Version; ChunkAsync(ParsedDocument, ChunkingOptions, CancellationToken) → IReadOnlyList<Chunk> }`
 
 | Strategy | Behaviour | Default settings |
 |---|---|---|
@@ -201,6 +229,10 @@ VectorData collections can't count or list records cheaply, so the manifest is w
 
 - Tokens are counted with `Microsoft.ML.Tokenizers` (`TiktokenTokenizer` for `cl100k_base` by default). Apps can supply their own `Tokenizer`. Counts are approximate for non-OpenAI embedding models, and the docs say so.
 - Settings come from global defaults in `RagOptions.Chunking`, which can be overridden per ingest call or per content type.
+- **Choosing a chunker** *(owner's decision on intent; shape is builder's call)*: `ChunkingOptions.Chunker` names the chunker to use. Built-in names are `structure-aware` (the default), `fixed-size`, and `semantic`, exposed as constants on a `Chunkers` class.
+- **Custom chunkers:** apps register their own with `AddChunker<T>()` (DI) or `AddChunker(chunker)` (builder). Setting `RagOptions.Chunking.Chunker` to its name makes it the default; per content type and per call work the same way. Registering a chunker whose name is already taken, or selecting a name nobody registered, fails at startup or at the call.
+- The chunker's `Name` and `Version` are part of the chunking hash, so changing chunker or bumping a custom chunker's version re-chunks documents on their next ingest.
+- The library still enforces its own guarantees on any chunker's output: chunks with empty or whitespace text are dropped, chunk indexes are renumbered 0..n-1, and a chunk over `MaxTokens` is split by tokens *(builder's call)*.
 - StructureAware stays the default strategy. The evaluation harness (see 9.3) tunes only its default settings (MaxTokens, overlap) before v1 ships *(owner's decision)*. Results for the other chunkers are documented so apps can choose.
 
 ### 5.5 Retrieval
@@ -219,11 +251,11 @@ Steps:
      - Otherwise, if an `IKeywordIndex` is registered, run a BM25 search on it and fuse the results with the vector results using **reciprocal rank fusion** (k = 60 *(builder's call)*).
      - Otherwise, use vector search only and log a one-time warning.
 3. Merge the results of multiple queries with RRF and remove duplicates by key.
-4. **Access scope + caller filter:** if an `IAccessScope` is registered, its partition and filter are ANDed with the caller's `Filter` and applied inside every store and keyword query (see 5.8). It is not applied afterwards, so `TopK` stays correct.
+4. **Access scope + caller filter:** when a scope applies, `(own partition OR common area) AND scope.Filter AND caller filter` is applied inside every store and keyword query (see 5.8). It is not applied afterwards, so `TopK` stays correct.
 5. **Optional `IReranker`:** reorders the top `RerankCandidates` (default 20) down to `TopK`.
 6. Apply `MinScore`, then `TopK` (default 5).
 
-`RetrievalOptions` contains: `TopK`, `MinScore`, `Filter` (a `RagFilter`, below), `Hybrid`, `UseReranker`, and `QueryTransformers` (an override).
+`RetrievalOptions` contains: `TopK`, `MinScore`, `Filter` (a `RagFilter`, below), `IncludeCommon` (default true; see 5.8), `Hybrid`, `UseReranker`, and `QueryTransformers` (an override).
 
 **Filters** *(builder's call)*: Core defines its own small filter type, `RagFilter`, used by both `RetrievalOptions.Filter` and `AccessScope.Filter`:
 
@@ -231,6 +263,7 @@ Steps:
 - Fields: `DocumentId` and declared metadata only. Unknown fields fail when the filter is built.
 - Each backend gets a translator: a VectorData LINQ expression for vector stores, and native queries for the in-memory and Lucene keyword indexes. `ContainsAny` is translated to an `Or` of `Contains` where a store can't express it directly.
 - If a store rejects a translated filter, the call throws. A filter is never dropped or applied afterwards.
+- Values convert exactly to the declared type or the call throws; a value is never rounded or coerced *(builder's call, made in stage 1)*. `DocumentId` is a reserved name for metadata.
 
 **Hybrid modes** *(builder's call)*: `Auto` (default) uses hybrid when available and falls back to vector-only with a one-time warning. `On` throws `HybridSearchUnavailableException` when neither native hybrid nor an `IKeywordIndex` is available. `Off` is vector-only.
 
@@ -249,6 +282,7 @@ IAsyncEnumerable<RagAnswerUpdate> AskStreamingAsync(...same overloads...);
   - A default system prompt that can be replaced (`RagOptions.Prompt` as `IRagPromptBuilder`).
   - Retrieved chunks are numbered and wrapped in delimiters: `<document id="n" source="..." page="...">…</document>`.
   - The prompt tells the model to treat document content as data, not instructions; to answer only from the documents; to cite with `[n]`; and to say it doesn't know when the documents don't contain the answer.
+  - The citation instruction is repeated after the question, because small local models (such as the default dev model) ignore it when it appears only in the system prompt *(builder's call, measured in stage 1: 0/5 vs 5/5 citing)*.
 - **Context budget:** chunks are added in rank order until `MaxContextTokens` (default 3000 *(builder's call)*) is reached.
 - **Citations:** `[n]` markers are parsed from the answer and mapped back to chunks. Markers that point to no chunk are dropped. For PDF chunks a citation shows the page; for DOCX, HTML, and Markdown it shows the heading path *(builder's call)*.
 - **Streaming:** text deltas are streamed as they arrive. A final update carries the citations and usage.
@@ -268,28 +302,43 @@ IAsyncEnumerable<RagAnswerUpdate> AskStreamingAsync(...same overloads...);
 
 ### 5.8 Access control
 
-`IAccessScope.GetScopeAsync(CancellationToken) → AccessScope` is typically resolved per request from the current user through DI. `AccessScope` holds:
+Access is decided by the application *(owner's decision)*. The library never knows who the user is; it asks the app's optional `IAccessScope` on every call and enforces the answer.
 
-- **`Partition`** (`IReadOnlyDictionary<string, string>`, e.g. `{ tenant: "acme" }`): a hard boundary that applies to writes as well as reads.
-- **`Filter`** (`RagFilter?`, optional): an extra read restriction inside the partition, e.g. `ContainsAny("allowedGroups", user.Groups)`.
+**No `IAccessScope` registered, or the scope returns `null` for a call: full access.** `IAccessScope.GetScopeAsync` returns `AccessScope?`; returning `null` is how the app grants full access to a particular request, such as an admin user or a system job *(owner's decision)*.
 
-When an `IAccessScope` is registered:
+- Reads see everything: every tenant partition and the common area.
+- Ingest and delete act on the **common area**: documents shared by all tenants *(owner's decision)*.
+- Code that needs to act for one tenant without a request-scoped user (a background job, an import) uses `IRagAdmin.ForScope(new AccessScope(...))`.
+- Full-access ingest into the common area may not set partition-key metadata (for example `tenant`): a common document carrying tenant values would look like tenant data and match tenant filters, so the ingest throws `ArgumentException` *(builder's call)*.
+- Partitions can be declared (`RagOptions.PartitionKeys`) without registering a scope; stage 1's startup error for that case is removed.
 
-- **Ingest:**
-  - The partition values are **stamped onto every chunk's metadata**, overriding any caller-supplied values for those keys.
-  - The partition values are **part of the chunk key**: `{partition}|{DocumentId}:{ChunkIndex}`, hashed for Guid stores.
-  - So DocumentIds are unique *per partition*. Tenant A cannot see, overwrite, or orphan tenant B's chunks, even with the same DocumentId.
-  - The change-detection lookup is also partition-scoped.
-- **Retrieve and delete:** `partition AND scope.Filter AND caller filter` is applied inside every vector-store and keyword-index query. Callers cannot opt out through `IRagPipeline`.
-- **Required keys:** partition keys must be declared as filterable metadata. Startup validation fails otherwise.
-- **Not covered:** admin operations deliberately bypass the scope. They live on a separate `IRagAdmin` interface, registered separately so request-scoped code doesn't get them by accident *(builder's call)*:
-  - `ReindexAsync()`: re-embeds all chunks in all partitions (see 5.1 and 5.3).
-  - `DeleteDocumentAsync(documentId, partition)`: deletes a document in a named partition.
-  - `GetStatsAsync()`: document and chunk counts per partition, and the stored embedding model IDs.
+**`IAccessScope` registered and returning a scope:** `IAccessScope.GetScopeAsync(CancellationToken) → AccessScope?`, typically resolved per request from the current user through DI. `AccessScope` holds:
 
-When no `IAccessScope` is registered, there is no filtering beyond the caller's filter, and keys are `{DocumentId}:{ChunkIndex}`.
+- **`Partition`** (`IReadOnlyDictionary<string, string>`, required and non-empty, e.g. `{ tenant: "acme" }`): the user's tenant area, a hard boundary.
+- **`Filter`** (`RagFilter?`, optional): a read restriction, e.g. `ContainsAny("allowedGroups", user.Groups)`. It applies to the user's own partition and to the common area.
+- **`Permissions`** (`RagPermissions` flags: `Read`, `Write`, `Delete`; default `Read | Write | Delete`) *(owner's decision on read-only users; flags shape is builder's call)*. A read-only user has `Permissions = Read`.
 
-**Turning a scope on later** *(builder's call)*: v1 doesn't migrate. On first use with a scope registered, the pipeline samples manifests, and if any lack partition values it throws `UnscopedDataException`, telling the app to re-ingest into a new collection.
+Rules when a scope applies:
+
+- **Reads** (retrieve, ask): `(own partition OR common area) AND scope.Filter AND caller filter`, inside every store and keyword query. `RetrievalOptions.IncludeCommon = false` limits a call to the tenant's own documents. Other tenants are never visible. Reads require `Read`.
+- **Ingest** requires `Write` and always writes to the user's own partition:
+  - partition values are stamped onto every chunk, overriding caller-supplied values for those keys, and are part of the key;
+  - **you can't change what you can't read** *(owner's decision)*: if the document already exists in the user's partition and is not visible under `scope.Filter`, the ingest is refused with `RagAccessDeniedException`. Visibility is checked against the metadata stored on the document's manifest, so it works for documents with no chunks too *(builder's call)*;
+  - the new document's own metadata must also satisfy `scope.Filter`, so a user can't create a document they couldn't then read or fix *(builder's call)*;
+  - a tenant document with the same DocumentId as a common document is a separate document; both can appear in that tenant's results *(owner's decision)*.
+- **Delete** requires `Delete`, acts only on the user's own partition, and only on documents visible under `scope.Filter` (otherwise it returns false and touches nothing). Visibility is checked against the manifest's metadata, as for ingest.
+- **The common area is read-only to scoped users**, whatever their permissions. Only full-access calls (no scope, or a `null` scope) and `IRagAdmin` change it.
+- **Known, accepted leak:** when a write is refused because a hidden document already has that id, the refusal reveals that something exists. Avoiding that would need a separate id namespace per user or group; apps that need it can build ids that way. The docs say so.
+- **Required keys:** partition keys must be declared as `string` metadata, and a registered scope requires at least one partition key. Startup validation fails otherwise.
+
+**Admin operations** bypass the scope. They live on `IRagAdmin`, registered separately so request-scoped code doesn't get them by accident *(builder's call)*:
+
+- `ForScope(AccessScope)`: a pipeline bound to an explicit scope (see 5.1).
+- `ReindexAsync()`: re-embeds all chunks in every partition and the common area (see 5.1 and 5.3).
+- `DeleteDocumentAsync(documentId, partition)`: deletes a document in a named partition, or in the common area when `partition` is null or empty.
+- `GetStatsAsync()`: document and chunk counts per partition (the common area reported as its own entry), and the stored embedding model IDs.
+
+**Turning a scope on later:** existing data without partition values simply becomes the common area. Stage 1's `UnscopedDataException` is removed.
 
 The prompt-injection mitigation (delimiters plus instructions) is documented as **risk reduction, not a guarantee**.
 
@@ -333,7 +382,8 @@ The prompt-injection mitigation (delimiters plus instructions) is documented as 
   - Statuses are kept in memory for a configurable retention period.
 - **Not durable:** jobs that haven't finished are lost on restart, and the docs say so. Apps can register their own durable `IIngestionQueue`.
 - Stream lifetime: the queue copies the stream to a temporary file on enqueue, unless the source is a file path *(builder's call)*.
-- **Partition** *(builder's call)*: `EnqueueAsync` resolves the caller's `IAccessScope` at enqueue time and stores the partition with the job. The worker ingests under that stored partition, not under any ambient scope. Custom durable queues receive an `IngestionJob { Source, Partition }` and must persist both.
+- **Scope** *(builder's call)*: `EnqueueAsync` resolves the caller's `IAccessScope` at enqueue time and stores the whole `AccessScope` (partition, filter, permissions) with the job; no scope means the common area with full access. The worker ingests under that stored scope, not under any ambient scope. Custom durable queues receive an `IngestionJob { Source, Scope? }` and must persist both. `AccessScope`, `RagFilter`, and `RagPermissions` round-trip through System.Text.Json with converters the library provides, so durable queues can store them *(builder's call)*.
+- **Pause and resume:** `PauseAsync()` / `ResumeAsync()` hold queued jobs without losing them, for example while a reindex runs (see 5.1).
 
 ### 5.13 Observability
 
@@ -342,6 +392,7 @@ The prompt-injection mitigation (delimiters plus instructions) is documented as 
 - **Metrics:** ingest duration, chunks per document, retrieval latency, retrieved count, context tokens, unanswered-question count.
 - Follows the OpenTelemetry semantic conventions for generative AI where they apply. No document text appears in telemetry unless `EnableSensitiveData` is set.
 - `ILogger` is used for warnings (for example missing hybrid search or skipped pages).
+- **No telemetry object is passed in** *(owner's question, builder's call)*: tracing and metrics cost almost nothing when nobody listens, and an app turns them on by adding the `RagDotNet` source and meter to its OpenTelemetry setup. Logging uses the app's `ILoggerFactory` when one is available (DI, or `UseLoggerFactory` on the builder) and logs nothing otherwise.
 
 ### 5.14 Configuration
 
@@ -362,7 +413,8 @@ services.AddRag(o =>
 .AddTesseractOcr(o => o.DataPath = "./tessdata")
 .AddLuceneKeywordIndex(o => o.Directory = "./kw-index")
 .AddLlmReranker()
-.AddAccessScope<TenantAccessScope>();
+.AddChunker<MyChunker>()                 // optional custom chunker
+.AddAccessScope<TenantAccessScope>();   // optional: without it, callers have full access
 // The app separately registers IChatClient, IEmbeddingGenerator, and VectorStore.
 ```
 
@@ -380,7 +432,9 @@ var rag = new RagPipelineBuilder()
     .Build();
 ```
 
-The public entry point is `IRagPipeline`, which exposes `IngestAsync`, `IngestManyAsync`, `DeleteDocumentAsync`, `RetrieveAsync`, `AskAsync`, and `AskStreamingAsync`. Admin operations are on `IRagAdmin` (see 5.8).
+- The builder can't be changed after `Build()` or `BuildAdmin()`; repeated builds share one engine *(builder's call, made in stage 1)*.
+
+The public entry point is `IRagPipeline`, which exposes `IngestAsync`, `IngestManyAsync`, `DeleteDocumentAsync`, `RetrieveAsync`, `AskAsync`, and `AskStreamingAsync`. Admin operations, including `ForScope`, are on `IRagAdmin` (see 5.8).
 
 ### 5.15 Content storage *(owner's decision)*
 
@@ -423,7 +477,6 @@ public interface IChunkContentStore
 | Hybrid `Auto` but unavailable | Falls back to vector-only search, with a one-time warning log |
 | Hybrid `On` but unavailable | `HybridSearchUnavailableException` |
 | Store can't express a filter | The store's exception passes through; the filter is never dropped |
-| Scope registered over data that has no partition values | `UnscopedDataException` |
 | Reindex with a different vector size | `InvalidOperationException` before anything is written |
 | Content store returns no text for a retrieved chunk | Chunk dropped, warning logged, metric incremented |
 | Content storage mode differs from the one the collection was created with | `InvalidOperationException` at first use |
@@ -431,6 +484,12 @@ public interface IChunkContentStore
 | Missing required options | `OptionsValidationException` at startup |
 | Access scope registered but a partition key isn't declared as filterable metadata | `OptionsValidationException` at startup |
 | Access scope returns an empty partition | `InvalidOperationException` on the call; never treated as "no partition" *(builder's call)* |
+| Scoped user lacks the permission for an operation, or writes a document they can't read | `RagAccessDeniedException` (message names the operation, never document content) |
+| Retrieve or ask while a reindex is in progress | `ReindexInProgressException` |
+| Full-access ingest into the common area sets partition-key metadata | `ArgumentException` |
+| Reindex started while another process's live marker names a different model, or another reindex holds a fresh marker | `InvalidOperationException` |
+| Unknown chunker name, or two chunkers with the same name | `OptionsValidationException` at startup, or `ArgumentException` for a per-call name |
+| Custom chunker returns empty chunks or oversized chunks | Empty chunks dropped; oversized chunks split by tokens (see 5.4) |
 
 ---
 
@@ -450,6 +509,7 @@ src/
   RagDotNet.Keyword.Lucene/
   RagDotNet.Hosting/
   RagDotNet.DataIngestion/
+  RagDotNet.VectorData.Sqlite/
 tests/
   RagDotNet.Core.Tests/                 # plus one test project per package
   RagDotNet.IntegrationTests/           # opt-in: RAGDOTNET_INTEGRATION=1
@@ -476,7 +536,7 @@ docs/
   - InMemory (in-process).
   - **Qdrant** in Docker via Testcontainers. It supports native hybrid search and needs Guid keys, which exercises both code paths.
   - **PostgreSQL + pgvector** in Docker via Testcontainers.
-  - **SQLite + sqlite-vec**, file-based, no Docker.
+  - **SQLite + sqlite-vec** through `RagDotNet.VectorData.Sqlite`, file-based, no Docker. The connector gets its own tests for exactly the operations RagDotNet uses *(builder's call)*.
   - **Redis** (Redis Stack / RediSearch) in Docker via Testcontainers.
   - **SQL Server** in Docker via Testcontainers. Needs a version with the native vector type (SQL Server 2025).
 - The Ollama server on the dev machine is started with `ollama serve`, because the desktop app fails to start there. This only affects local setup.
@@ -489,7 +549,7 @@ docs/
 
 - Fake `IEmbeddingGenerator` (deterministic: hashed bag of words → vector) and fake `IChatClient` (scripted replies).
 - InMemory vector store.
-- Coverage: every reader against the files in `TestAssets`; each chunker's edge cases; the lifecycle (unchanged, updated, deleted); the model mismatch error; access scope enforcement (partition isolation on ingest, retrieve, and delete; same DocumentId in two partitions); external content mode (write order, batch fetch, missing text, mode mismatch); RRF fusion; citation parsing; context budget; query transformer chaining; queue retries and statuses.
+- Coverage: every reader against the files in `TestAssets`; each chunker's edge cases; the lifecycle (unchanged, updated, deleted); the model mismatch error; access scope enforcement (partition isolation on ingest, retrieve, and delete; same DocumentId in two partitions; common area visible to tenants and read-only to them; full access without a scope; read-only users; writes refused for documents the user can't read; `IncludeCommon`); reindex concurrent with writes (marker, per-document lock, reads refused during reindex); custom chunkers (selection, version in the chunking hash, output guarantees); external content mode (write order, batch fetch, missing text, mode mismatch); RRF fusion; citation parsing; context budget; query transformer chaining; queue retries and statuses.
 
 ### 9.2 Integration tests (opt-in)
 
@@ -514,14 +574,16 @@ docs/
    - Lifecycle (hashing, upsert, delete), model-ID safety and `IRagAdmin.ReindexAsync`, access scope.
    - Content storage: default in-vector text and the external `IChunkContentStore` mode.
    - DI and builder, telemetry, sample console app.
+1.1. **Access model and lifecycle updates (revision 2):** optional scope with full access (no scope or a `null` scope) and the common area; `RagPermissions` and the write checks; `IRagAdmin.ForScope`; `IncludeCommon`; declared metadata on manifests; `ModelCheckInterval`; JSON support for `AccessScope`/`RagFilter`; the reindex marker, per-document lock in reindex, and `ReindexInProgressException`; custom chunkers (`IChunker.Name`/`Version`, `ChunkingOptions.Chunker`, `AddChunker`). These change Core's public API, so they land before anything is versioned. Stage 1 behaviour this replaces: the "partition keys require a scope" validation, `UnscopedDataException`, read filters that AND partition equality (reads now match own partition or common via the chunk `Partition` field), admin delete rejecting an empty partition (it now means the common area), reindex without document locks, and the process-lifetime model check cache.
 2. **Chat and query transformation:** conversation overloads; Condense, MultiQuery, and HyDE.
 3. **Evaluation harness:** the corpus, the questions, and both modes.
 4. **Fixed-size and semantic chunkers**, measured with the harness; StructureAware's default settings tuned.
 5. **Reader packages:** PDF, DOCX, HTML.
 6. **OCR:** `RagDotNet.Ocr.Tesseract`.
 7. **Hybrid search and reranking:** store-native hybrid, `IKeywordIndex` (in-memory and Lucene), RRF, `LlmReranker`.
-8. **Hosting and DataIngestion adapters:** `RagDotNet.Hosting` and `RagDotNet.DataIngestion`.
-9. **CI and packaging:**
+8. **Store integration:** `RagDotNet.VectorData.Sqlite`, and the shared integration suite against all six supported stores (see 8 and 9.2).
+9. **Hosting and DataIngestion adapters:** `RagDotNet.Hosting` (including pause and resume) and `RagDotNet.DataIngestion`.
+10. **CI and packaging:**
    - GitHub Actions: build, test, and pack on push and pull request.
    - Tag-triggered publish to nuget.org (run manually later).
    - README per package.
@@ -540,6 +602,9 @@ docs/
 | Semantic chunking cost and latency | Off by default; the harness decides whether it's worth recommending |
 | Token counts are approximate for non-OpenAI models | Pluggable tokenizer; documented |
 | v1 scope is large | The build order delivers a usable Core first; each stage is independently testable |
+| Owning a SQLite connector means tracking VectorData API changes and sqlite-vec native builds | Separate opt-in package; conformance tests; pinned sqlite-vec version per platform |
+| The common area widens what a tenant can read | It is read-only to tenants, filtered by the user's read filter, can be excluded per call (`IncludeCommon = false`), and only full-access code or admins can write it |
+| Writes during reindex are allowed, so a crash mid-reindex leaves reads blocked | The marker survives restarts and reindex resumes; the docs explain the recovery |
 
 ---
 
