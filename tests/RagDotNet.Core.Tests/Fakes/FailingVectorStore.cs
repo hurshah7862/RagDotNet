@@ -21,6 +21,9 @@ public sealed class FailingVectorStore(VectorStore inner) : VectorStore
     /// <summary>When set, the next chunk delete fails.</summary>
     public bool FailNextChunkDelete { get; set; }
 
+    /// <summary>When set, awaited once (then cleared) before the next chunk delete runs.</summary>
+    public Func<Task>? BeforeNextChunkDelete { get; set; }
+
     public override VectorStoreCollection<TKey, TRecord> GetCollection<TKey, TRecord>(string name, VectorStoreCollectionDefinition? definition = null) =>
         inner.GetCollection<TKey, TRecord>(name, definition);
 
@@ -63,7 +66,7 @@ public sealed class FailingVectorStore(VectorStore inner) : VectorStore
 
         public override Task DeleteAsync(object key, CancellationToken cancellationToken = default) => c.DeleteAsync(key, cancellationToken);
 
-        public override Task DeleteAsync(IEnumerable<object> keys, CancellationToken cancellationToken = default)
+        public override async Task DeleteAsync(IEnumerable<object> keys, CancellationToken cancellationToken = default)
         {
             if (!isManifest && owner.FailNextChunkDelete)
             {
@@ -71,7 +74,13 @@ public sealed class FailingVectorStore(VectorStore inner) : VectorStore
                 throw new IOException("Simulated crash during chunk delete.");
             }
 
-            return c.DeleteAsync(keys, cancellationToken);
+            if (!isManifest && owner.BeforeNextChunkDelete is { } gate)
+            {
+                owner.BeforeNextChunkDelete = null;
+                await gate().ConfigureAwait(false);
+            }
+
+            await c.DeleteAsync(keys, cancellationToken).ConfigureAwait(false);
         }
 
         public override Task UpsertAsync(Dictionary<string, object?> record, CancellationToken cancellationToken = default)

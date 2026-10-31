@@ -93,6 +93,9 @@ internal sealed class RagEngine
 
     public Ingestor Ingestor { get; }
 
+    /// <summary>Serializes ingest and delete of the same document within this process, across every pipeline over this engine.</summary>
+    public DocumentLocks DocumentLocks { get; } = new();
+
     /// <summary>Resolves the caller's scope once for a public call.</summary>
     public ValueTask<ResolvedScope> ResolveScopeAsync(IAccessScope? scope, CancellationToken cancellationToken) =>
         Scope.ResolveAsync(scope, cancellationToken);

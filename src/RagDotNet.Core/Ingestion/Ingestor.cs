@@ -55,6 +55,9 @@ internal sealed class Ingestor(RagEngine engine)
 
         var metadataHash = Hashing.MetadataHash(metadata);
 
+        // Held from the manifest read through the final manifest write, so concurrent ingests or deletes
+        // of the same document in this process cannot leave chunks the manifest does not cover.
+        using var documentLock = await engine.DocumentLocks.AcquireAsync(scope.PartitionKey, s.DocumentId, ct).ConfigureAwait(false);
         var existing = await engine.Manifests.GetAsync(scope.PartitionKey, s.DocumentId, ct).ConfigureAwait(false);
         if (existing is not null && existing.ContentHash == contentHash && existing.ChunkingHash == chunkingHash
             && existing.MetadataHash == metadataHash)
@@ -168,6 +171,7 @@ internal sealed class Ingestor(RagEngine engine)
     {
         await engine.EnsureReadyAsync(ct).ConfigureAwait(false);
         await engine.ModelGuard.EnsureContentModeAsync(ct).ConfigureAwait(false);
+        using var documentLock = await engine.DocumentLocks.AcquireAsync(scope.PartitionKey, documentId, ct).ConfigureAwait(false);
         var existing = await engine.Manifests.GetAsync(scope.PartitionKey, documentId, ct).ConfigureAwait(false);
         if (existing is null) return false;
 
@@ -256,6 +260,8 @@ internal sealed class Ingestor(RagEngine engine)
                 throw new ArgumentException($"Metadata key '{key}' is not declared. Declare it with RagOptions.Metadata.Add<T>().", nameof(s));
             if (value is not null && !type.IsInstanceOfType(value) && !(type == typeof(long) && value is int))
                 throw new ArgumentException($"Metadata key '{key}' must be of type {type.Name} but was {value.GetType().Name}.", nameof(s));
+            if (value is string[] array && array.Any(e => e is null))
+                throw new ArgumentException($"Metadata key '{key}' must not contain null elements.", nameof(s));
         }
 
         var result = new Dictionary<string, object?>(StringComparer.Ordinal);

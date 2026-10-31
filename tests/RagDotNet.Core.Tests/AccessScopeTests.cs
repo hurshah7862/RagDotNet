@@ -162,10 +162,11 @@ public class AccessScopeTests
     {
         var scopeA = new MutableScope { Current = Tenant("a") };
         var scopeB = new MutableScope { Current = Tenant("b") };
-        var (pa, builder, _, _, _) = Create(
+        var (pa, _, _, _, _) = Create(
             o => { o.Metadata.Add<string>("tenant"); o.PartitionKeys.Add("tenant"); },
             b => b.UseAccessScope(scopeA));
-        var pb = builder.UseAccessScope(scopeB).Build();
+        // The builder is frozen after Build(), so the second pipeline shares the engine directly (as DI does).
+        var pb = new RagDotNet.Pipeline.RagPipeline(((RagDotNet.Pipeline.RagPipeline)pa).Engine, scopeB);
 
         await pa.IngestAsync(Md("d1", "alpha beta"), cancellationToken: Ct);
         await pb.IngestAsync(Md("d1", "zulu yankee"), cancellationToken: Ct);

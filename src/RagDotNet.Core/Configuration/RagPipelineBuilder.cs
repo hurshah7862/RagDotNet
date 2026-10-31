@@ -12,7 +12,10 @@ using RagDotNet.Storage;
 
 namespace RagDotNet.Configuration;
 
-/// <summary>Configures and builds an <see cref="IRagPipeline"/>.</summary>
+/// <summary>
+/// Configures and builds an <see cref="IRagPipeline"/>. The builder is frozen by the first successful
+/// <see cref="Build"/> or <see cref="BuildAdmin"/>: later configuration calls throw, and repeated builds share one engine.
+/// </summary>
 public sealed class RagPipelineBuilder
 {
     private readonly RagOptions _options = new();
@@ -24,12 +27,15 @@ public sealed class RagPipelineBuilder
     private IAccessScope? _scope;
     private RagEngine? _engine;
     private IChunkContentStore? _contentStore;
+    private bool _frozen;
 
     /// <summary>Sets the chat client used to generate answers.</summary>
     /// <param name="client">The chat client.</param>
     /// <returns>This builder.</returns>
+    /// <exception cref="InvalidOperationException">The builder has already built a pipeline or admin interface.</exception>
     public RagPipelineBuilder UseChatClient(IChatClient client)
     {
+        ThrowIfFrozen();
         _chat = client ?? throw new ArgumentNullException(nameof(client));
         return this;
     }
@@ -37,8 +43,10 @@ public sealed class RagPipelineBuilder
     /// <summary>Sets the embedding generator.</summary>
     /// <param name="generator">The generator.</param>
     /// <returns>This builder.</returns>
+    /// <exception cref="InvalidOperationException">The builder has already built a pipeline or admin interface.</exception>
     public RagPipelineBuilder UseEmbeddingGenerator(IEmbeddingGenerator<string, Embedding<float>> generator)
     {
+        ThrowIfFrozen();
         _embedder = generator ?? throw new ArgumentNullException(nameof(generator));
         return this;
     }
@@ -48,8 +56,10 @@ public sealed class RagPipelineBuilder
     /// <param name="collectionName">Collection name for chunks.</param>
     /// <param name="dimensions">Embedding dimensions.</param>
     /// <returns>This builder.</returns>
+    /// <exception cref="InvalidOperationException">The builder has already built a pipeline or admin interface.</exception>
     public RagPipelineBuilder UseVectorStore(VectorStore store, string collectionName, int dimensions)
     {
+        ThrowIfFrozen();
         ArgumentNullException.ThrowIfNull(store);
         ArgumentException.ThrowIfNullOrWhiteSpace(collectionName);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(dimensions);
@@ -62,8 +72,10 @@ public sealed class RagPipelineBuilder
     /// <summary>Adjusts the pipeline options.</summary>
     /// <param name="configure">Callback that edits the options.</param>
     /// <returns>This builder.</returns>
+    /// <exception cref="InvalidOperationException">The builder has already built a pipeline or admin interface.</exception>
     public RagPipelineBuilder Configure(Action<RagOptions> configure)
     {
+        ThrowIfFrozen();
         ArgumentNullException.ThrowIfNull(configure);
         configure(_options);
         return this;
@@ -72,8 +84,10 @@ public sealed class RagPipelineBuilder
     /// <summary>Registers a document reader. App readers take precedence over the built-in text and Markdown readers.</summary>
     /// <param name="reader">The reader.</param>
     /// <returns>This builder.</returns>
+    /// <exception cref="InvalidOperationException">The builder has already built a pipeline or admin interface.</exception>
     public RagPipelineBuilder AddReader(IDocumentReader reader)
     {
+        ThrowIfFrozen();
         _readers.Add(reader ?? throw new ArgumentNullException(nameof(reader)));
         return this;
     }
@@ -81,8 +95,10 @@ public sealed class RagPipelineBuilder
     /// <summary>Sets the logger factory.</summary>
     /// <param name="loggerFactory">The logger factory.</param>
     /// <returns>This builder.</returns>
+    /// <exception cref="InvalidOperationException">The builder has already built a pipeline or admin interface.</exception>
     public RagPipelineBuilder UseLoggerFactory(ILoggerFactory loggerFactory)
     {
+        ThrowIfFrozen();
         _loggerFactory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory));
         return this;
     }
@@ -90,8 +106,10 @@ public sealed class RagPipelineBuilder
     /// <summary>Enforces an access scope on every ingest, retrieval and delete.</summary>
     /// <param name="scope">The scope provider.</param>
     /// <returns>This builder.</returns>
+    /// <exception cref="InvalidOperationException">The builder has already built a pipeline or admin interface.</exception>
     public RagPipelineBuilder UseAccessScope(IAccessScope scope)
     {
+        ThrowIfFrozen();
         _scope = scope ?? throw new ArgumentNullException(nameof(scope));
         return this;
     }
@@ -99,14 +117,16 @@ public sealed class RagPipelineBuilder
     /// <summary>Stores chunk text in <paramref name="store"/> instead of the vector store; sets <see cref="RagOptions.ContentStorage"/> to External.</summary>
     /// <param name="store">The content store.</param>
     /// <returns>This builder.</returns>
+    /// <exception cref="InvalidOperationException">The builder has already built a pipeline or admin interface.</exception>
     public RagPipelineBuilder UseContentStore(IChunkContentStore store)
     {
+        ThrowIfFrozen();
         _contentStore = store ?? throw new ArgumentNullException(nameof(store));
         _options.ContentStorage = ContentStorageMode.External;
         return this;
     }
 
-    /// <summary>Builds the pipeline. Repeated calls share one engine.</summary>
+    /// <summary>Builds the pipeline and freezes the builder. Repeated calls share one engine.</summary>
     /// <returns>The pipeline.</returns>
     /// <exception cref="InvalidOperationException">The embedding generator or vector store is missing.</exception>
     /// <exception cref="OptionsValidationException">The options are invalid, partition keys are configured without an access scope, or External content storage is selected without a content store.</exception>
@@ -116,10 +136,11 @@ public sealed class RagPipelineBuilder
         if (_store is null) throw new InvalidOperationException("No vector store configured. Call UseVectorStore().");
         Validate(requireScopeForPartitions: true);
         _engine ??= CreateEngine(_embedder, _store);
+        _frozen = true;
         return new RagPipeline(_engine, _scope, _chat);
     }
 
-    /// <summary>Builds the admin interface over the same engine as <see cref="Build"/>. Admin operations ignore any access scope.</summary>
+    /// <summary>Builds the admin interface over the same engine as <see cref="Build"/> and freezes the builder. Admin operations ignore any access scope.</summary>
     /// <returns>The admin interface.</returns>
     /// <exception cref="InvalidOperationException">The embedding generator or vector store is missing.</exception>
     /// <exception cref="OptionsValidationException">The options are invalid or External content storage is selected without a content store.</exception>
@@ -129,6 +150,7 @@ public sealed class RagPipelineBuilder
         if (_store is null) throw new InvalidOperationException("No vector store configured. Call UseVectorStore().");
         Validate(requireScopeForPartitions: false);
         _engine ??= CreateEngine(_embedder, _store);
+        _frozen = true;
         return new RagAdmin(_engine);
     }
 
@@ -136,6 +158,12 @@ public sealed class RagPipelineBuilder
 
     private RagEngine CreateEngine(IEmbeddingGenerator<string, Embedding<float>> embedder, VectorStore store) =>
         RagEngineFactory.Create(_options, _readers, embedder, store, _loggerFactory, _contentStore);
+
+    private void ThrowIfFrozen()
+    {
+        if (_frozen)
+            throw new InvalidOperationException("RagPipelineBuilder cannot be changed after Build(); create a new builder.");
+    }
 
     private void Validate(bool requireScopeForPartitions)
     {

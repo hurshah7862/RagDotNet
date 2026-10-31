@@ -44,9 +44,17 @@ foreach (var c in answer.Citations) Console.WriteLine($"[{c.Number}] {c.Chunk.So
 
 `IRagPipeline` exposes `IngestAsync`, `IngestManyAsync`, `DeleteDocumentAsync`, `RetrieveAsync`, `AskAsync` and `AskStreamingAsync`. Text and Markdown readers are built in.
 
+The first `Build()` or `BuildAdmin()` freezes the builder: later `Use*`, `Configure` or `AddReader` calls throw `InvalidOperationException`, so configure everything first (or create a new builder). Repeated `Build()`/`BuildAdmin()` calls share one engine.
+
+## Concurrency
+
+Ingest and delete of the same document (same partition and document id) are serialized within a process, across every pipeline and admin built from one builder or one DI container. Writers in different processes must not ingest or delete the same document concurrently: nothing coordinates them, and interleaved writes can leave chunks the document's manifest does not cover.
+
 ## Access scope
 
 Register an `IAccessScope` (`.AddAccessScope<T>()` or `.UseAccessScope(scope)`) to partition data per tenant. Its partition values are stamped on every chunk and become part of the chunk key; its filter is ANDed with the caller's filter inside every query. Partition keys must be declared in `o.Metadata`. Admin operations live on the separate `IRagAdmin` and bypass the scope.
+
+The scope's `Filter` restricts reads (retrieval and answers) and deletes, not writes: ingest within a partition is governed by the partition alone, so a caller can create or replace any document in its partition whether or not the filter would let it read that document.
 
 ## External content mode
 
