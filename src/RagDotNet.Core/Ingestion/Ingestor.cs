@@ -17,6 +17,7 @@ internal sealed class Ingestor(RagEngine engine)
         var options = engine.Options;
         var metadata = BuildMetadata(s, scope);
         await engine.EnsureReadyAsync(ct).ConfigureAwait(false);
+        await engine.ModelGuard.EnsureCompatibleAsync(ct).ConfigureAwait(false);
 
         p?.Report(new IngestProgress(s.DocumentId, IngestStage.Reading, 0, 0));
         var bytes = await ReadBytesAsync(s, ct).ConfigureAwait(false);
@@ -108,6 +109,14 @@ internal sealed class Ingestor(RagEngine engine)
     }
 
     public async Task<bool> DeleteAsync(string documentId, ResolvedScope scope, CancellationToken ct)
+    {
+        await engine.EnsureReadyAsync(ct).ConfigureAwait(false);
+        await engine.ModelGuard.EnsureCompatibleAsync(ct).ConfigureAwait(false);
+        return await DeleteUnguardedAsync(documentId, scope, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Deletes without the embedding-model check; for IRagAdmin.</summary>
+    public async Task<bool> DeleteUnguardedAsync(string documentId, ResolvedScope scope, CancellationToken ct)
     {
         await engine.EnsureReadyAsync(ct).ConfigureAwait(false);
         var existing = await engine.Manifests.GetAsync(scope.PartitionKey, documentId, ct).ConfigureAwait(false);

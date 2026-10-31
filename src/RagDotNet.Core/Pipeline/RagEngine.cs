@@ -4,6 +4,7 @@ using RagDotNet.Access;
 using RagDotNet.Chunking;
 using RagDotNet.Configuration;
 using RagDotNet.Content;
+using RagDotNet.Embedding;
 using RagDotNet.Ingestion;
 using RagDotNet.Readers;
 using RagDotNet.Retrieval;
@@ -42,9 +43,12 @@ internal sealed class RagEngine
             ?? embedder.GetService<EmbeddingGeneratorMetadata>()?.DefaultModelId
             ?? "unknown";
         Scope = new ScopeResolver(options, manifests);
+        ModelGuard = new EmbeddingModelGuard(this);
         Ingestor = new Ingestor(this);
         Retriever = new Retriever(this);
     }
+
+    public EmbeddingModelGuard ModelGuard { get; }
 
     public Retriever Retriever { get; }
 

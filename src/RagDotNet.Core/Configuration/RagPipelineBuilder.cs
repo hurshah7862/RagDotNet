@@ -108,6 +108,17 @@ public sealed class RagPipelineBuilder
         return new RagPipeline(_engine, _scope);
     }
 
+    /// <summary>Builds the admin interface over the same engine as <see cref="Build"/>. Admin operations ignore any access scope.</summary>
+    /// <returns>The admin interface.</returns>
+    /// <exception cref="InvalidOperationException">The embedding generator or vector store is missing.</exception>
+    public IRagAdmin BuildAdmin()
+    {
+        if (_embedder is null) throw new InvalidOperationException("No embedding generator configured. Call UseEmbeddingGenerator().");
+        if (_store is null) throw new InvalidOperationException("No vector store configured. Call UseVectorStore().");
+        _engine ??= CreateEngine(_embedder, _store);
+        return new RagAdmin(_engine);
+    }
+
     internal IChatClient? ChatClient => _chat;
 
     private RagEngine CreateEngine(IEmbeddingGenerator<string, Embedding<float>> embedder, VectorStore store)

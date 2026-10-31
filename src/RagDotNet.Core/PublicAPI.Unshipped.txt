@@ -1,4 +1,19 @@
 #nullable enable
+RagDotNet.Access.AccessScope
+RagDotNet.Access.AccessScope.<Clone>$() -> RagDotNet.Access.AccessScope!
+RagDotNet.Access.AccessScope.AccessScope(System.Collections.Generic.IReadOnlyDictionary<string!, string!>! Partition, RagDotNet.Filtering.RagFilter? Filter = null) -> void
+RagDotNet.Access.AccessScope.Deconstruct(out System.Collections.Generic.IReadOnlyDictionary<string!, string!>! Partition, out RagDotNet.Filtering.RagFilter? Filter) -> void
+RagDotNet.Access.AccessScope.Equals(RagDotNet.Access.AccessScope? other) -> bool
+RagDotNet.Access.AccessScope.Filter.get -> RagDotNet.Filtering.RagFilter?
+RagDotNet.Access.AccessScope.Filter.init -> void
+RagDotNet.Access.AccessScope.Partition.get -> System.Collections.Generic.IReadOnlyDictionary<string!, string!>!
+RagDotNet.Access.AccessScope.Partition.init -> void
+RagDotNet.Access.IAccessScope
+RagDotNet.Access.IAccessScope.GetScopeAsync(System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<RagDotNet.Access.AccessScope!>
+RagDotNet.Access.UnscopedDataException
+RagDotNet.Access.UnscopedDataException.UnscopedDataException() -> void
+RagDotNet.Access.UnscopedDataException.UnscopedDataException(string! message) -> void
+RagDotNet.Access.UnscopedDataException.UnscopedDataException(string! message, System.Exception! innerException) -> void
 RagDotNet.Chunking.Chunk
 RagDotNet.Chunking.Chunk.<Clone>$() -> RagDotNet.Chunking.Chunk!
 RagDotNet.Chunking.Chunk.Chunk(int Index, string! Text, System.Collections.Generic.IReadOnlyList<string!>! HeadingPath, int? PageStart, int? PageEnd, int TokenCount) -> void
@@ -72,8 +87,10 @@ RagDotNet.Configuration.RagOptions.Tokenizer.set -> void
 RagDotNet.Configuration.RagPipelineBuilder
 RagDotNet.Configuration.RagPipelineBuilder.AddReader(RagDotNet.Documents.IDocumentReader! reader) -> RagDotNet.Configuration.RagPipelineBuilder!
 RagDotNet.Configuration.RagPipelineBuilder.Build() -> RagDotNet.Pipeline.IRagPipeline!
+RagDotNet.Configuration.RagPipelineBuilder.BuildAdmin() -> RagDotNet.Pipeline.IRagAdmin!
 RagDotNet.Configuration.RagPipelineBuilder.Configure(System.Action<RagDotNet.Configuration.RagOptions!>! configure) -> RagDotNet.Configuration.RagPipelineBuilder!
 RagDotNet.Configuration.RagPipelineBuilder.RagPipelineBuilder() -> void
+RagDotNet.Configuration.RagPipelineBuilder.UseAccessScope(RagDotNet.Access.IAccessScope! scope) -> RagDotNet.Configuration.RagPipelineBuilder!
 RagDotNet.Configuration.RagPipelineBuilder.UseChatClient(Microsoft.Extensions.AI.IChatClient! client) -> RagDotNet.Configuration.RagPipelineBuilder!
 RagDotNet.Configuration.RagPipelineBuilder.UseEmbeddingGenerator(Microsoft.Extensions.AI.IEmbeddingGenerator<string!, Microsoft.Extensions.AI.Embedding<float>!>! generator) -> RagDotNet.Configuration.RagPipelineBuilder!
 RagDotNet.Configuration.RagPipelineBuilder.UseLoggerFactory(Microsoft.Extensions.Logging.ILoggerFactory! loggerFactory) -> RagDotNet.Configuration.RagPipelineBuilder!
@@ -150,6 +167,10 @@ RagDotNet.Documents.UnsupportedDocumentException
 RagDotNet.Documents.UnsupportedDocumentException.ContentType.get -> string?
 RagDotNet.Documents.UnsupportedDocumentException.FileName.get -> string!
 RagDotNet.Documents.UnsupportedDocumentException.UnsupportedDocumentException(string! fileName, string? contentType) -> void
+RagDotNet.Embedding.EmbeddingModelMismatchException
+RagDotNet.Embedding.EmbeddingModelMismatchException.ConfiguredModelId.get -> string!
+RagDotNet.Embedding.EmbeddingModelMismatchException.EmbeddingModelMismatchException(string! storedModelId, string! configuredModelId) -> void
+RagDotNet.Embedding.EmbeddingModelMismatchException.StoredModelId.get -> string!
 RagDotNet.Filtering.MetadataSchema
 RagDotNet.Filtering.MetadataSchema.Add<T>(string! name) -> RagDotNet.Filtering.MetadataSchema!
 RagDotNet.Filtering.MetadataSchema.Fields.get -> System.Collections.Generic.IReadOnlyDictionary<string!, System.Type!>!
@@ -243,11 +264,55 @@ RagDotNet.Ingestion.IngestStatus
 RagDotNet.Ingestion.IngestStatus.Created = 0 -> RagDotNet.Ingestion.IngestStatus
 RagDotNet.Ingestion.IngestStatus.Unchanged = 2 -> RagDotNet.Ingestion.IngestStatus
 RagDotNet.Ingestion.IngestStatus.Updated = 1 -> RagDotNet.Ingestion.IngestStatus
+RagDotNet.Pipeline.IRagAdmin
+RagDotNet.Pipeline.IRagAdmin.DeleteDocumentAsync(string! documentId, System.Collections.Generic.IReadOnlyDictionary<string!, string!>? partition, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
+RagDotNet.Pipeline.IRagAdmin.GetStatsAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<RagDotNet.Pipeline.RagStats!>!
+RagDotNet.Pipeline.IRagAdmin.ReindexAsync(System.IProgress<RagDotNet.Pipeline.ReindexProgress!>? progress = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<RagDotNet.Pipeline.ReindexResult!>!
 RagDotNet.Pipeline.IRagPipeline
 RagDotNet.Pipeline.IRagPipeline.DeleteDocumentAsync(string! documentId, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
 RagDotNet.Pipeline.IRagPipeline.IngestAsync(RagDotNet.Documents.DocumentSource! source, RagDotNet.Ingestion.IngestOptions? options = null, System.IProgress<RagDotNet.Ingestion.IngestProgress!>? progress = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<RagDotNet.Ingestion.IngestResult!>!
 RagDotNet.Pipeline.IRagPipeline.IngestManyAsync(System.Collections.Generic.IEnumerable<RagDotNet.Documents.DocumentSource!>! sources, RagDotNet.Ingestion.IngestOptions? options = null, System.IProgress<RagDotNet.Ingestion.IngestProgress!>? progress = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<RagDotNet.Ingestion.IngestResult!>!>!
 RagDotNet.Pipeline.IRagPipeline.RetrieveAsync(string! query, RagDotNet.Retrieval.RetrievalOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<RagDotNet.Retrieval.RetrievedChunk!>!>!
+RagDotNet.Pipeline.PartitionStats
+RagDotNet.Pipeline.PartitionStats.<Clone>$() -> RagDotNet.Pipeline.PartitionStats!
+RagDotNet.Pipeline.PartitionStats.ChunkCount.get -> int
+RagDotNet.Pipeline.PartitionStats.ChunkCount.init -> void
+RagDotNet.Pipeline.PartitionStats.Deconstruct(out System.Collections.Generic.IReadOnlyDictionary<string!, string!>! Partition, out int DocumentCount, out int ChunkCount) -> void
+RagDotNet.Pipeline.PartitionStats.DocumentCount.get -> int
+RagDotNet.Pipeline.PartitionStats.DocumentCount.init -> void
+RagDotNet.Pipeline.PartitionStats.Equals(RagDotNet.Pipeline.PartitionStats? other) -> bool
+RagDotNet.Pipeline.PartitionStats.Partition.get -> System.Collections.Generic.IReadOnlyDictionary<string!, string!>!
+RagDotNet.Pipeline.PartitionStats.Partition.init -> void
+RagDotNet.Pipeline.PartitionStats.PartitionStats(System.Collections.Generic.IReadOnlyDictionary<string!, string!>! Partition, int DocumentCount, int ChunkCount) -> void
+RagDotNet.Pipeline.RagStats
+RagDotNet.Pipeline.RagStats.<Clone>$() -> RagDotNet.Pipeline.RagStats!
+RagDotNet.Pipeline.RagStats.Deconstruct(out System.Collections.Generic.IReadOnlyList<RagDotNet.Pipeline.PartitionStats!>! Partitions, out System.Collections.Generic.IReadOnlyList<string!>! EmbeddingModelIds) -> void
+RagDotNet.Pipeline.RagStats.EmbeddingModelIds.get -> System.Collections.Generic.IReadOnlyList<string!>!
+RagDotNet.Pipeline.RagStats.EmbeddingModelIds.init -> void
+RagDotNet.Pipeline.RagStats.Equals(RagDotNet.Pipeline.RagStats? other) -> bool
+RagDotNet.Pipeline.RagStats.Partitions.get -> System.Collections.Generic.IReadOnlyList<RagDotNet.Pipeline.PartitionStats!>!
+RagDotNet.Pipeline.RagStats.Partitions.init -> void
+RagDotNet.Pipeline.RagStats.RagStats(System.Collections.Generic.IReadOnlyList<RagDotNet.Pipeline.PartitionStats!>! Partitions, System.Collections.Generic.IReadOnlyList<string!>! EmbeddingModelIds) -> void
+RagDotNet.Pipeline.ReindexProgress
+RagDotNet.Pipeline.ReindexProgress.<Clone>$() -> RagDotNet.Pipeline.ReindexProgress!
+RagDotNet.Pipeline.ReindexProgress.CurrentDocumentId.get -> string?
+RagDotNet.Pipeline.ReindexProgress.CurrentDocumentId.init -> void
+RagDotNet.Pipeline.ReindexProgress.Deconstruct(out int DocumentsDone, out string? CurrentDocumentId) -> void
+RagDotNet.Pipeline.ReindexProgress.DocumentsDone.get -> int
+RagDotNet.Pipeline.ReindexProgress.DocumentsDone.init -> void
+RagDotNet.Pipeline.ReindexProgress.Equals(RagDotNet.Pipeline.ReindexProgress? other) -> bool
+RagDotNet.Pipeline.ReindexProgress.ReindexProgress(int DocumentsDone, string? CurrentDocumentId) -> void
+RagDotNet.Pipeline.ReindexResult
+RagDotNet.Pipeline.ReindexResult.<Clone>$() -> RagDotNet.Pipeline.ReindexResult!
+RagDotNet.Pipeline.ReindexResult.ChunksReindexed.get -> int
+RagDotNet.Pipeline.ReindexResult.ChunksReindexed.init -> void
+RagDotNet.Pipeline.ReindexResult.Deconstruct(out int DocumentsReindexed, out int DocumentsSkipped, out int ChunksReindexed) -> void
+RagDotNet.Pipeline.ReindexResult.DocumentsReindexed.get -> int
+RagDotNet.Pipeline.ReindexResult.DocumentsReindexed.init -> void
+RagDotNet.Pipeline.ReindexResult.DocumentsSkipped.get -> int
+RagDotNet.Pipeline.ReindexResult.DocumentsSkipped.init -> void
+RagDotNet.Pipeline.ReindexResult.Equals(RagDotNet.Pipeline.ReindexResult? other) -> bool
+RagDotNet.Pipeline.ReindexResult.ReindexResult(int DocumentsReindexed, int DocumentsSkipped, int ChunksReindexed) -> void
 RagDotNet.Readers.MarkdownReader
 RagDotNet.Readers.MarkdownReader.CanRead(string? contentType, string! fileName) -> bool
 RagDotNet.Readers.MarkdownReader.MarkdownReader() -> void
@@ -304,6 +369,9 @@ RagDotNet.Storage.RagKeyType.String = 0 -> RagDotNet.Storage.RagKeyType
 abstract RagDotNet.Filtering.RagFilter.<Clone>$() -> RagDotNet.Filtering.RagFilter!
 const RagDotNet.Diagnostics.RagTelemetry.ActivitySourceName = "RagDotNet" -> string!
 const RagDotNet.Diagnostics.RagTelemetry.MeterName = "RagDotNet" -> string!
+override RagDotNet.Access.AccessScope.Equals(object? obj) -> bool
+override RagDotNet.Access.AccessScope.GetHashCode() -> int
+override RagDotNet.Access.AccessScope.ToString() -> string!
 override RagDotNet.Chunking.Chunk.Equals(object? obj) -> bool
 override RagDotNet.Chunking.Chunk.GetHashCode() -> int
 override RagDotNet.Chunking.Chunk.ToString() -> string!
@@ -358,6 +426,18 @@ override RagDotNet.Ingestion.IngestProgress.ToString() -> string!
 override RagDotNet.Ingestion.IngestResult.Equals(object? obj) -> bool
 override RagDotNet.Ingestion.IngestResult.GetHashCode() -> int
 override RagDotNet.Ingestion.IngestResult.ToString() -> string!
+override RagDotNet.Pipeline.PartitionStats.Equals(object? obj) -> bool
+override RagDotNet.Pipeline.PartitionStats.GetHashCode() -> int
+override RagDotNet.Pipeline.PartitionStats.ToString() -> string!
+override RagDotNet.Pipeline.RagStats.Equals(object? obj) -> bool
+override RagDotNet.Pipeline.RagStats.GetHashCode() -> int
+override RagDotNet.Pipeline.RagStats.ToString() -> string!
+override RagDotNet.Pipeline.ReindexProgress.Equals(object? obj) -> bool
+override RagDotNet.Pipeline.ReindexProgress.GetHashCode() -> int
+override RagDotNet.Pipeline.ReindexProgress.ToString() -> string!
+override RagDotNet.Pipeline.ReindexResult.Equals(object? obj) -> bool
+override RagDotNet.Pipeline.ReindexResult.GetHashCode() -> int
+override RagDotNet.Pipeline.ReindexResult.ToString() -> string!
 override RagDotNet.Retrieval.RetrievalOptions.Equals(object? obj) -> bool
 override RagDotNet.Retrieval.RetrievalOptions.GetHashCode() -> int
 override RagDotNet.Retrieval.RetrievalOptions.ToString() -> string!
@@ -370,6 +450,8 @@ override sealed RagDotNet.Filtering.RagFilter.ContainsFilter.Equals(RagDotNet.Fi
 override sealed RagDotNet.Filtering.RagFilter.EqFilter.Equals(RagDotNet.Filtering.RagFilter? other) -> bool
 override sealed RagDotNet.Filtering.RagFilter.InFilter.Equals(RagDotNet.Filtering.RagFilter? other) -> bool
 override sealed RagDotNet.Filtering.RagFilter.OrFilter.Equals(RagDotNet.Filtering.RagFilter? other) -> bool
+static RagDotNet.Access.AccessScope.operator !=(RagDotNet.Access.AccessScope? left, RagDotNet.Access.AccessScope? right) -> bool
+static RagDotNet.Access.AccessScope.operator ==(RagDotNet.Access.AccessScope? left, RagDotNet.Access.AccessScope? right) -> bool
 static RagDotNet.Chunking.Chunk.operator !=(RagDotNet.Chunking.Chunk? left, RagDotNet.Chunking.Chunk? right) -> bool
 static RagDotNet.Chunking.Chunk.operator ==(RagDotNet.Chunking.Chunk? left, RagDotNet.Chunking.Chunk? right) -> bool
 static RagDotNet.Chunking.ChunkingOptions.operator !=(RagDotNet.Chunking.ChunkingOptions? left, RagDotNet.Chunking.ChunkingOptions? right) -> bool
@@ -411,6 +493,14 @@ static RagDotNet.Ingestion.IngestProgress.operator !=(RagDotNet.Ingestion.Ingest
 static RagDotNet.Ingestion.IngestProgress.operator ==(RagDotNet.Ingestion.IngestProgress? left, RagDotNet.Ingestion.IngestProgress? right) -> bool
 static RagDotNet.Ingestion.IngestResult.operator !=(RagDotNet.Ingestion.IngestResult? left, RagDotNet.Ingestion.IngestResult? right) -> bool
 static RagDotNet.Ingestion.IngestResult.operator ==(RagDotNet.Ingestion.IngestResult? left, RagDotNet.Ingestion.IngestResult? right) -> bool
+static RagDotNet.Pipeline.PartitionStats.operator !=(RagDotNet.Pipeline.PartitionStats? left, RagDotNet.Pipeline.PartitionStats? right) -> bool
+static RagDotNet.Pipeline.PartitionStats.operator ==(RagDotNet.Pipeline.PartitionStats? left, RagDotNet.Pipeline.PartitionStats? right) -> bool
+static RagDotNet.Pipeline.RagStats.operator !=(RagDotNet.Pipeline.RagStats? left, RagDotNet.Pipeline.RagStats? right) -> bool
+static RagDotNet.Pipeline.RagStats.operator ==(RagDotNet.Pipeline.RagStats? left, RagDotNet.Pipeline.RagStats? right) -> bool
+static RagDotNet.Pipeline.ReindexProgress.operator !=(RagDotNet.Pipeline.ReindexProgress? left, RagDotNet.Pipeline.ReindexProgress? right) -> bool
+static RagDotNet.Pipeline.ReindexProgress.operator ==(RagDotNet.Pipeline.ReindexProgress? left, RagDotNet.Pipeline.ReindexProgress? right) -> bool
+static RagDotNet.Pipeline.ReindexResult.operator !=(RagDotNet.Pipeline.ReindexResult? left, RagDotNet.Pipeline.ReindexResult? right) -> bool
+static RagDotNet.Pipeline.ReindexResult.operator ==(RagDotNet.Pipeline.ReindexResult? left, RagDotNet.Pipeline.ReindexResult? right) -> bool
 static RagDotNet.Retrieval.RetrievalOptions.operator !=(RagDotNet.Retrieval.RetrievalOptions? left, RagDotNet.Retrieval.RetrievalOptions? right) -> bool
 static RagDotNet.Retrieval.RetrievalOptions.operator ==(RagDotNet.Retrieval.RetrievalOptions? left, RagDotNet.Retrieval.RetrievalOptions? right) -> bool
 static RagDotNet.Retrieval.RetrievedChunk.operator !=(RagDotNet.Retrieval.RetrievedChunk? left, RagDotNet.Retrieval.RetrievedChunk? right) -> bool
@@ -422,24 +512,3 @@ static RagDotNet.Storage.ChunkKeys.ToGuid(string! key) -> System.Guid
 virtual RagDotNet.Filtering.RagFilter.EqualityContract.get -> System.Type!
 virtual RagDotNet.Filtering.RagFilter.Equals(RagDotNet.Filtering.RagFilter? other) -> bool
 virtual RagDotNet.Filtering.RagFilter.PrintMembers(System.Text.StringBuilder! builder) -> bool
-override RagDotNet.Access.AccessScope.Equals(object? obj) -> bool
-override RagDotNet.Access.AccessScope.GetHashCode() -> int
-override RagDotNet.Access.AccessScope.ToString() -> string!
-RagDotNet.Access.AccessScope
-RagDotNet.Access.AccessScope.<Clone>$() -> RagDotNet.Access.AccessScope!
-RagDotNet.Access.AccessScope.AccessScope(System.Collections.Generic.IReadOnlyDictionary<string!, string!>! Partition, RagDotNet.Filtering.RagFilter? Filter = null) -> void
-RagDotNet.Access.AccessScope.Deconstruct(out System.Collections.Generic.IReadOnlyDictionary<string!, string!>! Partition, out RagDotNet.Filtering.RagFilter? Filter) -> void
-RagDotNet.Access.AccessScope.Equals(RagDotNet.Access.AccessScope? other) -> bool
-RagDotNet.Access.AccessScope.Filter.get -> RagDotNet.Filtering.RagFilter?
-RagDotNet.Access.AccessScope.Filter.init -> void
-RagDotNet.Access.AccessScope.Partition.get -> System.Collections.Generic.IReadOnlyDictionary<string!, string!>!
-RagDotNet.Access.AccessScope.Partition.init -> void
-RagDotNet.Access.IAccessScope
-RagDotNet.Access.IAccessScope.GetScopeAsync(System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<RagDotNet.Access.AccessScope!>
-RagDotNet.Access.UnscopedDataException
-RagDotNet.Access.UnscopedDataException.UnscopedDataException() -> void
-RagDotNet.Access.UnscopedDataException.UnscopedDataException(string! message) -> void
-RagDotNet.Access.UnscopedDataException.UnscopedDataException(string! message, System.Exception! innerException) -> void
-RagDotNet.Configuration.RagPipelineBuilder.UseAccessScope(RagDotNet.Access.IAccessScope! scope) -> RagDotNet.Configuration.RagPipelineBuilder!
-static RagDotNet.Access.AccessScope.operator !=(RagDotNet.Access.AccessScope? left, RagDotNet.Access.AccessScope? right) -> bool
-static RagDotNet.Access.AccessScope.operator ==(RagDotNet.Access.AccessScope? left, RagDotNet.Access.AccessScope? right) -> bool

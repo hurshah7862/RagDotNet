@@ -28,6 +28,7 @@ internal sealed class Retriever(RagEngine engine)
         if (matchesNothing) return [];
 
         await engine.EnsureReadyAsync(ct).ConfigureAwait(false);
+        await engine.ModelGuard.EnsureCompatibleAsync(ct).ConfigureAwait(false);
         var embeddings = await engine.Embedder.GenerateAsync([query], cancellationToken: ct).ConfigureAwait(false);
         if (embeddings.Count != 1)
             throw new InvalidOperationException("The embedding generator did not return exactly one embedding for the query.");

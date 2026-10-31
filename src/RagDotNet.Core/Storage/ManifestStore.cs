@@ -64,5 +64,13 @@ internal sealed class ManifestStore(VectorStore store, RagOptions options)
         return false;
     }
 
+    /// <summary>The embedding model id of any manifest not on <paramref name="configured"/>, or null; reads the raw field, so it works under any partition schema.</summary>
+    public async Task<string?> FindOtherModelIdAsync(string configured, CancellationToken ct)
+    {
+        await foreach (var r in _collection.GetAsync(m => (string)m["EmbeddingModelId"]! != configured, 1, new FilteredRecordRetrievalOptions<Dictionary<string, object?>> { IncludeVectors = false }, ct).ConfigureAwait(false))
+            return (string?)r["EmbeddingModelId"];
+        return null;
+    }
+
     private object ConvertKey(string key) => options.KeyType == RagKeyType.Guid ? ChunkKeys.ToGuid(key) : key;
 }
