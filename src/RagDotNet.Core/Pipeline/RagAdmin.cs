@@ -12,6 +12,7 @@ internal sealed class RagAdmin(RagEngine engine) : IRagAdmin
     {
         var ct = cancellationToken;
         await engine.EnsureReadyAsync(ct).ConfigureAwait(false);
+        await engine.ModelGuard.EnsureContentModeAsync(ct).ConfigureAwait(false);
         var batchSize = Math.Max(1, engine.Options.EmbeddingBatchSize);
         var probed = false;
         int reindexed = 0, skipped = 0, chunkTotal = 0;
@@ -42,7 +43,11 @@ internal sealed class RagAdmin(RagEngine engine) : IRagAdmin
                 {
                     var records = await engine.Chunks.GetAsync(keys.Skip(start).Take(batchSize), false, ct).ConfigureAwait(false);
                     if (records.Count == 0) continue;
-                    var inputs = records.Select(r => EmbeddingText.For(HeadingPath(r), RequireText(m.DocumentId, r))).ToList();
+                    IReadOnlyDictionary<string, string>? external = null;
+                    if (engine.ContentStore is { } contentStore)
+                        external = await contentStore.GetAsync(
+                            records.Select(r => ChunkKeys.Chunk(m.Partition, m.DocumentId, Convert.ToInt32(r["ChunkIndex"], System.Globalization.CultureInfo.InvariantCulture))).ToList(), ct).ConfigureAwait(false);
+                    var inputs = records.Select(r => EmbeddingText.For(HeadingPath(r), RequireText(m, r, external))).ToList();
                     var result = await engine.Embedder.GenerateAsync(inputs, cancellationToken: ct).ConfigureAwait(false);
                     if (result.Count != inputs.Count)
                         throw new InvalidOperationException($"The embedding generator returned {result.Count} embeddings for {inputs.Count} inputs.");
@@ -114,11 +119,15 @@ internal sealed class RagAdmin(RagEngine engine) : IRagAdmin
                 $"The embedding generator returned {probe[0].Vector.Length} dimensions, but {engine.Options.EmbeddingDimensions} are configured. Reindexing into a different dimension requires a new collection.");
     }
 
-    private static string RequireText(string documentId, Dictionary<string, object?> r) =>
-        r.TryGetValue("Text", out var t) && t is string s
-            ? s
-            : throw new InvalidOperationException(
-                $"Chunk {Convert.ToInt32(r["ChunkIndex"], System.Globalization.CultureInfo.InvariantCulture)} of document '{documentId}' has no stored text and cannot be re-embedded.");
+    private static string RequireText(Storage.ManifestRecord m, Dictionary<string, object?> r, IReadOnlyDictionary<string, string>? external)
+    {
+        var index = Convert.ToInt32(r["ChunkIndex"], System.Globalization.CultureInfo.InvariantCulture);
+        var text = external is not null
+            ? (external.TryGetValue(ChunkKeys.Chunk(m.Partition, m.DocumentId, index), out var e) ? e : null)
+            : r.TryGetValue("Text", out var t) ? t as string : null;
+        return text ?? throw new InvalidOperationException(
+            $"Chunk {index} of document '{m.DocumentId}' has no stored text and cannot be re-embedded.");
+    }
 
     private static IReadOnlyList<string> HeadingPath(Dictionary<string, object?> r) =>
         r.TryGetValue("HeadingPath", out var h) && h is string s && s.Length > 0 ? s.Split(" > ") : [];

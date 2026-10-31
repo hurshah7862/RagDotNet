@@ -1,6 +1,7 @@
 using System.Globalization;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.VectorData;
+using Microsoft.Extensions.Logging;
 using RagDotNet.Access;
 using RagDotNet.Filtering;
 using RagDotNet.Pipeline;
@@ -43,6 +44,25 @@ internal sealed class Retriever(RagEngine engine)
             if (options.DistanceFunction == DistanceFunction.CosineDistance) score = 1 - score;
             if (o.MinScore is { } min && score < min) continue;
             results.Add(Map(hit.Record, score));
+        }
+
+        if (engine.ContentStore is { } contentStore && results.Count > 0)
+        {
+            // One batch call for the candidates that already passed the scope filter and MinScore.
+            var texts = await contentStore.GetAsync(results.Select(c => c.ChunkKey).ToList(), ct).ConfigureAwait(false);
+            var kept = new List<RetrievedChunk>(results.Count);
+            foreach (var c in results)
+            {
+                if (texts.TryGetValue(c.ChunkKey, out var text) && !string.IsNullOrEmpty(text))
+                    kept.Add(c with { Text = text });
+                else
+                {
+                    engine.RecordMissingContent(1);
+                    engine.Logger.LogWarning("Dropped chunk {ChunkKey} of document {DocumentId}: the content store returned no text for it.", c.ChunkKey, c.DocumentId);
+                }
+            }
+
+            results = kept;
         }
 
         results.Sort((a, b) =>

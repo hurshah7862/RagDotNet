@@ -26,10 +26,12 @@ internal sealed class RagEngine
         IEmbeddingGenerator<string, Embedding<float>> embedder,
         ChunkStore chunks,
         ManifestStore manifests,
-        ILogger logger)
+        ILogger logger,
+        IChunkContentStore? contentStore = null)
     {
-        if (options.ContentStorage == ContentStorageMode.External)
-            throw new NotSupportedException("External content storage is not supported yet.");
+        if (options.ContentStorage == ContentStorageMode.External && contentStore is null)
+            throw new NotSupportedException("External content storage requires a content store. Call UseContentStore().");
+        ContentStore = options.ContentStorage == ContentStorageMode.External ? contentStore : null;
         Options = options;
         Readers = readers;
         Chunker = chunker;
@@ -71,6 +73,16 @@ internal sealed class RagEngine
     public ManifestStore Manifests { get; }
 
     public ILogger Logger { get; }
+
+    /// <summary>The external content store; null in <see cref="ContentStorageMode.VectorStore"/> mode.</summary>
+    public IChunkContentStore? ContentStore { get; }
+
+    private long _missingContent;
+
+    /// <summary>Chunks dropped because the content store had no text. Task 13 exposes it as rag.content.missing.</summary>
+    public long MissingContentCount => Interlocked.Read(ref _missingContent);
+
+    public void RecordMissingContent(int count) => Interlocked.Add(ref _missingContent, count);
 
     public string EmbeddingModelId { get; }
 

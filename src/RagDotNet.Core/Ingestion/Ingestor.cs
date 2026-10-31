@@ -2,6 +2,7 @@ using System.Linq.Expressions;
 using Microsoft.Extensions.Logging;
 using RagDotNet.Access;
 using RagDotNet.Chunking;
+using RagDotNet.Content;
 using RagDotNet.Documents;
 using RagDotNet.Filtering;
 using RagDotNet.Pipeline;
@@ -69,7 +70,6 @@ internal sealed class Ingestor(RagEngine engine)
                 ["Key"] = options.KeyType == RagKeyType.Guid ? ChunkKeys.ToGuid(key) : key,
                 ["DocumentId"] = s.DocumentId,
                 ["ChunkIndex"] = c.Index,
-                ["Text"] = c.Text,
                 ["ContentHash"] = contentHash,
                 ["ChunkingHash"] = chunkingHash,
                 ["EmbeddingModelId"] = engine.EmbeddingModelId,
@@ -78,6 +78,7 @@ internal sealed class Ingestor(RagEngine engine)
                 ["HeadingPath"] = string.Join(" > ", c.HeadingPath),
                 ["SourceName"] = sourceName,
             };
+            if (engine.ContentStore is null) r["Text"] = c.Text;
             foreach (var (name, value) in metadata) r[RecordDefinitions.MetaName(name)] = value;
             r["Embedding"] = vectors[i];
             records.Add(r);
@@ -94,6 +95,15 @@ internal sealed class Ingestor(RagEngine engine)
             : new ManifestRecord(docKey, s.DocumentId, scope.PartitionKey, partitionValues, "", "", engine.EmbeddingModelId,
                 0, sourceName, now, options.ContentStorage, "", highWater);
         await engine.Manifests.UpsertAsync(pending, ct).ConfigureAwait(false);
+        if (engine.ContentStore is { } contentStore && total > 0)
+        {
+            // Text first: a vector record never exists without its text.
+            var contents = chunks.Select(c => new ChunkContent(
+                ChunkKeys.Chunk(scope.PartitionKey, s.DocumentId, c.Index), s.DocumentId, partitionValues, c.Index,
+                c.Text, c.PageStart, c.PageEnd, c.HeadingPath)).ToList();
+            await contentStore.UpsertAsync(contents, ct).ConfigureAwait(false);
+        }
+
         await engine.Chunks.UpsertAsync(records, ct).ConfigureAwait(false);
         var committed = new ManifestRecord(
             docKey, s.DocumentId, scope.PartitionKey, partitionValues, contentHash, chunkingHash, engine.EmbeddingModelId,
@@ -119,6 +129,7 @@ internal sealed class Ingestor(RagEngine engine)
     public async Task<bool> DeleteUnguardedAsync(string documentId, ResolvedScope scope, CancellationToken ct)
     {
         await engine.EnsureReadyAsync(ct).ConfigureAwait(false);
+        await engine.ModelGuard.EnsureContentModeAsync(ct).ConfigureAwait(false);
         var existing = await engine.Manifests.GetAsync(scope.PartitionKey, documentId, ct).ConfigureAwait(false);
         if (existing is null) return false;
 
@@ -146,10 +157,14 @@ internal sealed class Ingestor(RagEngine engine)
         return await engine.Chunks.AnyAsync(filter, ct).ConfigureAwait(false);
     }
 
-    private Task DeleteRangeAsync(ResolvedScope scope, string documentId, int from, int to, CancellationToken ct) =>
-        to <= from
-            ? Task.CompletedTask
-            : engine.Chunks.DeleteAsync(Enumerable.Range(from, to - from).Select(i => ChunkKeys.Chunk(scope.PartitionKey, documentId, i)), ct);
+    private async Task DeleteRangeAsync(ResolvedScope scope, string documentId, int from, int to, CancellationToken ct)
+    {
+        if (to <= from) return;
+        var keys = Enumerable.Range(from, to - from).Select(i => ChunkKeys.Chunk(scope.PartitionKey, documentId, i)).ToList();
+        if (engine.ContentStore is { } contentStore)
+            await contentStore.DeleteAsync(keys, ct).ConfigureAwait(false);
+        await engine.Chunks.DeleteAsync(keys, ct).ConfigureAwait(false);
+    }
 
     private ChunkingOptions EffectiveChunkingFor(string? contentType)
     {

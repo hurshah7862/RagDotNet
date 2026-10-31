@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 RagDotNet.Access.AccessScope
 RagDotNet.Access.AccessScope.<Clone>$() -> RagDotNet.Access.AccessScope!
 RagDotNet.Access.AccessScope.AccessScope(System.Collections.Generic.IReadOnlyDictionary<string!, string!>! Partition, RagDotNet.Filtering.RagFilter? Filter = null) -> void
@@ -92,12 +92,44 @@ RagDotNet.Configuration.RagPipelineBuilder.Configure(System.Action<RagDotNet.Con
 RagDotNet.Configuration.RagPipelineBuilder.RagPipelineBuilder() -> void
 RagDotNet.Configuration.RagPipelineBuilder.UseAccessScope(RagDotNet.Access.IAccessScope! scope) -> RagDotNet.Configuration.RagPipelineBuilder!
 RagDotNet.Configuration.RagPipelineBuilder.UseChatClient(Microsoft.Extensions.AI.IChatClient! client) -> RagDotNet.Configuration.RagPipelineBuilder!
+RagDotNet.Configuration.RagPipelineBuilder.UseContentStore(RagDotNet.Content.IChunkContentStore! store) -> RagDotNet.Configuration.RagPipelineBuilder!
 RagDotNet.Configuration.RagPipelineBuilder.UseEmbeddingGenerator(Microsoft.Extensions.AI.IEmbeddingGenerator<string!, Microsoft.Extensions.AI.Embedding<float>!>! generator) -> RagDotNet.Configuration.RagPipelineBuilder!
 RagDotNet.Configuration.RagPipelineBuilder.UseLoggerFactory(Microsoft.Extensions.Logging.ILoggerFactory! loggerFactory) -> RagDotNet.Configuration.RagPipelineBuilder!
 RagDotNet.Configuration.RagPipelineBuilder.UseVectorStore(Microsoft.Extensions.VectorData.VectorStore! store, string! collectionName, int dimensions) -> RagDotNet.Configuration.RagPipelineBuilder!
+RagDotNet.Content.ChunkContent
+RagDotNet.Content.ChunkContent.<Clone>$() -> RagDotNet.Content.ChunkContent!
+RagDotNet.Content.ChunkContent.ChunkContent(string! ChunkKey, string! DocumentId, System.Collections.Generic.IReadOnlyDictionary<string!, string!>! Partition, int ChunkIndex, string! Text, int? PageStart, int? PageEnd, System.Collections.Generic.IReadOnlyList<string!>! HeadingPath) -> void
+RagDotNet.Content.ChunkContent.ChunkIndex.get -> int
+RagDotNet.Content.ChunkContent.ChunkIndex.init -> void
+RagDotNet.Content.ChunkContent.ChunkKey.get -> string!
+RagDotNet.Content.ChunkContent.ChunkKey.init -> void
+RagDotNet.Content.ChunkContent.Deconstruct(out string! ChunkKey, out string! DocumentId, out System.Collections.Generic.IReadOnlyDictionary<string!, string!>! Partition, out int ChunkIndex, out string! Text, out int? PageStart, out int? PageEnd, out System.Collections.Generic.IReadOnlyList<string!>! HeadingPath) -> void
+RagDotNet.Content.ChunkContent.DocumentId.get -> string!
+RagDotNet.Content.ChunkContent.DocumentId.init -> void
+RagDotNet.Content.ChunkContent.Equals(RagDotNet.Content.ChunkContent? other) -> bool
+RagDotNet.Content.ChunkContent.HeadingPath.get -> System.Collections.Generic.IReadOnlyList<string!>!
+RagDotNet.Content.ChunkContent.HeadingPath.init -> void
+RagDotNet.Content.ChunkContent.PageEnd.get -> int?
+RagDotNet.Content.ChunkContent.PageEnd.init -> void
+RagDotNet.Content.ChunkContent.PageStart.get -> int?
+RagDotNet.Content.ChunkContent.PageStart.init -> void
+RagDotNet.Content.ChunkContent.Partition.get -> System.Collections.Generic.IReadOnlyDictionary<string!, string!>!
+RagDotNet.Content.ChunkContent.Partition.init -> void
+RagDotNet.Content.ChunkContent.Text.get -> string!
+RagDotNet.Content.ChunkContent.Text.init -> void
 RagDotNet.Content.ContentStorageMode
 RagDotNet.Content.ContentStorageMode.External = 1 -> RagDotNet.Content.ContentStorageMode
 RagDotNet.Content.ContentStorageMode.VectorStore = 0 -> RagDotNet.Content.ContentStorageMode
+RagDotNet.Content.IChunkContentStore
+RagDotNet.Content.IChunkContentStore.DeleteAsync(System.Collections.Generic.IReadOnlyList<string!>! chunkKeys, System.Threading.CancellationToken ct) -> System.Threading.Tasks.Task!
+RagDotNet.Content.IChunkContentStore.GetAsync(System.Collections.Generic.IReadOnlyList<string!>! chunkKeys, System.Threading.CancellationToken ct) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyDictionary<string!, string!>!>!
+RagDotNet.Content.IChunkContentStore.UpsertAsync(System.Collections.Generic.IReadOnlyList<RagDotNet.Content.ChunkContent!>! chunks, System.Threading.CancellationToken ct) -> System.Threading.Tasks.Task!
+RagDotNet.Content.InMemoryChunkContentStore
+RagDotNet.Content.InMemoryChunkContentStore.Count.get -> int
+RagDotNet.Content.InMemoryChunkContentStore.DeleteAsync(System.Collections.Generic.IReadOnlyList<string!>! chunkKeys, System.Threading.CancellationToken ct) -> System.Threading.Tasks.Task!
+RagDotNet.Content.InMemoryChunkContentStore.GetAsync(System.Collections.Generic.IReadOnlyList<string!>! chunkKeys, System.Threading.CancellationToken ct) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyDictionary<string!, string!>!>!
+RagDotNet.Content.InMemoryChunkContentStore.InMemoryChunkContentStore() -> void
+RagDotNet.Content.InMemoryChunkContentStore.UpsertAsync(System.Collections.Generic.IReadOnlyList<RagDotNet.Content.ChunkContent!>! chunks, System.Threading.CancellationToken ct) -> System.Threading.Tasks.Task!
 RagDotNet.Diagnostics.RagTelemetry
 RagDotNet.Documents.BlockKind
 RagDotNet.Documents.BlockKind.Code = 4 -> RagDotNet.Documents.BlockKind
@@ -378,6 +410,9 @@ override RagDotNet.Chunking.Chunk.ToString() -> string!
 override RagDotNet.Chunking.ChunkingOptions.Equals(object? obj) -> bool
 override RagDotNet.Chunking.ChunkingOptions.GetHashCode() -> int
 override RagDotNet.Chunking.ChunkingOptions.ToString() -> string!
+override RagDotNet.Content.ChunkContent.Equals(object? obj) -> bool
+override RagDotNet.Content.ChunkContent.GetHashCode() -> int
+override RagDotNet.Content.ChunkContent.ToString() -> string!
 override RagDotNet.Documents.DocumentBlock.Equals(object? obj) -> bool
 override RagDotNet.Documents.DocumentBlock.GetHashCode() -> int
 override RagDotNet.Documents.DocumentBlock.ToString() -> string!
@@ -456,6 +491,8 @@ static RagDotNet.Chunking.Chunk.operator !=(RagDotNet.Chunking.Chunk? left, RagD
 static RagDotNet.Chunking.Chunk.operator ==(RagDotNet.Chunking.Chunk? left, RagDotNet.Chunking.Chunk? right) -> bool
 static RagDotNet.Chunking.ChunkingOptions.operator !=(RagDotNet.Chunking.ChunkingOptions? left, RagDotNet.Chunking.ChunkingOptions? right) -> bool
 static RagDotNet.Chunking.ChunkingOptions.operator ==(RagDotNet.Chunking.ChunkingOptions? left, RagDotNet.Chunking.ChunkingOptions? right) -> bool
+static RagDotNet.Content.ChunkContent.operator !=(RagDotNet.Content.ChunkContent? left, RagDotNet.Content.ChunkContent? right) -> bool
+static RagDotNet.Content.ChunkContent.operator ==(RagDotNet.Content.ChunkContent? left, RagDotNet.Content.ChunkContent? right) -> bool
 static RagDotNet.Documents.DocumentBlock.operator !=(RagDotNet.Documents.DocumentBlock? left, RagDotNet.Documents.DocumentBlock? right) -> bool
 static RagDotNet.Documents.DocumentBlock.operator ==(RagDotNet.Documents.DocumentBlock? left, RagDotNet.Documents.DocumentBlock? right) -> bool
 static RagDotNet.Documents.DocumentReadContext.operator !=(RagDotNet.Documents.DocumentReadContext? left, RagDotNet.Documents.DocumentReadContext? right) -> bool

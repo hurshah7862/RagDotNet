@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.VectorData;
 using RagDotNet.Access;
 using RagDotNet.Chunking;
+using RagDotNet.Content;
 using RagDotNet.Documents;
 using RagDotNet.Pipeline;
 using RagDotNet.Readers;
@@ -22,6 +23,7 @@ public sealed class RagPipelineBuilder
     private ILoggerFactory? _loggerFactory;
     private IAccessScope? _scope;
     private RagEngine? _engine;
+    private IChunkContentStore? _contentStore;
 
     /// <summary>Sets the chat client used to generate answers.</summary>
     /// <param name="client">The chat client.</param>
@@ -94,10 +96,20 @@ public sealed class RagPipelineBuilder
         return this;
     }
 
+    /// <summary>Stores chunk text in <paramref name="store"/> instead of the vector store; sets <see cref="RagOptions.ContentStorage"/> to External.</summary>
+    /// <param name="store">The content store.</param>
+    /// <returns>This builder.</returns>
+    public RagPipelineBuilder UseContentStore(IChunkContentStore store)
+    {
+        _contentStore = store ?? throw new ArgumentNullException(nameof(store));
+        _options.ContentStorage = ContentStorageMode.External;
+        return this;
+    }
+
     /// <summary>Builds the pipeline. Repeated calls share one engine.</summary>
     /// <returns>The pipeline.</returns>
     /// <exception cref="InvalidOperationException">The embedding generator or vector store is missing, or partition keys are configured without an access scope.</exception>
-    /// <exception cref="NotSupportedException">External content storage is selected; it throws until a content store is configured.</exception>
+    /// <exception cref="NotSupportedException">External content storage is selected without a content store.</exception>
     public IRagPipeline Build()
     {
         if (_embedder is null) throw new InvalidOperationException("No embedding generator configured. Call UseEmbeddingGenerator().");
@@ -126,9 +138,10 @@ public sealed class RagPipelineBuilder
         var tokenizer = _options.Tokenizer ?? TokenCounter.CreateDefault();
         var tokenizerName = _options.Tokenizer is null ? "cl100k_base" : _options.Tokenizer.GetType().FullName ?? "custom";
         var readers = new ReaderSelector(_readers.Concat<IDocumentReader>([new MarkdownReader(), new PlainTextReader()]));
+        if (_contentStore is not null) _options.ContentStorage = ContentStorageMode.External;
         var logger = (_loggerFactory ?? NullLoggerFactory.Instance).CreateLogger("RagDotNet");
         return new RagEngine(
             _options, readers, new StructureAwareChunker(tokenizer), new TokenCounter(tokenizer), tokenizerName,
-            embedder, new ChunkStore(store, _options), new ManifestStore(store, _options), logger);
+            embedder, new ChunkStore(store, _options), new ManifestStore(store, _options), logger, _contentStore);
     }
 }

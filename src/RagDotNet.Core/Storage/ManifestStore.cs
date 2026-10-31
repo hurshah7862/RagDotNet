@@ -1,6 +1,7 @@
 using System.Linq.Expressions;
 using System.Runtime.CompilerServices;
 using Microsoft.Extensions.VectorData;
+using RagDotNet.Content;
 using RagDotNet.Configuration;
 
 namespace RagDotNet.Storage;
@@ -69,6 +70,15 @@ internal sealed class ManifestStore(VectorStore store, RagOptions options)
     {
         await foreach (var r in _collection.GetAsync(m => (string)m["EmbeddingModelId"]! != configured, 1, new FilteredRecordRetrievalOptions<Dictionary<string, object?>> { IncludeVectors = false }, ct).ConfigureAwait(false))
             return (true, r.TryGetValue("EmbeddingModelId", out var id) ? id as string ?? "" : "");
+        return (false, "");
+    }
+
+    /// <summary>Whether any manifest was written in a mode other than <paramref name="configured"/>, with that mode's name. Reads the raw field.</summary>
+    public async Task<(bool Found, string Stored)> FindOtherContentModeAsync(ContentStorageMode configured, CancellationToken ct)
+    {
+        var name = configured.ToString();
+        await foreach (var r in _collection.GetAsync(m => (string)m["ContentStorage"]! != name, 1, new FilteredRecordRetrievalOptions<Dictionary<string, object?>> { IncludeVectors = false }, ct).ConfigureAwait(false))
+            return (true, r.TryGetValue("ContentStorage", out var v) ? v as string ?? "" : "");
         return (false, "");
     }
 
