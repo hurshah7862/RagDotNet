@@ -1,6 +1,6 @@
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.VectorData;
 using RagDotNet.Access;
 using RagDotNet.Chunking;
@@ -108,14 +108,13 @@ public sealed class RagPipelineBuilder
 
     /// <summary>Builds the pipeline. Repeated calls share one engine.</summary>
     /// <returns>The pipeline.</returns>
-    /// <exception cref="InvalidOperationException">The embedding generator or vector store is missing, or partition keys are configured without an access scope.</exception>
-    /// <exception cref="NotSupportedException">External content storage is selected without a content store.</exception>
+    /// <exception cref="InvalidOperationException">The embedding generator or vector store is missing.</exception>
+    /// <exception cref="OptionsValidationException">The options are invalid, partition keys are configured without an access scope, or External content storage is selected without a content store.</exception>
     public IRagPipeline Build()
     {
         if (_embedder is null) throw new InvalidOperationException("No embedding generator configured. Call UseEmbeddingGenerator().");
         if (_store is null) throw new InvalidOperationException("No vector store configured. Call UseVectorStore().");
-        if (_options.PartitionKeys.Count > 0 && _scope is null)
-            throw new InvalidOperationException($"Partition keys [{string.Join(", ", _options.PartitionKeys)}] require an access scope. Call UseAccessScope().");
+        Validate(requireScopeForPartitions: true);
         _engine ??= CreateEngine(_embedder, _store);
         return new RagPipeline(_engine, _scope, _chat);
     }
@@ -123,25 +122,24 @@ public sealed class RagPipelineBuilder
     /// <summary>Builds the admin interface over the same engine as <see cref="Build"/>. Admin operations ignore any access scope.</summary>
     /// <returns>The admin interface.</returns>
     /// <exception cref="InvalidOperationException">The embedding generator or vector store is missing.</exception>
+    /// <exception cref="OptionsValidationException">The options are invalid or External content storage is selected without a content store.</exception>
     public IRagAdmin BuildAdmin()
     {
         if (_embedder is null) throw new InvalidOperationException("No embedding generator configured. Call UseEmbeddingGenerator().");
         if (_store is null) throw new InvalidOperationException("No vector store configured. Call UseVectorStore().");
+        Validate(requireScopeForPartitions: false);
         _engine ??= CreateEngine(_embedder, _store);
         return new RagAdmin(_engine);
     }
 
     internal IChatClient? ChatClient => _chat;
 
-    private RagEngine CreateEngine(IEmbeddingGenerator<string, Embedding<float>> embedder, VectorStore store)
+    private RagEngine CreateEngine(IEmbeddingGenerator<string, Embedding<float>> embedder, VectorStore store) =>
+        RagEngineFactory.Create(_options, _readers, embedder, store, _loggerFactory, _contentStore);
+
+    private void Validate(bool requireScopeForPartitions)
     {
-        var tokenizer = _options.Tokenizer ?? TokenCounter.CreateDefault();
-        var tokenizerName = _options.Tokenizer is null ? "cl100k_base" : _options.Tokenizer.GetType().FullName ?? "custom";
-        var readers = new ReaderSelector(_readers.Concat<IDocumentReader>([new MarkdownReader(), new PlainTextReader()]));
-        if (_contentStore is not null) _options.ContentStorage = ContentStorageMode.External;
-        var logger = (_loggerFactory ?? NullLoggerFactory.Instance).CreateLogger("RagDotNet");
-        return new RagEngine(
-            _options, readers, new StructureAwareChunker(tokenizer), new TokenCounter(tokenizer), tokenizerName,
-            embedder, new ChunkStore(store, _options), new ManifestStore(store, _options), logger, _contentStore);
+        var result = RagOptionsValidator.Validate(_options, _scope is not null, _contentStore is not null, requireScopeForPartitions);
+        if (result.Failed) throw new OptionsValidationException(Options.DefaultName, typeof(RagOptions), result.Failures);
     }
 }

@@ -136,7 +136,7 @@ public class AccessScopeTests
     [Fact]
     public void Partition_keys_without_a_scope_throw_at_build()
     {
-        var ex = Assert.Throws<InvalidOperationException>(
+        var ex = Assert.Throws<Microsoft.Extensions.Options.OptionsValidationException>(
             () => Create(o => { o.Metadata.Add<string>("tenant"); o.PartitionKeys.Add("tenant"); }));
         Assert.Contains("access scope", ex.Message);
     }

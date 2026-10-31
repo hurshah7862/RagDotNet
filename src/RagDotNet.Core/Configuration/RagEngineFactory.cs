@@ -1,0 +1,34 @@
+using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.VectorData;
+using RagDotNet.Chunking;
+using RagDotNet.Content;
+using RagDotNet.Documents;
+using RagDotNet.Pipeline;
+using RagDotNet.Readers;
+using RagDotNet.Storage;
+
+namespace RagDotNet.Configuration;
+
+/// <summary>The single construction path for <see cref="RagEngine"/>, shared by the builder and dependency injection.</summary>
+internal static class RagEngineFactory
+{
+    public static RagEngine Create(
+        RagOptions options,
+        IEnumerable<IDocumentReader> appReaders,
+        IEmbeddingGenerator<string, Embedding<float>> embedder,
+        VectorStore store,
+        ILoggerFactory? loggerFactory,
+        IChunkContentStore? contentStore)
+    {
+        var tokenizer = options.Tokenizer ?? TokenCounter.CreateDefault();
+        var tokenizerName = options.Tokenizer is null ? "cl100k_base" : options.Tokenizer.GetType().FullName ?? "custom";
+        var readers = new ReaderSelector(appReaders.Concat<IDocumentReader>([new MarkdownReader(), new PlainTextReader()]));
+        if (contentStore is not null) options.ContentStorage = ContentStorageMode.External;
+        var logger = (loggerFactory ?? NullLoggerFactory.Instance).CreateLogger("RagDotNet");
+        return new RagEngine(
+            options, readers, new StructureAwareChunker(tokenizer), new TokenCounter(tokenizer), tokenizerName,
+            embedder, new ChunkStore(store, options), new ManifestStore(store, options), logger, contentStore);
+    }
+}

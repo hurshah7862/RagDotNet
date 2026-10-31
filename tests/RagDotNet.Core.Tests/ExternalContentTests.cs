@@ -234,7 +234,7 @@ public class ExternalContentTests
             .UseEmbeddingGenerator(new FakeEmbeddingGenerator(64)).UseChatClient(new FakeChatClient())
             .UseVectorStore(new InMemoryVectorStore(), "test", 64)
             .Configure(o => o.ContentStorage = ContentStorageMode.External);
-        Assert.Throws<NotSupportedException>(() => b.Build());
+        Assert.Throws<Microsoft.Extensions.Options.OptionsValidationException>(() => b.Build());
     }
 
     [Fact]
