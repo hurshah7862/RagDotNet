@@ -13,7 +13,9 @@ internal sealed record ManifestRecord(
     int ChunkCount,
     string SourceName,
     long UpdatedAtUnixMs,
-    ContentStorageMode ContentStorage)
+    ContentStorageMode ContentStorage,
+    string MetadataHash = "",
+    int ChunkHighWater = 0)
 {
     public Dictionary<string, object?> ToDynamic(RagKeyType keyType)
     {
@@ -32,6 +34,8 @@ internal sealed record ManifestRecord(
         d["SourceName"] = SourceName;
         d["UpdatedAtUnixMs"] = UpdatedAtUnixMs;
         d["ContentStorage"] = ContentStorage.ToString();
+        d["MetadataHash"] = MetadataHash;
+        d["ChunkHighWater"] = ChunkHighWater;
         d["Placeholder"] = new ReadOnlyMemory<float>([1f]);
         return d;
     }
@@ -58,7 +62,8 @@ internal sealed record ManifestRecord(
             ChunkKeys.Document(partition, documentId), documentId, partition, values,
             (string)r["ContentHash"]!, (string)r["ChunkingHash"]!, (string)r["EmbeddingModelId"]!,
             Convert.ToInt32(r["ChunkCount"]), (string)r["SourceName"]!, Convert.ToInt64(r["UpdatedAtUnixMs"]),
-            Enum.Parse<ContentStorageMode>((string)r["ContentStorage"]!));
+            Enum.Parse<ContentStorageMode>((string)r["ContentStorage"]!),
+            (string)r["MetadataHash"]!, Convert.ToInt32(r["ChunkHighWater"]));
         record.Validate();
         return record;
     }

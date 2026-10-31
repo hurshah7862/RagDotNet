@@ -51,6 +51,8 @@ internal static class RecordDefinitions
         props.Add(new VectorStoreDataProperty("SourceName", typeof(string)));
         props.Add(new VectorStoreDataProperty("UpdatedAtUnixMs", typeof(long)));
         props.Add(new VectorStoreDataProperty("ContentStorage", typeof(string)));
+        props.Add(new VectorStoreDataProperty("MetadataHash", typeof(string)));
+        props.Add(new VectorStoreDataProperty("ChunkHighWater", typeof(int)));
         props.Add(new VectorStoreVectorProperty("Placeholder", typeof(ReadOnlyMemory<float>), 1)
         {
             DistanceFunction = DistanceFunction.CosineSimilarity,

@@ -6,7 +6,11 @@ namespace RagDotNet.Core.Tests.Fakes;
 /// <summary>Vector store wrapper whose manifest collection can be told to fail its next upsert, simulating a crash.</summary>
 public sealed class FailingVectorStore(VectorStore inner) : VectorStore
 {
-    public bool FailNextManifestUpsert { get; set; }
+    /// <summary>1-based: the Nth upcoming manifest upsert fails (0 = none).</summary>
+    public int FailManifestUpsertIn { get; set; }
+
+    /// <summary>When set, the next chunk delete fails.</summary>
+    public bool FailNextChunkDelete { get; set; }
 
     public override VectorStoreCollection<TKey, TRecord> GetCollection<TKey, TRecord>(string name, VectorStoreCollectionDefinition? definition = null) =>
         inner.GetCollection<TKey, TRecord>(name, definition);
@@ -14,7 +18,7 @@ public sealed class FailingVectorStore(VectorStore inner) : VectorStore
     public override VectorStoreCollection<object, Dictionary<string, object?>> GetDynamicCollection(string name, VectorStoreCollectionDefinition definition)
     {
         var c = inner.GetDynamicCollection(name, definition);
-        return name.EndsWith("_documents", StringComparison.Ordinal) ? new FailingCollection(this, c) : c;
+        return new FailingCollection(this, c, name.EndsWith("_documents", StringComparison.Ordinal));
     }
 
     public override IAsyncEnumerable<string> ListCollectionNamesAsync(CancellationToken cancellationToken = default) =>
@@ -28,7 +32,7 @@ public sealed class FailingVectorStore(VectorStore inner) : VectorStore
 
     public override object? GetService(Type serviceType, object? serviceKey = null) => inner.GetService(serviceType, serviceKey);
 
-    private sealed class FailingCollection(FailingVectorStore owner, VectorStoreCollection<object, Dictionary<string, object?>> c)
+    private sealed class FailingCollection(FailingVectorStore owner, VectorStoreCollection<object, Dictionary<string, object?>> c, bool isManifest)
         : VectorStoreCollection<object, Dictionary<string, object?>>
     {
         public override string Name => c.Name;
@@ -50,15 +54,21 @@ public sealed class FailingVectorStore(VectorStore inner) : VectorStore
 
         public override Task DeleteAsync(object key, CancellationToken cancellationToken = default) => c.DeleteAsync(key, cancellationToken);
 
-        public override Task DeleteAsync(IEnumerable<object> keys, CancellationToken cancellationToken = default) => c.DeleteAsync(keys, cancellationToken);
+        public override Task DeleteAsync(IEnumerable<object> keys, CancellationToken cancellationToken = default)
+        {
+            if (!isManifest && owner.FailNextChunkDelete)
+            {
+                owner.FailNextChunkDelete = false;
+                throw new IOException("Simulated crash during chunk delete.");
+            }
+
+            return c.DeleteAsync(keys, cancellationToken);
+        }
 
         public override Task UpsertAsync(Dictionary<string, object?> record, CancellationToken cancellationToken = default)
         {
-            if (owner.FailNextManifestUpsert)
-            {
-                owner.FailNextManifestUpsert = false;
+            if (isManifest && owner.FailManifestUpsertIn > 0 && --owner.FailManifestUpsertIn == 0)
                 throw new IOException("Simulated crash before the manifest was written.");
-            }
 
             return c.UpsertAsync(record, cancellationToken);
         }

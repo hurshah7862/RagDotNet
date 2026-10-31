@@ -23,9 +23,19 @@ internal sealed class Ingestor(RagEngine engine)
         var chunking = o?.Chunking ?? EffectiveChunkingFor(s.ContentType);
         var chunkingHash = Hashing.ChunkingHash(chunking, engine.TokenizerName);
 
+        var metadataHash = Hashing.MetadataHash(metadata);
+
         var existing = await engine.Manifests.GetAsync(scope.PartitionKey, s.DocumentId, ct).ConfigureAwait(false);
-        if (existing is not null && existing.ContentHash == contentHash && existing.ChunkingHash == chunkingHash)
+        if (existing is not null && existing.ContentHash == contentHash && existing.ChunkingHash == chunkingHash
+            && existing.MetadataHash == metadataHash)
         {
+            // Finish cleanup left behind by an interrupted earlier run.
+            if (existing.ChunkHighWater > existing.ChunkCount)
+            {
+                await DeleteRangeAsync(scope, s.DocumentId, existing.ChunkCount, existing.ChunkHighWater, ct).ConfigureAwait(false);
+                await engine.Manifests.UpsertAsync(existing with { ChunkHighWater = existing.ChunkCount }, ct).ConfigureAwait(false);
+            }
+
             p?.Report(new IngestProgress(s.DocumentId, IngestStage.Completed, existing.ChunkCount, existing.ChunkCount));
             return new IngestResult(s.DocumentId, IngestStatus.Unchanged, existing.ChunkCount, []);
         }
@@ -71,23 +81,29 @@ internal sealed class Ingestor(RagEngine engine)
             records.Add(r);
         }
 
-        // Order matters for crash recovery: chunks, then manifest, then stale chunks.
+        // Crash-convergent order. (a) record the high-water mark under the old hashes so any chunk we
+        // may write stays tracked; (b) chunks; (c) manifest with the new hashes; (d) stale chunks; (e) clear the mark.
+        var partitionValues = new Dictionary<string, string>(scope.Partition);
+        var docKey = ChunkKeys.Document(scope.PartitionKey, s.DocumentId);
+        var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var highWater = Math.Max(Math.Max(existing?.ChunkHighWater ?? 0, existing?.ChunkCount ?? 0), total);
+        var pending = existing is not null
+            ? existing with { ChunkHighWater = highWater }
+            : new ManifestRecord(docKey, s.DocumentId, scope.PartitionKey, partitionValues, "", "", engine.EmbeddingModelId,
+                0, sourceName, now, options.ContentStorage, "", highWater);
+        await engine.Manifests.UpsertAsync(pending, ct).ConfigureAwait(false);
         await engine.Chunks.UpsertAsync(records, ct).ConfigureAwait(false);
-        await engine.Manifests.UpsertAsync(new ManifestRecord(
-            ChunkKeys.Document(scope.PartitionKey, s.DocumentId), s.DocumentId, scope.PartitionKey,
-            new Dictionary<string, string>(scope.Partition), contentHash, chunkingHash, engine.EmbeddingModelId,
-            total, sourceName, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), options.ContentStorage), ct).ConfigureAwait(false);
-
-        if (existing is not null && existing.ChunkCount > total)
-        {
-            await engine.Chunks.DeleteAsync(
-                Enumerable.Range(total, existing.ChunkCount - total).Select(i => ChunkKeys.Chunk(scope.PartitionKey, s.DocumentId, i)),
-                ct).ConfigureAwait(false);
-        }
+        var committed = new ManifestRecord(
+            docKey, s.DocumentId, scope.PartitionKey, partitionValues, contentHash, chunkingHash, engine.EmbeddingModelId,
+            total, sourceName, now, options.ContentStorage, metadataHash, highWater);
+        await engine.Manifests.UpsertAsync(committed, ct).ConfigureAwait(false);
+        await DeleteRangeAsync(scope, s.DocumentId, total, highWater, ct).ConfigureAwait(false);
+        if (highWater > total)
+            await engine.Manifests.UpsertAsync(committed with { ChunkHighWater = total }, ct).ConfigureAwait(false);
 
         p?.Report(new IngestProgress(s.DocumentId, IngestStage.Completed, total, total));
         engine.Logger.LogDebug("Ingested document {DocumentId}: {ChunkCount} chunks", s.DocumentId, total);
-        return new IngestResult(s.DocumentId, existing is null ? IngestStatus.Created : IngestStatus.Updated, total, warnings);
+        return new IngestResult(s.DocumentId, existing is null || existing.ContentHash.Length == 0 ? IngestStatus.Created : IngestStatus.Updated, total, warnings);
     }
 
     public async Task<bool> DeleteAsync(string documentId, ResolvedScope scope, CancellationToken ct)
@@ -97,12 +113,15 @@ internal sealed class Ingestor(RagEngine engine)
         if (existing is null) return false;
 
         // Chunks first, so a crash leaves the manifest and a retry finishes the job.
-        await engine.Chunks.DeleteAsync(
-            Enumerable.Range(0, existing.ChunkCount).Select(i => ChunkKeys.Chunk(scope.PartitionKey, documentId, i)),
-            ct).ConfigureAwait(false);
+        await DeleteRangeAsync(scope, documentId, 0, Math.Max(existing.ChunkCount, existing.ChunkHighWater), ct).ConfigureAwait(false);
         await engine.Manifests.DeleteAsync(scope.PartitionKey, documentId, ct).ConfigureAwait(false);
         return true;
     }
+
+    private Task DeleteRangeAsync(ResolvedScope scope, string documentId, int from, int to, CancellationToken ct) =>
+        to <= from
+            ? Task.CompletedTask
+            : engine.Chunks.DeleteAsync(Enumerable.Range(from, to - from).Select(i => ChunkKeys.Chunk(scope.PartitionKey, documentId, i)), ct);
 
     private ChunkingOptions EffectiveChunkingFor(string? contentType)
     {

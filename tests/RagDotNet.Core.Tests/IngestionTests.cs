@@ -207,7 +207,7 @@ public class IngestionTests
         var (rag, _, _, _, _) = Create(builder: b => b.UseVectorStore(failing, "test", 64));
         await rag.IngestAsync(Md("doc", Sections(3)), cancellationToken: Ct);
 
-        failing.FailNextManifestUpsert = true;
+        failing.FailManifestUpsertIn = 2; // (a) succeeds, chunks are written, (c) fails
         await Assert.ThrowsAsync<IOException>(() => rag.IngestAsync(Md("doc", Sections(1, "Changed")), cancellationToken: Ct));
         // Chunk 0 was overwritten, the manifest still describes v1, and the stale chunks are still there.
         Assert.Equal(3, (await Manifest(failing, "doc"))!["ChunkCount"]);
@@ -220,6 +220,78 @@ public class IngestionTests
         await fresh.IngestAsync(Md("doc", Sections(1, "Changed")), cancellationToken: Ct);
         Assert.Equal(await ExistingKeys(freshStore, "doc", 5), await ExistingKeys(failing, "doc", 5));
         Assert.Equal(1, (await Manifest(failing, "doc"))!["ChunkCount"]);
+    }
+
+    [Fact]
+    public async Task Crash_before_stale_delete_converges_and_clears_high_water()
+    {
+        var failing = new FailingVectorStore(new InMemoryVectorStore());
+        var (rag, _, embedder, _, _) = Create(builder: b => b.UseVectorStore(failing, "test", 64));
+        await rag.IngestAsync(Md("doc", Sections(3)), cancellationToken: Ct);
+
+        failing.FailNextChunkDelete = true;
+        await Assert.ThrowsAsync<IOException>(() => rag.IngestAsync(Md("doc", Sections(1, "Changed")), cancellationToken: Ct));
+        Assert.Equal(3, (await ExistingKeys(failing, "doc", 5)).Count);
+
+        var calls = embedder.CallCount;
+        var retry = await rag.IngestAsync(Md("doc", Sections(1, "Changed")), cancellationToken: Ct);
+        Assert.Equal(IngestStatus.Unchanged, retry.Status);
+        Assert.Equal(calls, embedder.CallCount);
+        Assert.Equal(["doc:0"], await ExistingKeys(failing, "doc", 5));
+        var m = (await Manifest(failing, "doc"))!;
+        Assert.Equal(1, m["ChunkCount"]);
+        Assert.Equal(1, m["ChunkHighWater"]);
+    }
+
+    [Fact]
+    public async Task Delete_after_failed_growing_update_removes_all_chunks()
+    {
+        var failing = new FailingVectorStore(new InMemoryVectorStore());
+        var (rag, _, _, _, _) = Create(builder: b => b.UseVectorStore(failing, "test", 64));
+        await rag.IngestAsync(Md("doc", Sections(3)), cancellationToken: Ct);
+
+        failing.FailManifestUpsertIn = 2;
+        await Assert.ThrowsAsync<IOException>(() => rag.IngestAsync(Md("doc", Sections(10)), cancellationToken: Ct));
+        Assert.Equal(10, (await ExistingKeys(failing, "doc", 12)).Count);
+
+        Assert.True(await rag.DeleteDocumentAsync("doc", Ct));
+        Assert.Empty(await ExistingKeys(failing, "doc", 12));
+        Assert.Null(await Manifest(failing, "doc"));
+    }
+
+    [Fact]
+    public async Task Delete_after_failed_first_ingest_removes_chunks_and_returns_true()
+    {
+        var failing = new FailingVectorStore(new InMemoryVectorStore());
+        var (rag, _, _, _, _) = Create(builder: b => b.UseVectorStore(failing, "test", 64));
+
+        failing.FailManifestUpsertIn = 2;
+        await Assert.ThrowsAsync<IOException>(() => rag.IngestAsync(Md("doc", Sections(4)), cancellationToken: Ct));
+        Assert.Equal(4, (await ExistingKeys(failing, "doc", 6)).Count);
+
+        Assert.True(await rag.DeleteDocumentAsync("doc", Ct));
+        Assert.Empty(await ExistingKeys(failing, "doc", 6));
+    }
+
+    [Fact]
+    public async Task Changed_metadata_with_same_bytes_is_Updated_and_restamps_chunks()
+    {
+        var (rag, _, _, _, store) = Create(o => { o.Metadata.Add<string>("team"); o.Metadata.Add<long>("rev"); });
+        await rag.IngestAsync(Md("doc", Sections(2), new Dictionary<string, object?> { ["team"] = "a" }), cancellationToken: Ct);
+        var r = await rag.IngestAsync(Md("doc", Sections(2), new Dictionary<string, object?> { ["team"] = "b" }), cancellationToken: Ct);
+        Assert.Equal(IngestStatus.Updated, r.Status);
+        var chunks = store.GetDynamicCollection("test", RecordDefinitions.Chunks(StoreOptions()));
+        await foreach (var rec in chunks.GetAsync(new object[] { "doc:0", "doc:1" }, new RecordRetrievalOptions { IncludeVectors = false }, Ct))
+            Assert.Equal("b", rec["meta_team"]);
+    }
+
+    [Fact]
+    public async Task Same_metadata_in_different_key_order_is_Unchanged()
+    {
+        var (rag, _, _, _, _) = Create(o => { o.Metadata.Add<string>("team"); o.Metadata.Add<long>("rev"); });
+        await rag.IngestAsync(Md("doc", Sections(2), new Dictionary<string, object?> { ["team"] = "a", ["rev"] = 1 }), cancellationToken: Ct);
+        var r = await rag.IngestAsync(Md("doc", Sections(2), new Dictionary<string, object?> { ["rev"] = 1L, ["team"] = "a" }), cancellationToken: Ct);
+        Assert.Equal(IngestStatus.Unchanged, r.Status);
     }
 
     [Fact]

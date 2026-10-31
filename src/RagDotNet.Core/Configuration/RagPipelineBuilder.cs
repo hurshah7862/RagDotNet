@@ -86,6 +86,7 @@ public sealed class RagPipelineBuilder
     /// <summary>Builds the pipeline. Repeated calls share one engine.</summary>
     /// <returns>The pipeline.</returns>
     /// <exception cref="InvalidOperationException">The embedding generator or vector store is missing.</exception>
+    /// <exception cref="NotSupportedException">External content storage is selected; it throws until a content store is configured.</exception>
     public IRagPipeline Build()
     {
         if (_embedder is null) throw new InvalidOperationException("No embedding generator configured. Call UseEmbeddingGenerator().");
