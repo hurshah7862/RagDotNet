@@ -1,4 +1,58 @@
-#nullable enable
+﻿#nullable enable
+abstract RagDotNet.Filtering.RagFilter.<Clone>$() -> RagDotNet.Filtering.RagFilter!
+const RagDotNet.Diagnostics.RagTelemetry.ActivitySourceName = "RagDotNet" -> string!
+const RagDotNet.Diagnostics.RagTelemetry.MeterName = "RagDotNet" -> string!
+override RagDotNet.Chunking.Chunk.Equals(object? obj) -> bool
+override RagDotNet.Chunking.Chunk.GetHashCode() -> int
+override RagDotNet.Chunking.Chunk.ToString() -> string!
+override RagDotNet.Chunking.ChunkingOptions.Equals(object? obj) -> bool
+override RagDotNet.Chunking.ChunkingOptions.GetHashCode() -> int
+override RagDotNet.Chunking.ChunkingOptions.ToString() -> string!
+override RagDotNet.Documents.DocumentBlock.Equals(object? obj) -> bool
+override RagDotNet.Documents.DocumentBlock.GetHashCode() -> int
+override RagDotNet.Documents.DocumentBlock.ToString() -> string!
+override RagDotNet.Documents.DocumentReadContext.Equals(object? obj) -> bool
+override RagDotNet.Documents.DocumentReadContext.GetHashCode() -> int
+override RagDotNet.Documents.DocumentReadContext.ToString() -> string!
+override RagDotNet.Documents.IngestWarning.Equals(object? obj) -> bool
+override RagDotNet.Documents.IngestWarning.GetHashCode() -> int
+override RagDotNet.Documents.IngestWarning.ToString() -> string!
+override RagDotNet.Documents.ParsedDocument.Equals(object? obj) -> bool
+override RagDotNet.Documents.ParsedDocument.GetHashCode() -> int
+override RagDotNet.Documents.ParsedDocument.ToString() -> string!
+override RagDotNet.Filtering.RagFilter.AndFilter.<Clone>$() -> RagDotNet.Filtering.RagFilter.AndFilter!
+override RagDotNet.Filtering.RagFilter.AndFilter.Equals(object? obj) -> bool
+override RagDotNet.Filtering.RagFilter.AndFilter.GetHashCode() -> int
+override RagDotNet.Filtering.RagFilter.AndFilter.ToString() -> string!
+override RagDotNet.Filtering.RagFilter.ContainsAnyFilter.<Clone>$() -> RagDotNet.Filtering.RagFilter.ContainsAnyFilter!
+override RagDotNet.Filtering.RagFilter.ContainsAnyFilter.Equals(object? obj) -> bool
+override RagDotNet.Filtering.RagFilter.ContainsAnyFilter.GetHashCode() -> int
+override RagDotNet.Filtering.RagFilter.ContainsAnyFilter.ToString() -> string!
+override RagDotNet.Filtering.RagFilter.ContainsFilter.<Clone>$() -> RagDotNet.Filtering.RagFilter.ContainsFilter!
+override RagDotNet.Filtering.RagFilter.ContainsFilter.Equals(object? obj) -> bool
+override RagDotNet.Filtering.RagFilter.ContainsFilter.GetHashCode() -> int
+override RagDotNet.Filtering.RagFilter.ContainsFilter.ToString() -> string!
+override RagDotNet.Filtering.RagFilter.EqFilter.<Clone>$() -> RagDotNet.Filtering.RagFilter.EqFilter!
+override RagDotNet.Filtering.RagFilter.EqFilter.Equals(object? obj) -> bool
+override RagDotNet.Filtering.RagFilter.EqFilter.GetHashCode() -> int
+override RagDotNet.Filtering.RagFilter.EqFilter.ToString() -> string!
+override RagDotNet.Filtering.RagFilter.Equals(object? obj) -> bool
+override RagDotNet.Filtering.RagFilter.GetHashCode() -> int
+override RagDotNet.Filtering.RagFilter.InFilter.<Clone>$() -> RagDotNet.Filtering.RagFilter.InFilter!
+override RagDotNet.Filtering.RagFilter.InFilter.Equals(object? obj) -> bool
+override RagDotNet.Filtering.RagFilter.InFilter.GetHashCode() -> int
+override RagDotNet.Filtering.RagFilter.InFilter.ToString() -> string!
+override RagDotNet.Filtering.RagFilter.OrFilter.<Clone>$() -> RagDotNet.Filtering.RagFilter.OrFilter!
+override RagDotNet.Filtering.RagFilter.OrFilter.Equals(object? obj) -> bool
+override RagDotNet.Filtering.RagFilter.OrFilter.GetHashCode() -> int
+override RagDotNet.Filtering.RagFilter.OrFilter.ToString() -> string!
+override RagDotNet.Filtering.RagFilter.ToString() -> string!
+override sealed RagDotNet.Filtering.RagFilter.AndFilter.Equals(RagDotNet.Filtering.RagFilter? other) -> bool
+override sealed RagDotNet.Filtering.RagFilter.ContainsAnyFilter.Equals(RagDotNet.Filtering.RagFilter? other) -> bool
+override sealed RagDotNet.Filtering.RagFilter.ContainsFilter.Equals(RagDotNet.Filtering.RagFilter? other) -> bool
+override sealed RagDotNet.Filtering.RagFilter.EqFilter.Equals(RagDotNet.Filtering.RagFilter? other) -> bool
+override sealed RagDotNet.Filtering.RagFilter.InFilter.Equals(RagDotNet.Filtering.RagFilter? other) -> bool
+override sealed RagDotNet.Filtering.RagFilter.OrFilter.Equals(RagDotNet.Filtering.RagFilter? other) -> bool
 RagDotNet.Chunking.Chunk
 RagDotNet.Chunking.Chunk.<Clone>$() -> RagDotNet.Chunking.Chunk!
 RagDotNet.Chunking.Chunk.Chunk(int Index, string! Text, System.Collections.Generic.IReadOnlyList<string!>! HeadingPath, int? PageStart, int? PageEnd, int TokenCount) -> void
@@ -35,6 +89,43 @@ RagDotNet.Chunking.StructureAwareChunker
 RagDotNet.Chunking.StructureAwareChunker.ChunkAsync(RagDotNet.Documents.ParsedDocument! document, RagDotNet.Chunking.ChunkingOptions! options, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<RagDotNet.Chunking.Chunk!>!>!
 RagDotNet.Chunking.StructureAwareChunker.Strategy.get -> RagDotNet.Chunking.ChunkingStrategy
 RagDotNet.Chunking.StructureAwareChunker.StructureAwareChunker(Microsoft.ML.Tokenizers.Tokenizer! tokenizer) -> void
+RagDotNet.Configuration.RagOptions
+RagDotNet.Configuration.RagOptions.Chunking.get -> RagDotNet.Chunking.ChunkingOptions!
+RagDotNet.Configuration.RagOptions.Chunking.set -> void
+RagDotNet.Configuration.RagOptions.ChunkingByContentType.get -> System.Collections.Generic.IDictionary<string!, RagDotNet.Chunking.ChunkingOptions!>!
+RagDotNet.Configuration.RagOptions.ChunkingByContentType.set -> void
+RagDotNet.Configuration.RagOptions.CollectionName.get -> string!
+RagDotNet.Configuration.RagOptions.CollectionName.set -> void
+RagDotNet.Configuration.RagOptions.ContentStorage.get -> RagDotNet.Content.ContentStorageMode
+RagDotNet.Configuration.RagOptions.ContentStorage.set -> void
+RagDotNet.Configuration.RagOptions.DistanceFunction.get -> string!
+RagDotNet.Configuration.RagOptions.DistanceFunction.set -> void
+RagDotNet.Configuration.RagOptions.EmbeddingBatchSize.get -> int
+RagDotNet.Configuration.RagOptions.EmbeddingBatchSize.set -> void
+RagDotNet.Configuration.RagOptions.EmbeddingDimensions.get -> int
+RagDotNet.Configuration.RagOptions.EmbeddingDimensions.set -> void
+RagDotNet.Configuration.RagOptions.EmbeddingModelId.get -> string?
+RagDotNet.Configuration.RagOptions.EmbeddingModelId.set -> void
+RagDotNet.Configuration.RagOptions.EnableSensitiveData.get -> bool
+RagDotNet.Configuration.RagOptions.EnableSensitiveData.set -> void
+RagDotNet.Configuration.RagOptions.IngestParallelism.get -> int
+RagDotNet.Configuration.RagOptions.IngestParallelism.set -> void
+RagDotNet.Configuration.RagOptions.KeyType.get -> RagDotNet.Storage.RagKeyType
+RagDotNet.Configuration.RagOptions.KeyType.set -> void
+RagDotNet.Configuration.RagOptions.MaxContextTokens.get -> int
+RagDotNet.Configuration.RagOptions.MaxContextTokens.set -> void
+RagDotNet.Configuration.RagOptions.Metadata.get -> RagDotNet.Filtering.MetadataSchema!
+RagDotNet.Configuration.RagOptions.Metadata.set -> void
+RagDotNet.Configuration.RagOptions.PartitionKeys.get -> System.Collections.Generic.IList<string!>!
+RagDotNet.Configuration.RagOptions.PartitionKeys.set -> void
+RagDotNet.Configuration.RagOptions.Prompt.get -> RagDotNet.Generation.IRagPromptBuilder?
+RagDotNet.Configuration.RagOptions.Prompt.set -> void
+RagDotNet.Configuration.RagOptions.RagOptions() -> void
+RagDotNet.Configuration.RagOptions.Tokenizer.get -> Microsoft.ML.Tokenizers.Tokenizer?
+RagDotNet.Configuration.RagOptions.Tokenizer.set -> void
+RagDotNet.Content.ContentStorageMode
+RagDotNet.Content.ContentStorageMode.External = 1 -> RagDotNet.Content.ContentStorageMode
+RagDotNet.Content.ContentStorageMode.VectorStore = 0 -> RagDotNet.Content.ContentStorageMode
 RagDotNet.Diagnostics.RagTelemetry
 RagDotNet.Documents.BlockKind
 RagDotNet.Documents.BlockKind.Code = 4 -> RagDotNet.Documents.BlockKind
@@ -154,6 +245,7 @@ RagDotNet.Filtering.RagFilter.OrFilter.Filters.get -> System.Collections.Generic
 RagDotNet.Filtering.RagFilter.OrFilter.Filters.init -> void
 RagDotNet.Filtering.RagFilter.OrFilter.OrFilter(System.Collections.Generic.IReadOnlyList<RagDotNet.Filtering.RagFilter!>! Filters) -> void
 RagDotNet.Filtering.RagFilter.RagFilter(RagDotNet.Filtering.RagFilter! original) -> void
+RagDotNet.Generation.IRagPromptBuilder
 RagDotNet.Readers.MarkdownReader
 RagDotNet.Readers.MarkdownReader.CanRead(string? contentType, string! fileName) -> bool
 RagDotNet.Readers.MarkdownReader.MarkdownReader() -> void
@@ -162,60 +254,10 @@ RagDotNet.Readers.PlainTextReader
 RagDotNet.Readers.PlainTextReader.CanRead(string? contentType, string! fileName) -> bool
 RagDotNet.Readers.PlainTextReader.PlainTextReader() -> void
 RagDotNet.Readers.PlainTextReader.ReadAsync(System.IO.Stream! stream, RagDotNet.Documents.DocumentReadContext! context, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<RagDotNet.Documents.ParsedDocument!>!
-abstract RagDotNet.Filtering.RagFilter.<Clone>$() -> RagDotNet.Filtering.RagFilter!
-const RagDotNet.Diagnostics.RagTelemetry.ActivitySourceName = "RagDotNet" -> string!
-const RagDotNet.Diagnostics.RagTelemetry.MeterName = "RagDotNet" -> string!
-override RagDotNet.Chunking.Chunk.Equals(object? obj) -> bool
-override RagDotNet.Chunking.Chunk.GetHashCode() -> int
-override RagDotNet.Chunking.Chunk.ToString() -> string!
-override RagDotNet.Chunking.ChunkingOptions.Equals(object? obj) -> bool
-override RagDotNet.Chunking.ChunkingOptions.GetHashCode() -> int
-override RagDotNet.Chunking.ChunkingOptions.ToString() -> string!
-override RagDotNet.Documents.DocumentBlock.Equals(object? obj) -> bool
-override RagDotNet.Documents.DocumentBlock.GetHashCode() -> int
-override RagDotNet.Documents.DocumentBlock.ToString() -> string!
-override RagDotNet.Documents.DocumentReadContext.Equals(object? obj) -> bool
-override RagDotNet.Documents.DocumentReadContext.GetHashCode() -> int
-override RagDotNet.Documents.DocumentReadContext.ToString() -> string!
-override RagDotNet.Documents.IngestWarning.Equals(object? obj) -> bool
-override RagDotNet.Documents.IngestWarning.GetHashCode() -> int
-override RagDotNet.Documents.IngestWarning.ToString() -> string!
-override RagDotNet.Documents.ParsedDocument.Equals(object? obj) -> bool
-override RagDotNet.Documents.ParsedDocument.GetHashCode() -> int
-override RagDotNet.Documents.ParsedDocument.ToString() -> string!
-override RagDotNet.Filtering.RagFilter.AndFilter.<Clone>$() -> RagDotNet.Filtering.RagFilter.AndFilter!
-override RagDotNet.Filtering.RagFilter.AndFilter.Equals(object? obj) -> bool
-override RagDotNet.Filtering.RagFilter.AndFilter.GetHashCode() -> int
-override RagDotNet.Filtering.RagFilter.AndFilter.ToString() -> string!
-override RagDotNet.Filtering.RagFilter.ContainsAnyFilter.<Clone>$() -> RagDotNet.Filtering.RagFilter.ContainsAnyFilter!
-override RagDotNet.Filtering.RagFilter.ContainsAnyFilter.Equals(object? obj) -> bool
-override RagDotNet.Filtering.RagFilter.ContainsAnyFilter.GetHashCode() -> int
-override RagDotNet.Filtering.RagFilter.ContainsAnyFilter.ToString() -> string!
-override RagDotNet.Filtering.RagFilter.ContainsFilter.<Clone>$() -> RagDotNet.Filtering.RagFilter.ContainsFilter!
-override RagDotNet.Filtering.RagFilter.ContainsFilter.Equals(object? obj) -> bool
-override RagDotNet.Filtering.RagFilter.ContainsFilter.GetHashCode() -> int
-override RagDotNet.Filtering.RagFilter.ContainsFilter.ToString() -> string!
-override RagDotNet.Filtering.RagFilter.EqFilter.<Clone>$() -> RagDotNet.Filtering.RagFilter.EqFilter!
-override RagDotNet.Filtering.RagFilter.EqFilter.Equals(object? obj) -> bool
-override RagDotNet.Filtering.RagFilter.EqFilter.GetHashCode() -> int
-override RagDotNet.Filtering.RagFilter.EqFilter.ToString() -> string!
-override RagDotNet.Filtering.RagFilter.Equals(object? obj) -> bool
-override RagDotNet.Filtering.RagFilter.GetHashCode() -> int
-override RagDotNet.Filtering.RagFilter.InFilter.<Clone>$() -> RagDotNet.Filtering.RagFilter.InFilter!
-override RagDotNet.Filtering.RagFilter.InFilter.Equals(object? obj) -> bool
-override RagDotNet.Filtering.RagFilter.InFilter.GetHashCode() -> int
-override RagDotNet.Filtering.RagFilter.InFilter.ToString() -> string!
-override RagDotNet.Filtering.RagFilter.OrFilter.<Clone>$() -> RagDotNet.Filtering.RagFilter.OrFilter!
-override RagDotNet.Filtering.RagFilter.OrFilter.Equals(object? obj) -> bool
-override RagDotNet.Filtering.RagFilter.OrFilter.GetHashCode() -> int
-override RagDotNet.Filtering.RagFilter.OrFilter.ToString() -> string!
-override RagDotNet.Filtering.RagFilter.ToString() -> string!
-override sealed RagDotNet.Filtering.RagFilter.AndFilter.Equals(RagDotNet.Filtering.RagFilter? other) -> bool
-override sealed RagDotNet.Filtering.RagFilter.ContainsAnyFilter.Equals(RagDotNet.Filtering.RagFilter? other) -> bool
-override sealed RagDotNet.Filtering.RagFilter.ContainsFilter.Equals(RagDotNet.Filtering.RagFilter? other) -> bool
-override sealed RagDotNet.Filtering.RagFilter.EqFilter.Equals(RagDotNet.Filtering.RagFilter? other) -> bool
-override sealed RagDotNet.Filtering.RagFilter.InFilter.Equals(RagDotNet.Filtering.RagFilter? other) -> bool
-override sealed RagDotNet.Filtering.RagFilter.OrFilter.Equals(RagDotNet.Filtering.RagFilter? other) -> bool
+RagDotNet.Storage.ChunkKeys
+RagDotNet.Storage.RagKeyType
+RagDotNet.Storage.RagKeyType.Guid = 1 -> RagDotNet.Storage.RagKeyType
+RagDotNet.Storage.RagKeyType.String = 0 -> RagDotNet.Storage.RagKeyType
 static RagDotNet.Chunking.Chunk.operator !=(RagDotNet.Chunking.Chunk? left, RagDotNet.Chunking.Chunk? right) -> bool
 static RagDotNet.Chunking.Chunk.operator ==(RagDotNet.Chunking.Chunk? left, RagDotNet.Chunking.Chunk? right) -> bool
 static RagDotNet.Chunking.ChunkingOptions.operator !=(RagDotNet.Chunking.ChunkingOptions? left, RagDotNet.Chunking.ChunkingOptions? right) -> bool
@@ -244,13 +286,17 @@ static RagDotNet.Filtering.RagFilter.EqFilter.operator ==(RagDotNet.Filtering.Ra
 static RagDotNet.Filtering.RagFilter.In(string! field, System.Collections.Generic.IEnumerable<object!>! values) -> RagDotNet.Filtering.RagFilter!
 static RagDotNet.Filtering.RagFilter.InFilter.operator !=(RagDotNet.Filtering.RagFilter.InFilter? left, RagDotNet.Filtering.RagFilter.InFilter? right) -> bool
 static RagDotNet.Filtering.RagFilter.InFilter.operator ==(RagDotNet.Filtering.RagFilter.InFilter? left, RagDotNet.Filtering.RagFilter.InFilter? right) -> bool
+static RagDotNet.Filtering.RagFilter.operator !=(RagDotNet.Filtering.RagFilter? left, RagDotNet.Filtering.RagFilter? right) -> bool
+static RagDotNet.Filtering.RagFilter.operator &(RagDotNet.Filtering.RagFilter! left, RagDotNet.Filtering.RagFilter! right) -> RagDotNet.Filtering.RagFilter!
+static RagDotNet.Filtering.RagFilter.operator |(RagDotNet.Filtering.RagFilter! left, RagDotNet.Filtering.RagFilter! right) -> RagDotNet.Filtering.RagFilter!
+static RagDotNet.Filtering.RagFilter.operator ==(RagDotNet.Filtering.RagFilter? left, RagDotNet.Filtering.RagFilter? right) -> bool
 static RagDotNet.Filtering.RagFilter.Or(params RagDotNet.Filtering.RagFilter![]! filters) -> RagDotNet.Filtering.RagFilter!
 static RagDotNet.Filtering.RagFilter.OrFilter.operator !=(RagDotNet.Filtering.RagFilter.OrFilter? left, RagDotNet.Filtering.RagFilter.OrFilter? right) -> bool
 static RagDotNet.Filtering.RagFilter.OrFilter.operator ==(RagDotNet.Filtering.RagFilter.OrFilter? left, RagDotNet.Filtering.RagFilter.OrFilter? right) -> bool
-static RagDotNet.Filtering.RagFilter.operator !=(RagDotNet.Filtering.RagFilter? left, RagDotNet.Filtering.RagFilter? right) -> bool
-static RagDotNet.Filtering.RagFilter.operator &(RagDotNet.Filtering.RagFilter! left, RagDotNet.Filtering.RagFilter! right) -> RagDotNet.Filtering.RagFilter!
-static RagDotNet.Filtering.RagFilter.operator ==(RagDotNet.Filtering.RagFilter? left, RagDotNet.Filtering.RagFilter? right) -> bool
-static RagDotNet.Filtering.RagFilter.operator |(RagDotNet.Filtering.RagFilter! left, RagDotNet.Filtering.RagFilter! right) -> RagDotNet.Filtering.RagFilter!
+static RagDotNet.Storage.ChunkKeys.Chunk(string! partitionKey, string! documentId, int chunkIndex) -> string!
+static RagDotNet.Storage.ChunkKeys.Document(string! partitionKey, string! documentId) -> string!
+static RagDotNet.Storage.ChunkKeys.Partition(System.Collections.Generic.IReadOnlyDictionary<string!, string!>? partition) -> string!
+static RagDotNet.Storage.ChunkKeys.ToGuid(string! key) -> System.Guid
 virtual RagDotNet.Filtering.RagFilter.EqualityContract.get -> System.Type!
 virtual RagDotNet.Filtering.RagFilter.Equals(RagDotNet.Filtering.RagFilter? other) -> bool
 virtual RagDotNet.Filtering.RagFilter.PrintMembers(System.Text.StringBuilder! builder) -> bool

@@ -34,10 +34,13 @@ internal static class RagFilterTranslator
         return Expression.Lambda<Func<Dictionary<string, object?>, bool>>(Build(simplified, schema, p), p);
     }
 
+    /// <summary>Prefix of storage property names for declared metadata fields.</summary>
+    public const string MetaPrefix = "meta_";
+
     public static string StorageName(string field, MetadataSchema schema)
     {
         if (field == "DocumentId") return "DocumentId";
-        if (field is not null && schema.Fields.ContainsKey(field)) return "meta_" + field;
+        if (field is not null && schema.Fields.ContainsKey(field)) return MetaPrefix + field;
         throw new ArgumentException($"Unknown filter field '{field}'. Declare it with RagOptions.Metadata.Add<T>().");
     }
 
