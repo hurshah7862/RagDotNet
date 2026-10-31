@@ -1,0 +1,60 @@
+using System.Linq.Expressions;
+using System.Runtime.CompilerServices;
+using Microsoft.Extensions.VectorData;
+using RagDotNet.Configuration;
+
+namespace RagDotNet.Storage;
+
+internal sealed class ManifestStore(VectorStore store, RagOptions options)
+{
+    private const int PageSize = 100;
+
+    private readonly VectorStoreCollection<object, Dictionary<string, object?>> _collection =
+        store.GetDynamicCollection(options.CollectionName + "_documents", RecordDefinitions.Manifests(options));
+
+    public Task EnsureExistsAsync(CancellationToken ct) => _collection.EnsureCollectionExistsAsync(ct);
+
+    public async Task<ManifestRecord?> GetAsync(string partitionKey, string documentId, CancellationToken ct)
+    {
+        var key = ConvertKey(ChunkKeys.Document(partitionKey, documentId));
+        var record = await _collection.GetAsync(key, new RecordRetrievalOptions { IncludeVectors = false }, ct).ConfigureAwait(false);
+        return record is null ? null : ManifestRecord.FromDynamic(record, options.PartitionKeys);
+    }
+
+    public Task UpsertAsync(ManifestRecord m, CancellationToken ct) =>
+        _collection.UpsertAsync(m.ToDynamic(options.KeyType), ct);
+
+    public Task DeleteAsync(string partitionKey, string documentId, CancellationToken ct) =>
+        _collection.DeleteAsync(ConvertKey(ChunkKeys.Document(partitionKey, documentId)), ct);
+
+    public async IAsyncEnumerable<ManifestRecord> ListAsync(
+        Expression<Func<Dictionary<string, object?>, bool>> filter, [EnumeratorCancellation] CancellationToken ct)
+    {
+        var skip = 0;
+        while (true)
+        {
+            var page = new List<Dictionary<string, object?>>();
+            var query = new FilteredRecordRetrievalOptions<Dictionary<string, object?>>
+            {
+                Skip = skip,
+                IncludeVectors = false,
+                OrderBy = o => o.Ascending(r => r["Key"]!),
+            };
+            await foreach (var r in _collection.GetAsync(filter, PageSize, query, ct).ConfigureAwait(false))
+                page.Add(r);
+            foreach (var r in page)
+                yield return ManifestRecord.FromDynamic(r, options.PartitionKeys);
+            if (page.Count < PageSize) yield break;
+            skip += PageSize;
+        }
+    }
+
+    public async Task<ManifestRecord?> FindFirstAsync(Expression<Func<Dictionary<string, object?>, bool>> filter, CancellationToken ct)
+    {
+        await foreach (var r in _collection.GetAsync(filter, 1, new FilteredRecordRetrievalOptions<Dictionary<string, object?>> { IncludeVectors = false }, ct).ConfigureAwait(false))
+            return ManifestRecord.FromDynamic(r, options.PartitionKeys);
+        return null;
+    }
+
+    private object ConvertKey(string key) => options.KeyType == RagKeyType.Guid ? ChunkKeys.ToGuid(key) : key;
+}

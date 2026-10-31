@@ -1,0 +1,179 @@
+using Microsoft.Extensions.Logging;
+using RagDotNet.Access;
+using RagDotNet.Chunking;
+using RagDotNet.Documents;
+using RagDotNet.Filtering;
+using RagDotNet.Pipeline;
+using RagDotNet.Storage;
+
+namespace RagDotNet.Ingestion;
+
+internal sealed class Ingestor(RagEngine engine)
+{
+    public async Task<IngestResult> IngestAsync(
+        DocumentSource s, ResolvedScope scope, IngestOptions? o, IProgress<IngestProgress>? p, CancellationToken ct)
+    {
+        var options = engine.Options;
+        var metadata = BuildMetadata(s, scope);
+        await engine.EnsureReadyAsync(ct).ConfigureAwait(false);
+
+        p?.Report(new IngestProgress(s.DocumentId, IngestStage.Reading, 0, 0));
+        var bytes = await ReadBytesAsync(s, ct).ConfigureAwait(false);
+        var contentHash = Hashing.ContentHash(bytes);
+        var chunking = o?.Chunking ?? EffectiveChunkingFor(s.ContentType);
+        var chunkingHash = Hashing.ChunkingHash(chunking, engine.TokenizerName);
+
+        var existing = await engine.Manifests.GetAsync(scope.PartitionKey, s.DocumentId, ct).ConfigureAwait(false);
+        if (existing is not null && existing.ContentHash == contentHash && existing.ChunkingHash == chunkingHash)
+        {
+            p?.Report(new IngestProgress(s.DocumentId, IngestStage.Completed, existing.ChunkCount, existing.ChunkCount));
+            return new IngestResult(s.DocumentId, IngestStatus.Unchanged, existing.ChunkCount, []);
+        }
+
+        var reader = engine.Readers.Select(s.ContentType, s.FileName);
+        ParsedDocument parsed;
+        using (var ms = new MemoryStream(bytes, writable: false))
+            parsed = await reader.ReadAsync(ms, new DocumentReadContext(s.FileName, s.ContentType), ct).ConfigureAwait(false);
+
+        p?.Report(new IngestProgress(s.DocumentId, IngestStage.Chunking, 0, 0));
+        var chunks = await engine.Chunker.ChunkAsync(parsed, chunking, ct).ConfigureAwait(false);
+        var total = chunks.Count;
+
+        var warnings = new List<IngestWarning>(parsed.Warnings);
+        if (total == 0)
+            warnings.Add(new IngestWarning("EmptyDocument", $"Document '{s.DocumentId}' produced no text to index."));
+
+        var vectors = await EmbedAsync(s.DocumentId, chunks, p, ct).ConfigureAwait(false);
+
+        p?.Report(new IngestProgress(s.DocumentId, IngestStage.Storing, total, total));
+        var sourceName = s.Title ?? s.FileName;
+        var records = new List<Dictionary<string, object?>>(total);
+        for (var i = 0; i < total; i++)
+        {
+            var c = chunks[i];
+            var key = ChunkKeys.Chunk(scope.PartitionKey, s.DocumentId, c.Index);
+            var r = new Dictionary<string, object?>
+            {
+                ["Key"] = options.KeyType == RagKeyType.Guid ? ChunkKeys.ToGuid(key) : key,
+                ["DocumentId"] = s.DocumentId,
+                ["ChunkIndex"] = c.Index,
+                ["Text"] = c.Text,
+                ["ContentHash"] = contentHash,
+                ["ChunkingHash"] = chunkingHash,
+                ["EmbeddingModelId"] = engine.EmbeddingModelId,
+                ["PageStart"] = c.PageStart,
+                ["PageEnd"] = c.PageEnd,
+                ["HeadingPath"] = string.Join(" > ", c.HeadingPath),
+                ["SourceName"] = sourceName,
+            };
+            foreach (var (name, value) in metadata) r[RecordDefinitions.MetaName(name)] = value;
+            r["Embedding"] = vectors[i];
+            records.Add(r);
+        }
+
+        // Order matters for crash recovery: chunks, then manifest, then stale chunks.
+        await engine.Chunks.UpsertAsync(records, ct).ConfigureAwait(false);
+        await engine.Manifests.UpsertAsync(new ManifestRecord(
+            ChunkKeys.Document(scope.PartitionKey, s.DocumentId), s.DocumentId, scope.PartitionKey,
+            new Dictionary<string, string>(scope.Partition), contentHash, chunkingHash, engine.EmbeddingModelId,
+            total, sourceName, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), options.ContentStorage), ct).ConfigureAwait(false);
+
+        if (existing is not null && existing.ChunkCount > total)
+        {
+            await engine.Chunks.DeleteAsync(
+                Enumerable.Range(total, existing.ChunkCount - total).Select(i => ChunkKeys.Chunk(scope.PartitionKey, s.DocumentId, i)),
+                ct).ConfigureAwait(false);
+        }
+
+        p?.Report(new IngestProgress(s.DocumentId, IngestStage.Completed, total, total));
+        engine.Logger.LogDebug("Ingested document {DocumentId}: {ChunkCount} chunks", s.DocumentId, total);
+        return new IngestResult(s.DocumentId, existing is null ? IngestStatus.Created : IngestStatus.Updated, total, warnings);
+    }
+
+    public async Task<bool> DeleteAsync(string documentId, ResolvedScope scope, CancellationToken ct)
+    {
+        await engine.EnsureReadyAsync(ct).ConfigureAwait(false);
+        var existing = await engine.Manifests.GetAsync(scope.PartitionKey, documentId, ct).ConfigureAwait(false);
+        if (existing is null) return false;
+
+        // Chunks first, so a crash leaves the manifest and a retry finishes the job.
+        await engine.Chunks.DeleteAsync(
+            Enumerable.Range(0, existing.ChunkCount).Select(i => ChunkKeys.Chunk(scope.PartitionKey, documentId, i)),
+            ct).ConfigureAwait(false);
+        await engine.Manifests.DeleteAsync(scope.PartitionKey, documentId, ct).ConfigureAwait(false);
+        return true;
+    }
+
+    private ChunkingOptions EffectiveChunkingFor(string? contentType)
+    {
+        if (contentType is not null
+            && engine.Options.ChunkingByContentType.TryGetValue(contentType.Split(';')[0].Trim(), out var byType))
+            return byType;
+        return engine.Options.Chunking;
+    }
+
+    private static async Task<byte[]> ReadBytesAsync(DocumentSource s, CancellationToken ct)
+    {
+        if (s.FilePath is not null) return await File.ReadAllBytesAsync(s.FilePath, ct).ConfigureAwait(false);
+        using var ms = new MemoryStream();
+        await s.Stream!.CopyToAsync(ms, ct).ConfigureAwait(false);
+        return ms.ToArray();
+    }
+
+    private async Task<List<ReadOnlyMemory<float>>> EmbedAsync(
+        string documentId, IReadOnlyList<Chunk> chunks, IProgress<IngestProgress>? p, CancellationToken ct)
+    {
+        var batchSize = Math.Max(1, engine.Options.EmbeddingBatchSize);
+        var dims = engine.Options.EmbeddingDimensions;
+        var vectors = new List<ReadOnlyMemory<float>>(chunks.Count);
+        p?.Report(new IngestProgress(documentId, IngestStage.Embedding, 0, chunks.Count));
+        for (var start = 0; start < chunks.Count; start += batchSize)
+        {
+            var batch = chunks.Skip(start).Take(batchSize).Select(c => EmbeddingText.For(c.HeadingPath, c.Text)).ToList();
+            var result = await engine.Embedder.GenerateAsync(batch, cancellationToken: ct).ConfigureAwait(false);
+            if (result.Count != batch.Count)
+                throw new InvalidOperationException($"The embedding generator returned {result.Count} embeddings for {batch.Count} inputs.");
+            foreach (var e in result)
+            {
+                if (e.Vector.Length != dims)
+                    throw new InvalidOperationException($"The embedding generator returned a {e.Vector.Length}-dimensional vector but {dims} dimensions are configured.");
+                vectors.Add(e.Vector);
+            }
+
+            p?.Report(new IngestProgress(documentId, IngestStage.Embedding, vectors.Count, chunks.Count));
+        }
+
+        return vectors;
+    }
+
+    /// <summary>Validates caller metadata and returns a value for every declared field (null when omitted), with partition values stamped.</summary>
+    private Dictionary<string, object?> BuildMetadata(DocumentSource s, ResolvedScope scope)
+    {
+        var schema = engine.Options.Metadata;
+        foreach (var (key, value) in s.Metadata)
+        {
+            if (!schema.Fields.TryGetValue(key, out var type))
+                throw new ArgumentException($"Metadata key '{key}' is not declared. Declare it with RagOptions.Metadata.Add<T>().", nameof(s));
+            if (value is not null && !type.IsInstanceOfType(value) && !(type == typeof(long) && value is int))
+                throw new ArgumentException($"Metadata key '{key}' must be of type {type.Name} but was {value.GetType().Name}.", nameof(s));
+        }
+
+        var result = new Dictionary<string, object?>(StringComparer.Ordinal);
+        foreach (var (name, type) in schema.Fields)
+        {
+            s.Metadata.TryGetValue(name, out var v);
+            result[name] = type == typeof(long) && v is int i ? (long)i : v;
+        }
+
+        foreach (var (k, v) in scope.Partition)
+        {
+            if (!schema.Fields.TryGetValue(k, out var type) || type != typeof(string))
+                throw new InvalidOperationException($"Partition key '{k}' must be declared as a string metadata field.");
+            if (s.Metadata.TryGetValue(k, out var supplied) && supplied is not null && !Equals(supplied, v))
+                throw new ArgumentException($"Metadata key '{k}' conflicts with the partition value.", nameof(s));
+            result[k] = v;
+        }
+
+        return result;
+    }
+}
