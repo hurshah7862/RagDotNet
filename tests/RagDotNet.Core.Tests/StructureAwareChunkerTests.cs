@@ -89,6 +89,32 @@ public class StructureAwareChunkerTests
     }
 
     [Fact]
+    public async Task Code_overlap_carries_whole_lines_even_when_lines_end_in_sentence_punctuation()
+    {
+        var lines = Enumerable.Range(0, 120).Select(i => $"// Step {i} done. Next!").ToArray();
+        var options = new ChunkingOptions { MaxTokens = 64, OverlapRatio = 0.25 };
+        var chunks = await Run(options, new DocumentBlock(BlockKind.Code, string.Join("\n", lines), ["H"]));
+
+        Assert.True(chunks.Count > 2);
+        var set = lines.ToHashSet();
+        Assert.All(chunks, c => Assert.All(c.Text.Split('\n'), l => Assert.Contains(l, set)));
+        Assert.All(chunks, c => Assert.True(Counter.Count(c.Text) <= 64));
+        // Overlap really happened: the next chunk starts with trailing whole lines of the previous chunk.
+        Assert.Contains(chunks[1].Text.Split('\n').First(), chunks[0].Text.Split('\n'));    }
+
+    [Fact]
+    public async Task Table_split_across_chunks_keeps_whole_rows()
+    {
+        var rows = Enumerable.Range(0, 120).Select(i => $"| e.g. item {i}. | value {i}! |").ToArray();
+        var options = new ChunkingOptions { MaxTokens = 64, OverlapRatio = 0.25 };
+        var chunks = await Run(options, new DocumentBlock(BlockKind.Table, string.Join("\n", rows), ["H"]));
+
+        Assert.True(chunks.Count > 2);
+        var set = rows.ToHashSet();
+        Assert.All(chunks, c => Assert.All(c.Text.Split('\n'), l => Assert.Contains(l, set)));
+    }
+
+    [Fact]
     public async Task Splits_code_block_with_crlf_line_endings()
     {
         var lines = Enumerable.Range(0, 200).Select(i => $"var value{i} = Compute({i}) + {i * 7};").ToArray();
@@ -106,7 +132,9 @@ public class StructureAwareChunkerTests
             var chunks = await Run(null, Para(text, ["H"]));
             Assert.True(chunks.Count > 1);
             Assert.All(chunks, c => Assert.True(c.TokenCount <= 512));
-            Assert.All(chunks, c => Assert.Equal(c.TokenCount, Counter.Count(c.Text)));
+            // Re-measured independently of the stored TokenCount.
+            Assert.All(chunks, c => Assert.True(Counter.Count(c.Text) <= 512));
+            Assert.All(chunks, c => Assert.Equal(Counter.Count(c.Text), c.TokenCount));
         }
     }
 

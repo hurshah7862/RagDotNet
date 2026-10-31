@@ -61,7 +61,7 @@ public sealed partial class StructureAwareChunker(Tokenizer tokenizer) : IChunke
     {
         if (_counter.Count(block.Text) <= maxTokens)
         {
-            pieces.Add(new Piece(block.Text, "\n\n", block.PageNumber));
+            pieces.Add(new Piece(block.Text, "\n\n", block.PageNumber, block.Kind is BlockKind.Code or BlockKind.Table));
             return;
         }
 
@@ -78,14 +78,14 @@ public sealed partial class StructureAwareChunker(Tokenizer tokenizer) : IChunke
                 continue;
             if (_counter.Count(unit) <= maxTokens)
             {
-                pieces.Add(new Piece(unit, first ? "\n\n" : separator, block.PageNumber));
+                pieces.Add(new Piece(unit, first ? "\n\n" : separator, block.PageNumber, byLines));
             }
             else
             {
                 var firstPart = true;
                 foreach (var part in _counter.SplitByTokens(unit, maxTokens))
                 {
-                    pieces.Add(new Piece(part, first ? "\n\n" : firstPart ? separator : string.Empty, block.PageNumber));
+                    pieces.Add(new Piece(part, first ? "\n\n" : firstPart ? separator : string.Empty, block.PageNumber, byLines));
                     first = false;
                     firstPart = false;
                 }
@@ -101,6 +101,8 @@ public sealed partial class StructureAwareChunker(Tokenizer tokenizer) : IChunke
         var prefix = string.Empty;
         var currentText = string.Empty;
         string? previousText = null;
+        var previousByLines = false;
+        var joiner = " ";
 
         void Flush()
         {
@@ -108,14 +110,23 @@ public sealed partial class StructureAwareChunker(Tokenizer tokenizer) : IChunke
                 return;
             var text = currentText;
             var pages = current.Where(p => p.Page.HasValue).Select(p => p.Page!.Value).ToList();
-            chunks.Add(new Chunk(
-                chunks.Count,
-                text,
-                headingPath,
-                pages.Count > 0 ? pages.Min() : null,
-                pages.Count > 0 ? pages.Max() : null,
-                _counter.Count(text)));
-            previousText = text;
+            var count = _counter.Count(text);
+
+            // Guard: standalone re-tokenization can differ from the prefix counts used while splitting.
+            var texts = count <= maxTokens ? [text] : _counter.SplitByTokens(text, maxTokens).ToList();
+            foreach (var part in texts)
+            {
+                chunks.Add(new Chunk(
+                    chunks.Count,
+                    part,
+                    headingPath,
+                    pages.Count > 0 ? pages.Min() : null,
+                    pages.Count > 0 ? pages.Max() : null,
+                    texts.Count == 1 ? count : _counter.Count(part)));
+            }
+
+            previousText = texts[^1];
+            previousByLines = current[^1].ByLines;
             current.Clear();
             currentText = string.Empty;
         }
@@ -129,7 +140,7 @@ public sealed partial class StructureAwareChunker(Tokenizer tokenizer) : IChunke
                 if (i > 0)
                     sb.Append(all[i].Separator);
                 else if (pre.Length > 0)
-                    sb.Append(' ');
+                    sb.Append(joiner);
                 sb.Append(all[i].Text);
             }
 
@@ -152,7 +163,8 @@ public sealed partial class StructureAwareChunker(Tokenizer tokenizer) : IChunke
             }
 
             // Start a new chunk, with overlap from the previous one when the piece still fits.
-            prefix = previousText is null ? string.Empty : OverlapSuffix(previousText, overlapBudget);
+            joiner = previousByLines ? "\n" : " ";
+            prefix = previousText is null ? string.Empty : OverlapSuffix(previousText, overlapBudget, previousByLines);
             var text = Compose(prefix, [], piece);
             if (prefix.Length > 0 && _counter.Count(text) > maxTokens)
             {
@@ -167,14 +179,23 @@ public sealed partial class StructureAwareChunker(Tokenizer tokenizer) : IChunke
         Flush();
     }
 
-    private string OverlapSuffix(string previous, int budget)
+    private string OverlapSuffix(string previous, int budget, bool byLines)
     {
         if (budget <= 0)
             return string.Empty;
 
         var starts = new List<int> { 0 };
-        foreach (Match m in SentenceSplit().Matches(previous))
-            starts.Add(m.Index + m.Length);
+        if (byLines)
+        {
+            for (var i = 0; i < previous.Length; i++)
+                if (previous[i] == '\n' && i + 1 < previous.Length && previous[i + 1] != '\n')
+                    starts.Add(i + 1);
+        }
+        else
+        {
+            foreach (Match m in SentenceSplit().Matches(previous))
+                starts.Add(m.Index + m.Length);
+        }
 
         var best = string.Empty;
         for (var i = starts.Count - 1; i >= 1; i--)
@@ -193,5 +214,5 @@ public sealed partial class StructureAwareChunker(Tokenizer tokenizer) : IChunke
     [GeneratedRegex(@"(?<=[.!?。！？])\s+")]
     private static partial Regex SentenceSplit();
 
-    private sealed record Piece(string Text, string Separator, int? Page);
+    private sealed record Piece(string Text, string Separator, int? Page, bool ByLines);
 }
