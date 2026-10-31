@@ -26,8 +26,8 @@ public class StorageSchemaTests
         var p2 = ChunkKeys.Partition(new Dictionary<string, string> { ["a"] = "x|y", ["b"] = "2" });
         Assert.Equal("a=x%7Cy&b=2", p1);
         Assert.Equal(p1, p2);
-        Assert.Equal("a=x%7Cy&b=2|doc:1:0", ChunkKeys.Chunk(p1, "doc:1", 0));
-        Assert.Equal("a=x%7Cy&b=2|doc:1", ChunkKeys.Document(p1, "doc:1"));
+        Assert.Equal("a=x%7Cy&b=2|doc%3A1:0", ChunkKeys.Chunk(p1, "doc:1", 0));
+        Assert.Equal("a=x%7Cy&b=2|doc%3A1", ChunkKeys.Document(p1, "doc:1"));
         Assert.Equal("", ChunkKeys.Partition(null));
         Assert.Equal("", ChunkKeys.Partition(new Dictionary<string, string>()));
     }
@@ -88,7 +88,7 @@ public class StorageSchemaTests
     [Fact]
     public void Manifest_round_trips_through_dynamic_record()
     {
-        var m = new ManifestRecord("tenant=a|doc:1","doc:1", "tenant=a", new Dictionary<string, string> { ["tenant"] = "a" },
+        var m = new ManifestRecord("tenant=a|doc%3A1", "doc:1", "tenant=a", new Dictionary<string, string> { ["tenant"] = "a" },
             "ch", "kh", "model", 7, "file.md", 1234567890123L, ContentStorageMode.External);
         foreach (var kt in new[] { RagKeyType.String, RagKeyType.Guid })
         {
@@ -108,6 +108,56 @@ public class StorageSchemaTests
             Assert.Equal(m.UpdatedAtUnixMs, back.UpdatedAtUnixMs);
             Assert.Equal(m.ContentStorage, back.ContentStorage);
         }
+    }
+
+    [Fact]
+    public void Keys_are_injective_across_partitions()
+    {
+        Assert.NotEqual(ChunkKeys.Document("a=1", "x"), ChunkKeys.Document("", "a=1|x"));
+        Assert.NotEqual(ChunkKeys.Chunk("a=1", "x", 0), ChunkKeys.Chunk("", "a=1|x", 0));
+        Assert.NotEqual(ChunkKeys.Document("a=1", "d"), ChunkKeys.Document("a=2", "d"));
+        var ids = new[] { "a|b", "a=b", "a:b", "a%7Cb", "a b" };
+        Assert.Equal(ids.Length, ids.Select(i => ChunkKeys.Chunk("", i, 1)).Distinct().Count());
+    }
+
+    [Fact]
+    public void Key_inputs_are_validated()
+    {
+        var lone = "x\ud800y";
+        Assert.Throws<ArgumentException>(() => ChunkKeys.Partition(new Dictionary<string, string> { ["t"] = lone }));
+        Assert.Throws<ArgumentException>(() => ChunkKeys.Partition(new Dictionary<string, string> { [lone] = "v" }));
+        Assert.Throws<ArgumentException>(() => ChunkKeys.Partition(new Dictionary<string, string> { ["t"] = null! }));
+        Assert.Throws<ArgumentException>(() => ChunkKeys.Partition(new Dictionary<string, string> { [""] = "v" }));
+        Assert.Throws<ArgumentException>(() => ChunkKeys.Document("", lone));
+        Assert.Throws<ArgumentException>(() => ChunkKeys.Document("", ""));
+        Assert.Throws<ArgumentException>(() => ChunkKeys.Document("", null!));
+        Assert.Throws<ArgumentOutOfRangeException>(() => ChunkKeys.Chunk("", "d", -1));
+        Assert.Equal("t=%F0%9F%98%80", ChunkKeys.Partition(new Dictionary<string, string> { ["t"] = "😀" }));
+    }
+
+    [Fact]
+    public void Manifest_rejects_missing_partition_value_and_mismatched_partition()
+    {
+        var m = new ManifestRecord("tenant=a|d", "d", "tenant=a", new Dictionary<string, string> { ["tenant"] = "a" },
+            "c", "k", "m", 1, "s", 1, ContentStorageMode.VectorStore);
+        var d = m.ToDynamic(RagKeyType.String);
+        d.Remove("meta_tenant");
+        Assert.Throws<InvalidOperationException>(() => ManifestRecord.FromDynamic(d, ["tenant"]));
+        d["meta_tenant"] = 5;
+        Assert.Throws<InvalidOperationException>(() => ManifestRecord.FromDynamic(d, ["tenant"]));
+        d["meta_tenant"] = "b";
+        Assert.Throws<InvalidOperationException>(() => ManifestRecord.FromDynamic(d, ["tenant"]));
+        var bad = m with { Partition = "tenant=zzz" };
+        Assert.Throws<InvalidOperationException>(() => bad.ToDynamic(RagKeyType.String));
+    }
+
+    [Fact]
+    public void Cosine_distance_is_accepted()
+    {
+        var o = Options();
+        o.DistanceFunction = DistanceFunction.CosineDistance;
+        var emb = Assert.IsType<VectorStoreVectorProperty>(RecordDefinitions.Chunks(o).Properties.Single(p => p.Name == "Embedding"));
+        Assert.Equal(DistanceFunction.CosineDistance, emb.DistanceFunction);
     }
 
     [Fact]

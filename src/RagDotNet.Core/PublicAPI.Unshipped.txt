@@ -1,4 +1,4 @@
-﻿#nullable enable
+#nullable enable
 abstract RagDotNet.Filtering.RagFilter.<Clone>$() -> RagDotNet.Filtering.RagFilter!
 const RagDotNet.Diagnostics.RagTelemetry.ActivitySourceName = "RagDotNet" -> string!
 const RagDotNet.Diagnostics.RagTelemetry.MeterName = "RagDotNet" -> string!

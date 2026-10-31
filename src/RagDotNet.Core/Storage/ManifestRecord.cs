@@ -17,6 +17,7 @@ internal sealed record ManifestRecord(
 {
     public Dictionary<string, object?> ToDynamic(RagKeyType keyType)
     {
+        Validate();
         var d = new Dictionary<string, object?>
         {
             ["Key"] = keyType == RagKeyType.Guid ? ChunkKeys.ToGuid(Key) : Key,
@@ -35,18 +36,30 @@ internal sealed record ManifestRecord(
         return d;
     }
 
+    private void Validate()
+    {
+        if (Partition != ChunkKeys.Partition(PartitionValues))
+            throw new InvalidOperationException($"Manifest partition '{Partition}' does not match its partition values.");
+    }
+
     // The key is rebuilt from partition and document id, since Guid keys are not reversible.
     public static ManifestRecord FromDynamic(Dictionary<string, object?> r, IEnumerable<string> partitionKeys)
     {
         var values = new Dictionary<string, string>();
         foreach (var k in partitionKeys)
-            if (r.TryGetValue(RecordDefinitions.MetaName(k), out var v) && v is string s) values[k] = s;
+        {
+            if (!r.TryGetValue(RecordDefinitions.MetaName(k), out var v) || v is not string s)
+                throw new InvalidOperationException($"Manifest record is missing the string partition value '{k}'.");
+            values[k] = s;
+        }
         var documentId = (string)r["DocumentId"]!;
         var partition = (string)r["Partition"]!;
-        return new ManifestRecord(
+        var record = new ManifestRecord(
             ChunkKeys.Document(partition, documentId), documentId, partition, values,
             (string)r["ContentHash"]!, (string)r["ChunkingHash"]!, (string)r["EmbeddingModelId"]!,
             Convert.ToInt32(r["ChunkCount"]), (string)r["SourceName"]!, Convert.ToInt64(r["UpdatedAtUnixMs"]),
             Enum.Parse<ContentStorageMode>((string)r["ContentStorage"]!));
+        record.Validate();
+        return record;
     }
 }
