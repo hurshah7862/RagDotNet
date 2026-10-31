@@ -9,6 +9,12 @@ public sealed class FailingVectorStore(VectorStore inner) : VectorStore
     /// <summary>1-based: the Nth upcoming manifest upsert fails (0 = none).</summary>
     public int FailManifestUpsertIn { get; set; }
 
+    /// <summary>When set, chunk searches return results whose Score is null.</summary>
+    public bool NullSearchScores { get; set; }
+
+    /// <summary>When set, chunk searches return records with this column removed.</summary>
+    public string? DropColumnOnSearch { get; set; }
+
     /// <summary>When set, the next chunk delete fails.</summary>
     public bool FailNextChunkDelete { get; set; }
 
@@ -76,8 +82,20 @@ public sealed class FailingVectorStore(VectorStore inner) : VectorStore
         public override Task UpsertAsync(IEnumerable<Dictionary<string, object?>> records, CancellationToken cancellationToken = default) =>
             c.UpsertAsync(records, cancellationToken);
 
-        public override IAsyncEnumerable<VectorSearchResult<Dictionary<string, object?>>> SearchAsync<TInput>(TInput searchValue, int top, VectorSearchOptions<Dictionary<string, object?>>? options = null, CancellationToken cancellationToken = default) =>
-            c.SearchAsync(searchValue, top, options, cancellationToken);
+        public override async IAsyncEnumerable<VectorSearchResult<Dictionary<string, object?>>> SearchAsync<TInput>(TInput searchValue, int top, VectorSearchOptions<Dictionary<string, object?>>? options = null, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await foreach (var hit in c.SearchAsync(searchValue, top, options, cancellationToken).ConfigureAwait(false))
+            {
+                var record = hit.Record;
+                if (owner.DropColumnOnSearch is { } col)
+                {
+                    record = new Dictionary<string, object?>(record);
+                    record.Remove(col);
+                }
+
+                yield return new VectorSearchResult<Dictionary<string, object?>>(record, owner.NullSearchScores ? null : hit.Score);
+            }
+        }
 
         public override object? GetService(Type serviceType, object? serviceKey = null) => c.GetService(serviceType, serviceKey);
     }

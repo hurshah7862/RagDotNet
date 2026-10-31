@@ -15,7 +15,7 @@ internal sealed class Retriever(RagEngine engine)
         ArgumentException.ThrowIfNullOrWhiteSpace(query);
         ArgumentNullException.ThrowIfNull(o);
         if (o.TopK is < 1 or > 100)
-            throw new ArgumentOutOfRangeException(nameof(o), o.TopK, "TopK must be between 1 and 100.");
+            throw new ArgumentOutOfRangeException("TopK", o.TopK, "TopK must be between 1 and 100.");
 
         var options = engine.Options;
         RagFilter? effective = (scope.Filter, o.Filter) switch
@@ -38,13 +38,19 @@ internal sealed class Retriever(RagEngine engine)
         var results = new List<RetrievedChunk>();
         await foreach (var hit in engine.Chunks.SearchAsync(vector, o.TopK, filter, ct).ConfigureAwait(false))
         {
-            var score = hit.Score ?? 0;
+            var score = hit.Score ?? throw new InvalidOperationException("The vector store returned a result without a score.");
             if (options.DistanceFunction == DistanceFunction.CosineDistance) score = 1 - score;
             if (o.MinScore is { } min && score < min) continue;
             results.Add(Map(hit.Record, score));
         }
 
-        results.Sort((a, b) => b.Score.CompareTo(a.Score));
+        results.Sort((a, b) =>
+        {
+            var c = b.Score.CompareTo(a.Score);
+            if (c != 0) return c;
+            c = string.CompareOrdinal(a.DocumentId, b.DocumentId);
+            return c != 0 ? c : a.ChunkIndex.CompareTo(b.ChunkIndex);
+        });
         return results;
     }
 
@@ -56,7 +62,11 @@ internal sealed class Retriever(RagEngine engine)
 
         var partition = new Dictionary<string, string>();
         foreach (var k in options.PartitionKeys)
-            partition[k] = (string?)r[RagFilterTranslator.MetaPrefix + k] ?? "";
+        {
+            if (!r.TryGetValue(RagFilterTranslator.MetaPrefix + k, out var pv) || pv is not string ps0)
+                throw new InvalidOperationException($"Retrieved record is missing partition value '{k}'; cannot build its chunk key.");
+            partition[k] = ps0;
+        }
         var key = ChunkKeys.Chunk(ChunkKeys.Partition(partition), documentId, chunkIndex);
 
         var metadata = new Dictionary<string, object?>();

@@ -7,6 +7,8 @@ namespace RagDotNet.Pipeline;
 
 internal sealed class RagPipeline(RagEngine engine) : IRagPipeline
 {
+    internal RagEngine Engine => engine;
+
     public Task<IngestResult> IngestAsync(DocumentSource source, IngestOptions? options = null, IProgress<IngestProgress>? progress = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(source);
