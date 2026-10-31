@@ -1,7 +1,9 @@
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text;
 using Microsoft.Extensions.AI;
 using RagDotNet.Access;
+using RagDotNet.Diagnostics;
 using RagDotNet.Documents;
 using RagDotNet.Generation;
 using RagDotNet.Ingestion;
@@ -62,8 +64,17 @@ internal sealed class RagPipeline(RagEngine engine, IAccessScope? accessScope = 
         var (prompt, context, retrieved) = await PrepareAsync(question, options, cancellationToken).ConfigureAwait(false);
         if (prompt is null) return NotAnswered(retrieved);
 
-        var response = await chat.GetResponseAsync(prompt, options?.ChatOptions, cancellationToken).ConfigureAwait(false);
-        return BuildAnswer(response.Text, response.Usage, context, retrieved);
+        using var activity = StartGenerate(context);
+        try
+        {
+            var response = await chat.GetResponseAsync(prompt, options?.ChatOptions, cancellationToken).ConfigureAwait(false);
+            return Finish(activity, BuildAnswer(response.Text, response.Usage, context, retrieved));
+        }
+        catch (Exception ex)
+        {
+            RagTelemetry.Fail(activity, ex);
+            throw;
+        }
     }
 
     public IAsyncEnumerable<RagAnswerUpdate> AskStreamingAsync(string question, AskOptions? options = null, CancellationToken cancellationToken = default)
@@ -81,10 +92,26 @@ internal sealed class RagPipeline(RagEngine engine, IAccessScope? accessScope = 
             yield break;
         }
 
+        // The span covers the whole stream and ends on completion, failure or disposal by the consumer.
+        using var activity = StartGenerate(context);
         var text = new StringBuilder();
         UsageDetails? usage = null;
-        await foreach (var update in chat.GetStreamingResponseAsync(prompt, options?.ChatOptions, cancellationToken).ConfigureAwait(false))
+        await using var enumerator = chat.GetStreamingResponseAsync(prompt, options?.ChatOptions, cancellationToken)
+            .GetAsyncEnumerator(cancellationToken);
+        while (true)
         {
+            ChatResponseUpdate update;
+            try
+            {
+                if (!await enumerator.MoveNextAsync().ConfigureAwait(false)) break;
+                update = enumerator.Current;
+            }
+            catch (Exception ex)
+            {
+                RagTelemetry.Fail(activity, ex);
+                throw;
+            }
+
             foreach (var content in update.Contents)
                 if (content is UsageContent u) usage = u.Details;
 
@@ -94,7 +121,8 @@ internal sealed class RagPipeline(RagEngine engine, IAccessScope? accessScope = 
             yield return new RagAnswerUpdate(delta, null);
         }
 
-        yield return new RagAnswerUpdate(null, BuildAnswer(text.ToString(), usage, context, retrieved));
+        var answer = Finish(activity, BuildAnswer(text.ToString(), usage, context, retrieved));
+        yield return new RagAnswerUpdate(null, answer);
     }
 
     private IChatClient RequireChat(string question, AskOptions? options)
@@ -117,8 +145,32 @@ internal sealed class RagPipeline(RagEngine engine, IAccessScope? accessScope = 
         return (builder.Build(new RagPromptContext(question, context)), context, retrieved);
     }
 
-    private static RagAnswer NotAnswered(IReadOnlyList<RetrievedChunk> retrieved) =>
-        new(DefaultRagPromptBuilder.NotAnsweredText, [], retrieved, null, false);
+    private static RagAnswer NotAnswered(IReadOnlyList<RetrievedChunk> retrieved)
+    {
+        RagTelemetry.AskUnanswered.Add(1);
+        return new(DefaultRagPromptBuilder.NotAnsweredText, [], retrieved, null, false);
+    }
+
+    private Activity? StartGenerate(IReadOnlyList<RetrievedChunk> context)
+    {
+        var activity = RagTelemetry.ActivitySource.StartActivity("rag.generate");
+        activity?.SetTag("gen_ai.operation.name", "chat");
+        RagTelemetry.GenerateContextTokens.Record(context.Sum(c => engine.Tokens.Count(c.Text)));
+        return activity;
+    }
+
+    private RagAnswer Finish(Activity? activity, RagAnswer answer)
+    {
+        if (activity is not null)
+        {
+            if (answer.Usage?.InputTokenCount is { } input) activity.SetTag("gen_ai.usage.input_tokens", input);
+            if (answer.Usage?.OutputTokenCount is { } output) activity.SetTag("gen_ai.usage.output_tokens", output);
+            if (engine.Options.EnableSensitiveData) activity.SetTag("rag.answer", answer.Text);
+        }
+
+        if (!answer.IsAnswered) RagTelemetry.AskUnanswered.Add(1);
+        return answer;
+    }
 
     private RagAnswer BuildAnswer(string text, UsageDetails? usage, IReadOnlyList<RetrievedChunk> context, IReadOnlyList<RetrievedChunk> retrieved)
     {

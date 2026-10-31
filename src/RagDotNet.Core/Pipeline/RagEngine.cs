@@ -4,6 +4,7 @@ using RagDotNet.Access;
 using RagDotNet.Chunking;
 using RagDotNet.Configuration;
 using RagDotNet.Content;
+using RagDotNet.Diagnostics;
 using RagDotNet.Embedding;
 using RagDotNet.Ingestion;
 using RagDotNet.Readers;
@@ -79,10 +80,14 @@ internal sealed class RagEngine
 
     private long _missingContent;
 
-    /// <summary>Chunks dropped because the content store had no text. Task 13 exposes it as rag.content.missing.</summary>
+    /// <summary>Chunks dropped because the content store had no text. Also reported as the rag.content.missing counter.</summary>
     public long MissingContentCount => Interlocked.Read(ref _missingContent);
 
-    public void RecordMissingContent(int count) => Interlocked.Add(ref _missingContent, count);
+    public void RecordMissingContent(int count)
+    {
+        Interlocked.Add(ref _missingContent, count);
+        RagTelemetry.ContentMissing.Add(count);
+    }
 
     public string EmbeddingModelId { get; }
 

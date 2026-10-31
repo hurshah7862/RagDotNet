@@ -2,7 +2,9 @@ using System.Globalization;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.VectorData;
 using Microsoft.Extensions.Logging;
+using System.Diagnostics;
 using RagDotNet.Access;
+using RagDotNet.Diagnostics;
 using RagDotNet.Filtering;
 using RagDotNet.Pipeline;
 using RagDotNet.Storage;
@@ -12,6 +14,30 @@ namespace RagDotNet.Retrieval;
 internal sealed class Retriever(RagEngine engine)
 {
     public async Task<IReadOnlyList<RetrievedChunk>> RetrieveAsync(string query, ResolvedScope scope, RetrievalOptions o, CancellationToken ct)
+    {
+        using var activity = RagTelemetry.ActivitySource.StartActivity("rag.retrieve");
+        var started = Stopwatch.GetTimestamp();
+        activity?.SetTag("rag.top_k", o?.TopK);
+        if (activity is not null && engine.Options.EnableSensitiveData) activity.SetTag("rag.query", query);
+        try
+        {
+            var results = await RetrieveCoreAsync(query, scope, o!, ct).ConfigureAwait(false);
+            activity?.SetTag("rag.result.count", results.Count);
+            RagTelemetry.RetrieveCount.Record(results.Count);
+            return results;
+        }
+        catch (Exception ex)
+        {
+            RagTelemetry.Fail(activity, ex);
+            throw;
+        }
+        finally
+        {
+            RagTelemetry.RetrieveDuration.Record(Stopwatch.GetElapsedTime(started).TotalSeconds);
+        }
+    }
+
+    private async Task<IReadOnlyList<RetrievedChunk>> RetrieveCoreAsync(string query, ResolvedScope scope, RetrievalOptions o, CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query);
         ArgumentNullException.ThrowIfNull(o);

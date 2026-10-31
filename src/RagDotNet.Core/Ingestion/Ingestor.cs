@@ -1,8 +1,10 @@
+using System.Diagnostics;
 using System.Linq.Expressions;
 using Microsoft.Extensions.Logging;
 using RagDotNet.Access;
 using RagDotNet.Chunking;
 using RagDotNet.Content;
+using RagDotNet.Diagnostics;
 using RagDotNet.Documents;
 using RagDotNet.Filtering;
 using RagDotNet.Pipeline;
@@ -13,6 +15,31 @@ namespace RagDotNet.Ingestion;
 internal sealed class Ingestor(RagEngine engine)
 {
     public async Task<IngestResult> IngestAsync(
+        DocumentSource s, ResolvedScope scope, IngestOptions? o, IProgress<IngestProgress>? p, CancellationToken ct)
+    {
+        using var activity = RagTelemetry.ActivitySource.StartActivity("rag.ingest");
+        activity?.SetTag("rag.document.id", s.DocumentId);
+        var started = Stopwatch.GetTimestamp();
+        try
+        {
+            var result = await IngestCoreAsync(s, scope, o, p, ct).ConfigureAwait(false);
+            activity?.SetTag("rag.ingest.status", result.Status.ToString());
+            activity?.SetTag("rag.chunk.count", result.ChunkCount);
+            RagTelemetry.IngestChunks.Record(result.ChunkCount);
+            return result;
+        }
+        catch (Exception ex)
+        {
+            RagTelemetry.Fail(activity, ex);
+            throw;
+        }
+        finally
+        {
+            RagTelemetry.IngestDuration.Record(Stopwatch.GetElapsedTime(started).TotalSeconds);
+        }
+    }
+
+    private async Task<IngestResult> IngestCoreAsync(
         DocumentSource s, ResolvedScope scope, IngestOptions? o, IProgress<IngestProgress>? p, CancellationToken ct)
     {
         var options = engine.Options;
@@ -43,20 +70,30 @@ internal sealed class Ingestor(RagEngine engine)
             return new IngestResult(s.DocumentId, IngestStatus.Unchanged, existing.ChunkCount, []);
         }
 
-        var reader = engine.Readers.Select(s.ContentType, s.FileName);
+        var ingestActivity = Activity.Current;
         ParsedDocument parsed;
-        using (var ms = new MemoryStream(bytes, writable: false))
+        using (RagTelemetry.ActivitySource.StartActivity("rag.read"))
+        {
+            var reader = engine.Readers.Select(s.ContentType, s.FileName);
+            using var ms = new MemoryStream(bytes, writable: false);
             parsed = await reader.ReadAsync(ms, new DocumentReadContext(s.FileName, s.ContentType), ct).ConfigureAwait(false);
+        }
 
         p?.Report(new IngestProgress(s.DocumentId, IngestStage.Chunking, 0, 0));
-        var chunks = await engine.Chunker.ChunkAsync(parsed, chunking, ct).ConfigureAwait(false);
+        IReadOnlyList<Chunk> chunks;
+        using (RagTelemetry.ActivitySource.StartActivity("rag.chunk"))
+            chunks = await engine.Chunker.ChunkAsync(parsed, chunking, ct).ConfigureAwait(false);
         var total = chunks.Count;
 
         var warnings = new List<IngestWarning>(parsed.Warnings);
         if (total == 0)
             warnings.Add(new IngestWarning("EmptyDocument", $"Document '{s.DocumentId}' produced no text to index."));
 
-        var vectors = await EmbedAsync(s.DocumentId, chunks, p, ct).ConfigureAwait(false);
+        List<ReadOnlyMemory<float>> vectors;
+        using (RagTelemetry.ActivitySource.StartActivity("rag.embed"))
+            vectors = await EmbedAsync(s.DocumentId, chunks, p, ct).ConfigureAwait(false);
+
+        using var storeActivity = RagTelemetry.ActivitySource.StartActivity("rag.store");
 
         p?.Report(new IngestProgress(s.DocumentId, IngestStage.Storing, total, total));
         var sourceName = s.Title ?? s.FileName;
@@ -101,7 +138,8 @@ internal sealed class Ingestor(RagEngine engine)
             var contents = chunks.Select(c => new ChunkContent(
                 ChunkKeys.Chunk(scope.PartitionKey, s.DocumentId, c.Index), s.DocumentId, partitionValues, c.Index,
                 c.Text, c.PageStart, c.PageEnd, c.HeadingPath)).ToList();
-            await contentStore.UpsertAsync(contents, ct).ConfigureAwait(false);
+            using (RagTelemetry.ActivitySource.StartActivity("rag.content", ActivityKind.Internal, ingestActivity?.Context ?? default))
+                await contentStore.UpsertAsync(contents, ct).ConfigureAwait(false);
         }
 
         await engine.Chunks.UpsertAsync(records, ct).ConfigureAwait(false);
