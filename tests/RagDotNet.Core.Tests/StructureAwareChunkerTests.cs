@@ -196,4 +196,30 @@ public class StructureAwareChunkerTests
         Assert.Equal("A > B\n\nbody", EmbeddingText.For(["A", "B"], "body"));
         Assert.Equal("body", EmbeddingText.For([], "body"));
     }
+
+    /// <summary>The longest line of the form "v{tag} = a + a + ..." that is at most <paramref name="tokens"/> tokens.</summary>
+    private static string CodeLineOf(int tokens, string tag)
+    {
+        var line = $"v{tag} = a";
+        while (Counter.Count(line + " + a") <= tokens)
+            line += " + a";
+        return line;
+    }
+
+    [Theory]
+    [InlineData(0.0)]
+    [InlineData(0.25)]
+    public async Task Oversized_code_with_blank_lines_between_full_lines_emits_no_blank_chunks(double overlap)
+    {
+        var options = new ChunkingOptions { MaxTokens = 32, OverlapRatio = overlap };
+        var code = string.Join("\n", CodeLineOf(32, "1"), "", CodeLineOf(32, "2"), "", "  ", CodeLineOf(32, "3"), "");
+        var chunks = await Run(options, new DocumentBlock(BlockKind.Code, code, ["H"]));
+
+        Assert.NotEmpty(chunks);
+        Assert.All(chunks, c => Assert.False(string.IsNullOrWhiteSpace(c.Text), $"chunk {c.Index} is blank"));
+        Assert.Equal(Enumerable.Range(0, chunks.Count), chunks.Select(c => c.Index));
+        Assert.All(chunks, c => Assert.True(Counter.Count(c.Text) <= 32));
+        foreach (var tag in new[] { "v1 ", "v2 ", "v3 " })
+            Assert.Contains(chunks, c => c.Text.Contains(tag, StringComparison.Ordinal));
+    }
 }

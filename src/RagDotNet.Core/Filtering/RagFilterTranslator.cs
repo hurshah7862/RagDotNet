@@ -134,26 +134,64 @@ internal static class RagFilterTranslator
         return Expression.Call(EnumerableContains, Field(field, typeof(string[]), schema, p), Expression.Constant(value, typeof(string)));
     }
 
+    /// <summary>Converts a filter value to the field's type without loss; anything inexact or ambiguous is rejected.</summary>
     private static object ConvertValue(object? value, Type type, string field)
     {
         if (value is null) throw new ArgumentException($"Filter value for '{field}' must not be null.");
-        try
+        if (type.IsInstanceOfType(value)) return value;
+
+        object? converted = null;
+        if (type == typeof(long))
         {
-            if (type.IsInstanceOfType(value)) return value;
-            if (type == typeof(DateTimeOffset))
+            converted = ToWholeInt64(value);
+        }
+        else if (type == typeof(int))
+        {
+            if (ToWholeInt64(value) is { } w && w >= int.MinValue && w <= int.MaxValue) converted = (int)w;
+        }
+        else if (type == typeof(DateTimeOffset))
+        {
+            converted = value switch
             {
-                return value switch
-                {
-                    DateTime dt => new DateTimeOffset(dt),
-                    string s => DateTimeOffset.Parse(s, CultureInfo.InvariantCulture),
-                    _ => throw new InvalidCastException(),
-                };
-            }
-            return Convert.ChangeType(value, type, CultureInfo.InvariantCulture);
+                DateTime { Kind: DateTimeKind.Utc or DateTimeKind.Local } dt => new DateTimeOffset(dt),
+                string s when HasExplicitOffset(s)
+                    && DateTimeOffset.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.None, out var d) => d,
+                _ => null,
+            };
         }
-        catch (Exception e) when (e is FormatException or InvalidCastException or OverflowException)
+
+        return converted ?? throw new ArgumentException(
+            $"Filter value of type {value.GetType().Name} for field '{field}' cannot be converted exactly to {type.Name}."
+            + (type == typeof(DateTimeOffset) ? " Use a DateTimeOffset, a UTC or local DateTime, or an ISO-8601 string with an explicit offset." : ""));
+    }
+
+    /// <summary>The value as a long when it is numeric, whole and in range; otherwise null.</summary>
+    private static long? ToWholeInt64(object value)
+    {
+        const double TwoPow63 = 9223372036854775808.0;
+        switch (value)
         {
-            throw new ArgumentException($"Cannot convert filter value '{value}' for field '{field}' to {type.Name}.", e);
+            case sbyte or byte or short or ushort or int or uint or long:
+                return Convert.ToInt64(value, CultureInfo.InvariantCulture);
+            case ulong u:
+                return u <= long.MaxValue ? (long)u : null;
+            case decimal m:
+                return decimal.Truncate(m) == m && m >= long.MinValue && m <= long.MaxValue ? (long)m : null;
+            case double or float:
+                var d = Convert.ToDouble(value, CultureInfo.InvariantCulture);
+                return Math.Truncate(d) == d && d >= -TwoPow63 && d < TwoPow63 ? (long)d : null; // NaN and infinities fail
+            default:
+                return null;
         }
+    }
+
+    /// <summary>True when an ISO-8601 date-time string ends in Z or a ±hh:mm offset.</summary>
+    private static bool HasExplicitOffset(string s)
+    {
+        var t = s.Trim();
+        var timeAt = t.IndexOf('T', StringComparison.OrdinalIgnoreCase);
+        if (timeAt < 0) return false;
+        if (t.EndsWith('Z') || t.EndsWith('z')) return true;
+        return t.LastIndexOfAny(['+', '-']) > timeAt;
     }
 }

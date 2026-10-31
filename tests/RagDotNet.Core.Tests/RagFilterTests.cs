@@ -45,6 +45,81 @@ public class RagFilterTests
         Assert.Throws<ArgumentException>(() => RagFilterTranslator.Translate(RagFilter.Eq("year", "x"), Schema(), out _));
     }
 
+    private static MetadataSchema TypedSchema() => new MetadataSchema()
+        .Add<int>("year").Add<long>("rev").Add<bool>("flag").Add<string>("tenant").Add<DateTimeOffset>("at");
+
+    private static void Accepts(string field, object value, object stored)
+    {
+        var expr = RagFilterTranslator.Translate(RagFilter.Eq(field, value), TypedSchema(), out _);
+        Assert.True(expr!.Compile()(new() { ["meta_" + field] = stored }));
+    }
+
+    private static void Rejects(string field, object value)
+    {
+        var ex = Assert.Throws<ArgumentException>(() => RagFilterTranslator.Translate(RagFilter.Eq(field, value), TypedSchema(), out _));
+        Assert.Contains($"'{field}'", ex.Message);
+        Assert.Contains(value.GetType().Name, ex.Message);
+    }
+
+    public static TheoryData<string, object, object> ExactConversions() => new()
+    {
+        { "year", 2024, 2024 },
+        { "year", 2024L, 2024 },
+        { "year", (short)7, 7 },
+        { "year", 2024.0, 2024 },
+        { "year", 2024.0f, 2024 },
+        { "year", 2024m, 2024 },
+        { "rev", 5, 5L },
+        { "rev", 5L, 5L },
+        { "rev", 5.0, 5L },
+        { "rev", 9_007_199_254_740_992m, 9_007_199_254_740_992L },
+        { "flag", true, true },
+        { "tenant", "a", "a" },
+        { "at", new DateTimeOffset(2024, 1, 2, 3, 4, 5, TimeSpan.FromHours(2)), new DateTimeOffset(2024, 1, 2, 3, 4, 5, TimeSpan.FromHours(2)) },
+        { "at", new DateTime(2024, 1, 2, 1, 4, 5, DateTimeKind.Utc), new DateTimeOffset(2024, 1, 2, 1, 4, 5, TimeSpan.Zero) },
+        { "at", "2024-01-02T03:04:05+02:00", new DateTimeOffset(2024, 1, 2, 3, 4, 5, TimeSpan.FromHours(2)) },
+        { "at", "2024-01-02T01:04:05Z", new DateTimeOffset(2024, 1, 2, 1, 4, 5, TimeSpan.Zero) },
+    };
+
+    [Theory]
+    [MemberData(nameof(ExactConversions))]
+    public void Filter_values_convert_exactly(string field, object value, object stored) => Accepts(field, value, stored);
+
+    [Fact]
+    public void Local_DateTime_filter_value_is_accepted()
+    {
+        var local = new DateTime(2024, 1, 2, 3, 4, 5, DateTimeKind.Local);
+        Accepts("at", local, new DateTimeOffset(local));
+    }
+
+    public static TheoryData<string, object> LossyConversions() => new()
+    {
+        { "year", 2024.7 },
+        { "year", 2024.5m },
+        { "year", 1.5f },
+        { "year", 3_000_000_000L },
+        { "year", 1e20 },
+        { "year", double.NaN },
+        { "year", "2024" },
+        { "year", true },
+        { "rev", 2.5 },
+        { "rev", 1e30 },
+        { "rev", "5" },
+        { "flag", 1 },
+        { "flag", "true" },
+        { "tenant", 5 },
+        { "tenant", true },
+        { "at", new DateTime(2024, 1, 2, 3, 4, 5, DateTimeKind.Unspecified) },
+        { "at", "2024-01-02T03:04:05" },
+        { "at", "2024-01-02" },
+        { "at", "not a date" },
+        { "at", 1_700_000_000L },
+    };
+
+    [Theory]
+    [MemberData(nameof(LossyConversions))]
+    public void Lossy_or_ambiguous_filter_values_are_rejected(string field, object value) => Rejects(field, value);
+
     [Fact]
     public void Empty_ContainsAny_matches_nothing()
     {
@@ -118,6 +193,14 @@ public class RagFilterTests
         Assert.Throws<ArgumentException>(() => new MetadataSchema().Add<string>("a").Add<int>("a"));
         var s = new MetadataSchema().Add<string>("a").Add<DateTimeOffset>("b").Add<bool>("c").Add<long>("d");
         Assert.Equal(4, s.Fields.Count);
+    }
+
+    [Fact]
+    public void Schema_rejects_reserved_DocumentId_name()
+    {
+        var ex = Assert.Throws<ArgumentException>(() => new MetadataSchema().Add<string>("DocumentId"));
+        Assert.Contains("DocumentId", ex.Message);
+        Assert.Contains("reserved", ex.Message);
     }
 
     [Fact]

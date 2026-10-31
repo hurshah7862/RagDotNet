@@ -269,6 +269,26 @@ public class ExternalContentTests
         Assert.Contains(logger.Collector.GetSnapshot(), r => r.Level == LogLevel.Warning && r.Message.Contains(blank));
     }
 
+    [Fact]
+    public async Task Retrieval_drops_chunk_when_content_store_returns_whitespace_text()
+    {
+        var store = new InMemoryVectorStore();
+        var content = new RecordingContentStore();
+        var logger = new FakeLogger();
+        var rag = NewBuilder(store, content).UseLoggerFactory(new FakeLoggerFactory(logger)).Build();
+        await rag.IngestAsync(Md("d", Sections(2)), cancellationToken: Ct);
+        var blank = ChunkKeys.Chunk("", "d", 0);
+        await content.UpsertAsync([new ChunkContent(blank, "d", new Dictionary<string, string>(), 0, "   ", null, null, [])], Ct);
+        var missingBefore = ((RagDotNet.Pipeline.RagPipeline)rag).Engine.MissingContentCount;
+
+        var hits = await rag.RetrieveAsync("Body text number 1", new RetrievalOptions { TopK = 5 }, Ct);
+
+        Assert.DoesNotContain(hits, h => h.ChunkKey == blank);
+        Assert.Single(hits);
+        Assert.Equal(missingBefore + 1, ((RagDotNet.Pipeline.RagPipeline)rag).Engine.MissingContentCount);
+        Assert.Contains(logger.Collector.GetSnapshot(), r => r.Level == LogLevel.Warning && r.Message.Contains(blank));
+    }
+
     private sealed class FixedScope(string tenant) : RagDotNet.Access.IAccessScope
     {
         public ValueTask<RagDotNet.Access.AccessScope> GetScopeAsync(CancellationToken cancellationToken) =>

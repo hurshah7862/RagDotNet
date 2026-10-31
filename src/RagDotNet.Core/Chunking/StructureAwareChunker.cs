@@ -106,14 +106,26 @@ public sealed partial class StructureAwareChunker(Tokenizer tokenizer) : IChunke
 
         void Flush()
         {
+            // A chunk never ends on blank lines; drop them (a chunk of nothing but blank lines is dropped whole).
+            var trimmed = false;
+            while (current.Count > 0 && string.IsNullOrWhiteSpace(current[^1].Text))
+            {
+                current.RemoveAt(current.Count - 1);
+                trimmed = true;
+            }
+
             if (current.Count == 0)
+            {
+                currentText = string.Empty;
                 return;
-            var text = currentText;
+            }
+
+            var text = trimmed ? Compose(prefix, current, null) : currentText;
             var pages = current.Where(p => p.Page.HasValue).Select(p => p.Page!.Value).ToList();
             var count = _counter.Count(text);
 
             // Guard: standalone re-tokenization can differ from the prefix counts used while splitting.
-            var texts = count <= maxTokens ? [text] : _counter.SplitByTokens(text, maxTokens).ToList();
+            var texts = count <= maxTokens ? [text] : _counter.SplitByTokens(text, maxTokens).Where(t => !string.IsNullOrWhiteSpace(t)).ToList();
             foreach (var part in texts)
             {
                 chunks.Add(new Chunk(
@@ -122,10 +134,11 @@ public sealed partial class StructureAwareChunker(Tokenizer tokenizer) : IChunke
                     headingPath,
                     pages.Count > 0 ? pages.Min() : null,
                     pages.Count > 0 ? pages.Max() : null,
-                    texts.Count == 1 ? count : _counter.Count(part)));
+                    ReferenceEquals(part, text) ? count : _counter.Count(part)));
             }
 
-            previousText = texts[^1];
+            if (texts.Count > 0)
+                previousText = texts[^1];
             previousByLines = current[^1].ByLines;
             current.Clear();
             currentText = string.Empty;
@@ -161,6 +174,10 @@ public sealed partial class StructureAwareChunker(Tokenizer tokenizer) : IChunke
 
                 Flush();
             }
+
+            // A chunk never starts on a blank line.
+            if (string.IsNullOrWhiteSpace(piece.Text))
+                continue;
 
             // Start a new chunk, with overlap from the previous one when the piece still fits.
             joiner = previousByLines ? "\n" : " ";

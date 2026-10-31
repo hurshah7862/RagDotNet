@@ -79,7 +79,7 @@ internal sealed class Retriever(RagEngine engine)
             var kept = new List<RetrievedChunk>(results.Count);
             foreach (var c in results)
             {
-                if (texts.TryGetValue(c.ChunkKey, out var text) && !string.IsNullOrEmpty(text))
+                if (texts.TryGetValue(c.ChunkKey, out var text) && !string.IsNullOrWhiteSpace(text))
                     kept.Add(c with { Text = text });
                 else
                 {
