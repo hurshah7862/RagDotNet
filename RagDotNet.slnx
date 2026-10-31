@@ -1,8 +1,12 @@
 <Solution>
+  <Folder Name="/samples/">
+    <Project Path="samples/RagDotNet.Samples.Console/RagDotNet.Samples.Console.csproj" />
+  </Folder>
   <Folder Name="/src/">
     <Project Path="src/RagDotNet.Core/RagDotNet.Core.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/RagDotNet.Core.Tests/RagDotNet.Core.Tests.csproj" />
+    <Project Path="tests/RagDotNet.IntegrationTests/RagDotNet.IntegrationTests.csproj" />
   </Folder>
 </Solution>
