@@ -1,4 +1,4 @@
-﻿#nullable enable
+#nullable enable
 RagDotNet.Access.AccessScope
 RagDotNet.Access.AccessScope.<Clone>$() -> RagDotNet.Access.AccessScope!
 RagDotNet.Access.AccessScope.AccessScope(System.Collections.Generic.IReadOnlyDictionary<string!, string!>! Partition, RagDotNet.Filtering.RagFilter? Filter = null) -> void

@@ -15,6 +15,9 @@ public sealed class FailingVectorStore(VectorStore inner) : VectorStore
     /// <summary>When set, chunk searches return records with this column removed.</summary>
     public string? DropColumnOnSearch { get; set; }
 
+    /// <summary>When set, the next batch chunk upsert fails.</summary>
+    public bool FailNextChunkUpsert { get; set; }
+
     /// <summary>When set, the next chunk delete fails.</summary>
     public bool FailNextChunkDelete { get; set; }
 
@@ -79,8 +82,16 @@ public sealed class FailingVectorStore(VectorStore inner) : VectorStore
             return c.UpsertAsync(record, cancellationToken);
         }
 
-        public override Task UpsertAsync(IEnumerable<Dictionary<string, object?>> records, CancellationToken cancellationToken = default) =>
-            c.UpsertAsync(records, cancellationToken);
+        public override Task UpsertAsync(IEnumerable<Dictionary<string, object?>> records, CancellationToken cancellationToken = default)
+        {
+            if (!isManifest && owner.FailNextChunkUpsert)
+            {
+                owner.FailNextChunkUpsert = false;
+                throw new IOException("Simulated crash during chunk upsert.");
+            }
+
+            return c.UpsertAsync(records, cancellationToken);
+        }
 
         public override async IAsyncEnumerable<VectorSearchResult<Dictionary<string, object?>>> SearchAsync<TInput>(TInput searchValue, int top, VectorSearchOptions<Dictionary<string, object?>>? options = null, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
         {

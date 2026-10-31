@@ -125,7 +125,7 @@ internal sealed class RagAdmin(RagEngine engine) : IRagAdmin
         var text = external is not null
             ? (external.TryGetValue(ChunkKeys.Chunk(m.Partition, m.DocumentId, index), out var e) ? e : null)
             : r.TryGetValue("Text", out var t) ? t as string : null;
-        return text ?? throw new InvalidOperationException(
+        return !string.IsNullOrWhiteSpace(text) ? text : throw new InvalidOperationException(
             $"Chunk {index} of document '{m.DocumentId}' has no stored text and cannot be re-embedded.");
     }
 

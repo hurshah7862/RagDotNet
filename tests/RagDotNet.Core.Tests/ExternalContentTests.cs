@@ -23,8 +23,11 @@ public class ExternalContentTests
         public List<string> Deleted { get; } = [];
         public int Count => _inner.Count;
 
+        public List<ChunkContent> Upserted { get; } = [];
+
         public async Task UpsertAsync(IReadOnlyList<ChunkContent> chunks, CancellationToken ct)
         {
+            Upserted.AddRange(chunks);
             if (OnUpsert is not null) await OnUpsert(chunks.Select(c => c.ChunkKey).ToList());
             await _inner.UpsertAsync(chunks, ct);
         }
@@ -232,6 +235,106 @@ public class ExternalContentTests
             .UseVectorStore(new InMemoryVectorStore(), "test", 64)
             .Configure(o => o.ContentStorage = ContentStorageMode.External);
         Assert.Throws<NotSupportedException>(() => b.Build());
+    }
+
+    [Fact]
+    public async Task Reindex_with_blank_stored_text_throws_naming_document_and_chunk()
+    {
+        var store = new InMemoryVectorStore();
+        var content = new RecordingContentStore();
+        await NewBuilder(store, content).Build().IngestAsync(Md("doc-y", "alpha beta"), cancellationToken: Ct);
+        await content.UpsertAsync([new ChunkContent(ChunkKeys.Chunk("", "doc-y", 0), "doc-y", new Dictionary<string, string>(), 0, "  ", null, null, [])], Ct);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            NewBuilder(store, content, model: "other").BuildAdmin().ReindexAsync(cancellationToken: Ct));
+        Assert.Contains("doc-y", ex.Message);
+        Assert.Contains("Chunk 0", ex.Message);
+    }
+
+    [Fact]
+    public async Task Retrieval_drops_chunk_when_content_store_returns_empty_text()
+    {
+        var store = new InMemoryVectorStore();
+        var content = new RecordingContentStore();
+        var logger = new FakeLogger();
+        var rag = NewBuilder(store, content).UseLoggerFactory(new FakeLoggerFactory(logger)).Build();
+        await rag.IngestAsync(Md("d", Sections(2)), cancellationToken: Ct);
+        var blank = ChunkKeys.Chunk("", "d", 0);
+        await content.UpsertAsync([new ChunkContent(blank, "d", new Dictionary<string, string>(), 0, "", null, null, [])], Ct);
+
+        var hits = await rag.RetrieveAsync("Body text number 1", new RetrievalOptions { TopK = 5 }, Ct);
+
+        Assert.DoesNotContain(hits, h => h.ChunkKey == blank);
+        Assert.Single(hits);
+        Assert.Contains(logger.Collector.GetSnapshot(), r => r.Level == LogLevel.Warning && r.Message.Contains(blank));
+    }
+
+    private sealed class FixedScope(string tenant) : RagDotNet.Access.IAccessScope
+    {
+        public ValueTask<RagDotNet.Access.AccessScope> GetScopeAsync(CancellationToken cancellationToken) =>
+            new(new RagDotNet.Access.AccessScope(new Dictionary<string, string> { ["tenant"] = tenant }));
+    }
+
+    [Fact]
+    public async Task Scoped_external_mode_requests_only_callers_partition_keys_and_links_keys()
+    {
+        var store = new InMemoryVectorStore();
+        var content = new RecordingContentStore();
+        RagPipelineBuilder Scoped(string t) => NewBuilder(store, content)
+            .Configure(o => { o.Metadata.Add<string>("tenant"); o.PartitionKeys.Add("tenant"); })
+            .UseAccessScope(new FixedScope(t));
+        var a = Scoped("a").Build();
+        var b = Scoped("b").Build();
+        await a.IngestAsync(Md("d", "alpha beta gamma"), cancellationToken: Ct);
+        await b.IngestAsync(Md("d", "alpha beta gamma"), cancellationToken: Ct);
+
+        var stored = content.Upserted.Where(c => c.Partition["tenant"] == "a").ToList();
+        Assert.Single(stored);
+        Assert.Equal(new Dictionary<string, string> { ["tenant"] = "a" }, stored[0].Partition);
+
+        content.GetCalls.Clear();
+        var hits = await a.RetrieveAsync("alpha beta gamma", new RetrievalOptions { TopK = 5 }, Ct);
+
+        var hit = Assert.Single(hits);
+        Assert.Equal(stored[0].ChunkKey, hit.ChunkKey);
+        var requested = Assert.Single(content.GetCalls);
+        Assert.Equal([stored[0].ChunkKey], requested);
+        Assert.DoesNotContain(content.Upserted.Where(c => c.Partition["tenant"] == "b"), c => requested.Contains(c.ChunkKey));
+    }
+
+    [Fact]
+    public async Task Failed_vector_upsert_after_content_upsert_converges_on_retry()
+    {
+        var failing = new FailingVectorStore(new InMemoryVectorStore());
+        var content = new RecordingContentStore();
+        var rag = NewBuilder(failing, content).Build();
+        failing.FailNextChunkUpsert = true;
+
+        await Assert.ThrowsAsync<IOException>(() => rag.IngestAsync(Md("d", Sections(2)), cancellationToken: Ct));
+        Assert.Equal(2, content.Count);
+        Assert.Empty(await RawChunks(failing, "d", 2));
+
+        var r = await rag.IngestAsync(Md("d", Sections(2)), cancellationToken: Ct);
+        Assert.Equal(2, r.ChunkCount);
+        Assert.Equal(2, content.Count);
+        Assert.Equal(2, (await RawChunks(failing, "d", 2)).Count);
+        Assert.Equal(2, (await rag.RetrieveAsync("Body text number 1", new RetrievalOptions { TopK = 5 }, Ct)).Count);
+    }
+
+    [Fact]
+    public async Task Delete_after_failed_vector_upsert_leaves_no_keys_in_either_store()
+    {
+        var failing = new FailingVectorStore(new InMemoryVectorStore());
+        var content = new RecordingContentStore();
+        var rag = NewBuilder(failing, content).Build();
+        failing.FailNextChunkUpsert = true;
+        await Assert.ThrowsAsync<IOException>(() => rag.IngestAsync(Md("d", Sections(3)), cancellationToken: Ct));
+        Assert.Equal(3, content.Count);
+
+        Assert.True(await rag.DeleteDocumentAsync("d", Ct));
+
+        Assert.Equal(0, content.Count);
+        Assert.Empty(await RawChunks(failing, "d", 3));
     }
 
     private sealed class FakeLoggerFactory(FakeLogger logger) : ILoggerFactory
