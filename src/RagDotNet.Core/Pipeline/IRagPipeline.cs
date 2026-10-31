@@ -1,5 +1,6 @@
 using RagDotNet.Documents;
 using RagDotNet.Ingestion;
+using RagDotNet.Retrieval;
 
 namespace RagDotNet.Pipeline;
 
@@ -28,4 +29,13 @@ public interface IRagPipeline
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>True when the document existed.</returns>
     Task<bool> DeleteDocumentAsync(string documentId, CancellationToken cancellationToken = default);
+
+    /// <summary>Finds the chunks most similar to a query.</summary>
+    /// <param name="query">The query text.</param>
+    /// <param name="options">Per-call options.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Chunks ordered by descending score.</returns>
+    /// <exception cref="ArgumentException">The query is empty or whitespace, or the filter is invalid.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><see cref="RetrievalOptions.TopK"/> is outside 1 to 100.</exception>
+    Task<IReadOnlyList<RetrievedChunk>> RetrieveAsync(string query, RetrievalOptions? options = null, CancellationToken cancellationToken = default);
 }

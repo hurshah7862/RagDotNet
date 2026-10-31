@@ -5,6 +5,7 @@ using RagDotNet.Configuration;
 using RagDotNet.Content;
 using RagDotNet.Ingestion;
 using RagDotNet.Readers;
+using RagDotNet.Retrieval;
 using RagDotNet.Storage;
 
 namespace RagDotNet.Pipeline;
@@ -40,7 +41,10 @@ internal sealed class RagEngine
             ?? embedder.GetService<EmbeddingGeneratorMetadata>()?.DefaultModelId
             ?? "unknown";
         Ingestor = new Ingestor(this);
+        Retriever = new Retriever(this);
     }
+
+    public Retriever Retriever { get; }
 
     public RagOptions Options { get; }
 

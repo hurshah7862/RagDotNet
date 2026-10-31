@@ -1,6 +1,7 @@
 using RagDotNet.Access;
 using RagDotNet.Documents;
 using RagDotNet.Ingestion;
+using RagDotNet.Retrieval;
 
 namespace RagDotNet.Pipeline;
 
@@ -37,5 +38,11 @@ internal sealed class RagPipeline(RagEngine engine) : IRagPipeline
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(documentId);
         return engine.Ingestor.DeleteAsync(documentId, ResolvedScope.None, cancellationToken);
+    }
+
+    public Task<IReadOnlyList<RetrievedChunk>> RetrieveAsync(string query, RetrievalOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(query);
+        return engine.Retriever.RetrieveAsync(query, ResolvedScope.None, options ?? new RetrievalOptions(), cancellationToken);
     }
 }

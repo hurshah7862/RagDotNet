@@ -247,6 +247,7 @@ RagDotNet.Pipeline.IRagPipeline
 RagDotNet.Pipeline.IRagPipeline.DeleteDocumentAsync(string! documentId, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
 RagDotNet.Pipeline.IRagPipeline.IngestAsync(RagDotNet.Documents.DocumentSource! source, RagDotNet.Ingestion.IngestOptions? options = null, System.IProgress<RagDotNet.Ingestion.IngestProgress!>? progress = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<RagDotNet.Ingestion.IngestResult!>!
 RagDotNet.Pipeline.IRagPipeline.IngestManyAsync(System.Collections.Generic.IEnumerable<RagDotNet.Documents.DocumentSource!>! sources, RagDotNet.Ingestion.IngestOptions? options = null, System.IProgress<RagDotNet.Ingestion.IngestProgress!>? progress = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<RagDotNet.Ingestion.IngestResult!>!>!
+RagDotNet.Pipeline.IRagPipeline.RetrieveAsync(string! query, RagDotNet.Retrieval.RetrievalOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<RagDotNet.Retrieval.RetrievedChunk!>!>!
 RagDotNet.Readers.MarkdownReader
 RagDotNet.Readers.MarkdownReader.CanRead(string? contentType, string! fileName) -> bool
 RagDotNet.Readers.MarkdownReader.MarkdownReader() -> void
@@ -255,6 +256,47 @@ RagDotNet.Readers.PlainTextReader
 RagDotNet.Readers.PlainTextReader.CanRead(string? contentType, string! fileName) -> bool
 RagDotNet.Readers.PlainTextReader.PlainTextReader() -> void
 RagDotNet.Readers.PlainTextReader.ReadAsync(System.IO.Stream! stream, RagDotNet.Documents.DocumentReadContext! context, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<RagDotNet.Documents.ParsedDocument!>!
+RagDotNet.Retrieval.RetrievalOptions
+RagDotNet.Retrieval.RetrievalOptions.<Clone>$() -> RagDotNet.Retrieval.RetrievalOptions!
+RagDotNet.Retrieval.RetrievalOptions.Equals(RagDotNet.Retrieval.RetrievalOptions? other) -> bool
+RagDotNet.Retrieval.RetrievalOptions.Filter.get -> RagDotNet.Filtering.RagFilter?
+RagDotNet.Retrieval.RetrievalOptions.Filter.init -> void
+RagDotNet.Retrieval.RetrievalOptions.MinScore.get -> double?
+RagDotNet.Retrieval.RetrievalOptions.MinScore.init -> void
+RagDotNet.Retrieval.RetrievalOptions.RetrievalOptions() -> void
+RagDotNet.Retrieval.RetrievalOptions.TopK.get -> int
+RagDotNet.Retrieval.RetrievalOptions.TopK.init -> void
+RagDotNet.Retrieval.RetrievedChunk
+RagDotNet.Retrieval.RetrievedChunk.<Clone>$() -> RagDotNet.Retrieval.RetrievedChunk!
+RagDotNet.Retrieval.RetrievedChunk.ChunkIndex.get -> int
+RagDotNet.Retrieval.RetrievedChunk.ChunkIndex.init -> void
+RagDotNet.Retrieval.RetrievedChunk.ChunkKey.get -> string!
+RagDotNet.Retrieval.RetrievedChunk.ChunkKey.init -> void
+RagDotNet.Retrieval.RetrievedChunk.Deconstruct(out string! ChunkKey, out string! DocumentId, out int ChunkIndex, out string! Text, out double Score, out RagDotNet.Retrieval.ScoreKind ScoreKind, out int? PageStart, out int? PageEnd, out System.Collections.Generic.IReadOnlyList<string!>! HeadingPath, out string! SourceName, out System.Collections.Generic.IReadOnlyDictionary<string!, object?>! Metadata) -> void
+RagDotNet.Retrieval.RetrievedChunk.DocumentId.get -> string!
+RagDotNet.Retrieval.RetrievedChunk.DocumentId.init -> void
+RagDotNet.Retrieval.RetrievedChunk.Equals(RagDotNet.Retrieval.RetrievedChunk? other) -> bool
+RagDotNet.Retrieval.RetrievedChunk.HeadingPath.get -> System.Collections.Generic.IReadOnlyList<string!>!
+RagDotNet.Retrieval.RetrievedChunk.HeadingPath.init -> void
+RagDotNet.Retrieval.RetrievedChunk.Metadata.get -> System.Collections.Generic.IReadOnlyDictionary<string!, object?>!
+RagDotNet.Retrieval.RetrievedChunk.Metadata.init -> void
+RagDotNet.Retrieval.RetrievedChunk.PageEnd.get -> int?
+RagDotNet.Retrieval.RetrievedChunk.PageEnd.init -> void
+RagDotNet.Retrieval.RetrievedChunk.PageStart.get -> int?
+RagDotNet.Retrieval.RetrievedChunk.PageStart.init -> void
+RagDotNet.Retrieval.RetrievedChunk.RetrievedChunk(string! ChunkKey, string! DocumentId, int ChunkIndex, string! Text, double Score, RagDotNet.Retrieval.ScoreKind ScoreKind, int? PageStart, int? PageEnd, System.Collections.Generic.IReadOnlyList<string!>! HeadingPath, string! SourceName, System.Collections.Generic.IReadOnlyDictionary<string!, object?>! Metadata) -> void
+RagDotNet.Retrieval.RetrievedChunk.Score.get -> double
+RagDotNet.Retrieval.RetrievedChunk.Score.init -> void
+RagDotNet.Retrieval.RetrievedChunk.ScoreKind.get -> RagDotNet.Retrieval.ScoreKind
+RagDotNet.Retrieval.RetrievedChunk.ScoreKind.init -> void
+RagDotNet.Retrieval.RetrievedChunk.SourceName.get -> string!
+RagDotNet.Retrieval.RetrievedChunk.SourceName.init -> void
+RagDotNet.Retrieval.RetrievedChunk.Text.get -> string!
+RagDotNet.Retrieval.RetrievedChunk.Text.init -> void
+RagDotNet.Retrieval.ScoreKind
+RagDotNet.Retrieval.ScoreKind.Fused = 1 -> RagDotNet.Retrieval.ScoreKind
+RagDotNet.Retrieval.ScoreKind.Rerank = 2 -> RagDotNet.Retrieval.ScoreKind
+RagDotNet.Retrieval.ScoreKind.Similarity = 0 -> RagDotNet.Retrieval.ScoreKind
 RagDotNet.Storage.ChunkKeys
 RagDotNet.Storage.RagKeyType
 RagDotNet.Storage.RagKeyType.Guid = 1 -> RagDotNet.Storage.RagKeyType
@@ -316,6 +358,12 @@ override RagDotNet.Ingestion.IngestProgress.ToString() -> string!
 override RagDotNet.Ingestion.IngestResult.Equals(object? obj) -> bool
 override RagDotNet.Ingestion.IngestResult.GetHashCode() -> int
 override RagDotNet.Ingestion.IngestResult.ToString() -> string!
+override RagDotNet.Retrieval.RetrievalOptions.Equals(object? obj) -> bool
+override RagDotNet.Retrieval.RetrievalOptions.GetHashCode() -> int
+override RagDotNet.Retrieval.RetrievalOptions.ToString() -> string!
+override RagDotNet.Retrieval.RetrievedChunk.Equals(object? obj) -> bool
+override RagDotNet.Retrieval.RetrievedChunk.GetHashCode() -> int
+override RagDotNet.Retrieval.RetrievedChunk.ToString() -> string!
 override sealed RagDotNet.Filtering.RagFilter.AndFilter.Equals(RagDotNet.Filtering.RagFilter? other) -> bool
 override sealed RagDotNet.Filtering.RagFilter.ContainsAnyFilter.Equals(RagDotNet.Filtering.RagFilter? other) -> bool
 override sealed RagDotNet.Filtering.RagFilter.ContainsFilter.Equals(RagDotNet.Filtering.RagFilter? other) -> bool
@@ -363,6 +411,10 @@ static RagDotNet.Ingestion.IngestProgress.operator !=(RagDotNet.Ingestion.Ingest
 static RagDotNet.Ingestion.IngestProgress.operator ==(RagDotNet.Ingestion.IngestProgress? left, RagDotNet.Ingestion.IngestProgress? right) -> bool
 static RagDotNet.Ingestion.IngestResult.operator !=(RagDotNet.Ingestion.IngestResult? left, RagDotNet.Ingestion.IngestResult? right) -> bool
 static RagDotNet.Ingestion.IngestResult.operator ==(RagDotNet.Ingestion.IngestResult? left, RagDotNet.Ingestion.IngestResult? right) -> bool
+static RagDotNet.Retrieval.RetrievalOptions.operator !=(RagDotNet.Retrieval.RetrievalOptions? left, RagDotNet.Retrieval.RetrievalOptions? right) -> bool
+static RagDotNet.Retrieval.RetrievalOptions.operator ==(RagDotNet.Retrieval.RetrievalOptions? left, RagDotNet.Retrieval.RetrievalOptions? right) -> bool
+static RagDotNet.Retrieval.RetrievedChunk.operator !=(RagDotNet.Retrieval.RetrievedChunk? left, RagDotNet.Retrieval.RetrievedChunk? right) -> bool
+static RagDotNet.Retrieval.RetrievedChunk.operator ==(RagDotNet.Retrieval.RetrievedChunk? left, RagDotNet.Retrieval.RetrievedChunk? right) -> bool
 static RagDotNet.Storage.ChunkKeys.Chunk(string! partitionKey, string! documentId, int chunkIndex) -> string!
 static RagDotNet.Storage.ChunkKeys.Document(string! partitionKey, string! documentId) -> string!
 static RagDotNet.Storage.ChunkKeys.Partition(System.Collections.Generic.IReadOnlyDictionary<string!, string!>? partition) -> string!
