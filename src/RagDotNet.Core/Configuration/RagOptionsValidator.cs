@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using RagDotNet.Content;
 
@@ -12,10 +13,10 @@ internal sealed class RagRegistrations
 }
 
 /// <summary>Validates <see cref="RagOptions"/> at startup (dependency injection) and at build time (builder).</summary>
-internal sealed class RagOptionsValidator(RagRegistrations registrations) : IValidateOptions<RagOptions>
+internal sealed class RagOptionsValidator(RagRegistrations registrations, IServiceProviderIsService serviceCheck) : IValidateOptions<RagOptions>
 {
     public ValidateOptionsResult Validate(string? name, RagOptions options) =>
-        Validate(options, registrations.HasAccessScope, registrations.HasContentStore, requireScopeForPartitions: true);
+        Validate(options, registrations.HasAccessScope, registrations.HasContentStore || serviceCheck.IsService(typeof(IChunkContentStore)), requireScopeForPartitions: true);
 
     public static ValidateOptionsResult Validate(RagOptions options, bool hasAccessScope, bool hasContentStore, bool requireScopeForPartitions)
     {
@@ -37,6 +38,12 @@ internal sealed class RagOptionsValidator(RagRegistrations registrations) : IVal
 
         if (requireScopeForPartitions && options.PartitionKeys.Count > 0 && !hasAccessScope)
             failures.Add($"Partition keys [{string.Join(", ", options.PartitionKeys)}] require an access scope. Register one with AddAccessScope<T>() or UseAccessScope().");
+
+        if (hasAccessScope && options.PartitionKeys.Count == 0)
+            failures.Add("An access scope is registered but PartitionKeys is empty. Add the partition key(s) the scope supplies (declared in Metadata as string).");
+
+        if (hasContentStore && options.ContentStorage != ContentStorageMode.External)
+            failures.Add("A content store is registered but ContentStorage is VectorStore. Use UseExternalContent<T>() / UseContentStore(), or set ContentStorage = External.");
 
         if (options.ContentStorage == ContentStorageMode.External && !hasContentStore)
             failures.Add("External content storage requires a content store. Register one with UseExternalContent<T>() or UseContentStore().");

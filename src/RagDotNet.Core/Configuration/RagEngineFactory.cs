@@ -25,7 +25,6 @@ internal static class RagEngineFactory
         var tokenizer = options.Tokenizer ?? TokenCounter.CreateDefault();
         var tokenizerName = options.Tokenizer is null ? "cl100k_base" : options.Tokenizer.GetType().FullName ?? "custom";
         var readers = new ReaderSelector(appReaders.Concat<IDocumentReader>([new MarkdownReader(), new PlainTextReader()]));
-        if (contentStore is not null) options.ContentStorage = ContentStorageMode.External;
         var logger = (loggerFactory ?? NullLoggerFactory.Instance).CreateLogger("RagDotNet");
         return new RagEngine(
             options, readers, new StructureAwareChunker(tokenizer), new TokenCounter(tokenizer), tokenizerName,

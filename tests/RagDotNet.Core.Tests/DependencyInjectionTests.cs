@@ -2,6 +2,7 @@ using CommunityToolkit.VectorData.InMemory;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.VectorData;
 using RagDotNet.Access;
@@ -211,6 +212,91 @@ public class DependencyInjectionTests
         Assert.Equal("docs", options.CollectionName);
         Assert.Equal(64, options.EmbeddingDimensions);
         Assert.NotNull(provider.GetRequiredService<RagEngine>());
+    }
+
+    private sealed class XyzReader : RagDotNet.Documents.IDocumentReader
+    {
+        public bool CanRead(string? contentType, string fileName) => fileName.EndsWith(".xyz", StringComparison.OrdinalIgnoreCase);
+
+        public Task<RagDotNet.Documents.ParsedDocument> ReadAsync(Stream stream, RagDotNet.Documents.DocumentReadContext context, CancellationToken cancellationToken) =>
+            Task.FromResult(new RagDotNet.Documents.ParsedDocument(
+                [new RagDotNet.Documents.DocumentBlock(RagDotNet.Documents.BlockKind.Paragraph, "xyz custom content", [])]));
+    }
+
+    [Fact]
+    public void Scope_registered_with_empty_partition_keys_fails_validation()
+    {
+        var (services, _) = BaseServices();
+        services.AddSingleton<TenantHolder>();
+        services.AddRag(o => o.EmbeddingDimensions = 64).AddAccessScope<HolderScope>();
+        using var provider = services.BuildServiceProvider();
+
+        var ex = Assert.Throws<OptionsValidationException>(() => provider.GetRequiredService<IOptions<RagOptions>>().Value);
+        Assert.Contains("PartitionKeys", ex.Message);
+    }
+
+    [Fact]
+    public void Builder_scope_with_empty_partition_keys_fails_build()
+    {
+        var b = new RagPipelineBuilder()
+            .UseEmbeddingGenerator(new FakeEmbeddingGenerator(64))
+            .UseVectorStore(new InMemoryVectorStore(), "test", 64)
+            .UseAccessScope(new HolderScope(new TenantHolder()));
+        var ex = Assert.Throws<OptionsValidationException>(() => b.Build());
+        Assert.Contains("PartitionKeys", ex.Message);
+    }
+
+    [Fact]
+    public async Task Invalid_options_fail_host_startup()
+    {
+        var builder = Host.CreateApplicationBuilder();
+        builder.Services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(new FakeEmbeddingGenerator(64));
+        builder.Services.AddSingleton<VectorStore>(new InMemoryVectorStore());
+        builder.Services.AddRag(o => o.EmbeddingDimensions = 0);
+        using var host = builder.Build();
+
+        await Assert.ThrowsAsync<OptionsValidationException>(() => host.StartAsync(Ct));
+    }
+
+    [Fact]
+    public async Task AddReader_registers_a_custom_reader_that_is_selected()
+    {
+        var (services, _) = BaseServices();
+        services.AddRag(o => o.EmbeddingDimensions = 64).AddReader<XyzReader>();
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+        var rag = scope.ServiceProvider.GetRequiredService<IRagPipeline>();
+
+        var source = new RagDotNet.Documents.DocumentSource("x", new MemoryStream([1, 2, 3]), "file.xyz");
+        var result = await rag.IngestAsync(source, cancellationToken: Ct);
+        Assert.True(result.ChunkCount > 0);
+        var hits = await rag.RetrieveAsync("xyz custom content", cancellationToken: Ct);
+        Assert.Contains(hits, h => h.Text.Contains("xyz custom content"));
+    }
+
+    [Fact]
+    public async Task Pipeline_without_an_access_scope_works_with_a_null_scope()
+    {
+        var (services, _) = BaseServices();
+        services.AddRag(o => o.EmbeddingDimensions = 64);
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+        var rag = scope.ServiceProvider.GetRequiredService<IRagPipeline>();
+
+        await rag.IngestAsync(Md("d", "alpha beta gamma"), cancellationToken: Ct);
+        Assert.NotEmpty(await rag.RetrieveAsync("alpha", cancellationToken: Ct));
+    }
+
+    [Fact]
+    public void Manually_registered_content_store_without_external_mode_fails_validation()
+    {
+        var (services, _) = BaseServices();
+        services.AddSingleton<IChunkContentStore, NullContentStore>();
+        services.AddRag(o => o.EmbeddingDimensions = 64);
+        using var provider = services.BuildServiceProvider();
+
+        var ex = Assert.Throws<OptionsValidationException>(() => provider.GetRequiredService<IOptions<RagOptions>>().Value);
+        Assert.Contains("UseExternalContent", ex.Message);
     }
 
     [Fact]
