@@ -2,6 +2,7 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.VectorData;
+using RagDotNet.Access;
 using RagDotNet.Chunking;
 using RagDotNet.Documents;
 using RagDotNet.Pipeline;
@@ -19,6 +20,7 @@ public sealed class RagPipelineBuilder
     private IEmbeddingGenerator<string, Embedding<float>>? _embedder;
     private VectorStore? _store;
     private ILoggerFactory? _loggerFactory;
+    private IAccessScope? _scope;
     private RagEngine? _engine;
 
     /// <summary>Sets the chat client used to generate answers.</summary>
@@ -83,6 +85,15 @@ public sealed class RagPipelineBuilder
         return this;
     }
 
+    /// <summary>Enforces an access scope on every ingest, retrieval and delete.</summary>
+    /// <param name="scope">The scope provider.</param>
+    /// <returns>This builder.</returns>
+    public RagPipelineBuilder UseAccessScope(IAccessScope scope)
+    {
+        _scope = scope ?? throw new ArgumentNullException(nameof(scope));
+        return this;
+    }
+
     /// <summary>Builds the pipeline. Repeated calls share one engine.</summary>
     /// <returns>The pipeline.</returns>
     /// <exception cref="InvalidOperationException">The embedding generator or vector store is missing.</exception>
@@ -105,6 +116,6 @@ public sealed class RagPipelineBuilder
         var logger = (_loggerFactory ?? NullLoggerFactory.Instance).CreateLogger("RagDotNet");
         return new RagEngine(
             _options, readers, new StructureAwareChunker(tokenizer), new TokenCounter(tokenizer), tokenizerName,
-            embedder, new ChunkStore(store, _options), new ManifestStore(store, _options), logger);
+            embedder, new ChunkStore(store, _options), new ManifestStore(store, _options), logger, _scope);
     }
 }

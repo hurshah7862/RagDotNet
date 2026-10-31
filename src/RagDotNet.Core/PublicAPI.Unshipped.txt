@@ -422,3 +422,24 @@ static RagDotNet.Storage.ChunkKeys.ToGuid(string! key) -> System.Guid
 virtual RagDotNet.Filtering.RagFilter.EqualityContract.get -> System.Type!
 virtual RagDotNet.Filtering.RagFilter.Equals(RagDotNet.Filtering.RagFilter? other) -> bool
 virtual RagDotNet.Filtering.RagFilter.PrintMembers(System.Text.StringBuilder! builder) -> bool
+override RagDotNet.Access.AccessScope.Equals(object? obj) -> bool
+override RagDotNet.Access.AccessScope.GetHashCode() -> int
+override RagDotNet.Access.AccessScope.ToString() -> string!
+RagDotNet.Access.AccessScope
+RagDotNet.Access.AccessScope.<Clone>$() -> RagDotNet.Access.AccessScope!
+RagDotNet.Access.AccessScope.AccessScope(System.Collections.Generic.IReadOnlyDictionary<string!, string!>! Partition, RagDotNet.Filtering.RagFilter? Filter = null) -> void
+RagDotNet.Access.AccessScope.Deconstruct(out System.Collections.Generic.IReadOnlyDictionary<string!, string!>! Partition, out RagDotNet.Filtering.RagFilter? Filter) -> void
+RagDotNet.Access.AccessScope.Equals(RagDotNet.Access.AccessScope? other) -> bool
+RagDotNet.Access.AccessScope.Filter.get -> RagDotNet.Filtering.RagFilter?
+RagDotNet.Access.AccessScope.Filter.init -> void
+RagDotNet.Access.AccessScope.Partition.get -> System.Collections.Generic.IReadOnlyDictionary<string!, string!>!
+RagDotNet.Access.AccessScope.Partition.init -> void
+RagDotNet.Access.IAccessScope
+RagDotNet.Access.IAccessScope.GetScopeAsync(System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<RagDotNet.Access.AccessScope!>
+RagDotNet.Access.UnscopedDataException
+RagDotNet.Access.UnscopedDataException.UnscopedDataException() -> void
+RagDotNet.Access.UnscopedDataException.UnscopedDataException(string! message) -> void
+RagDotNet.Access.UnscopedDataException.UnscopedDataException(string! message, System.Exception! innerException) -> void
+RagDotNet.Configuration.RagPipelineBuilder.UseAccessScope(RagDotNet.Access.IAccessScope! scope) -> RagDotNet.Configuration.RagPipelineBuilder!
+static RagDotNet.Access.AccessScope.operator !=(RagDotNet.Access.AccessScope? left, RagDotNet.Access.AccessScope? right) -> bool
+static RagDotNet.Access.AccessScope.operator ==(RagDotNet.Access.AccessScope? left, RagDotNet.Access.AccessScope? right) -> bool

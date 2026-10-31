@@ -56,5 +56,13 @@ internal sealed class ManifestStore(VectorStore store, RagOptions options)
         return null;
     }
 
+    /// <summary>Whether any manifest matches; does not materialize the record, so it works on records written under a different partition schema.</summary>
+    public async Task<bool> AnyAsync(Expression<Func<Dictionary<string, object?>, bool>> filter, CancellationToken ct)
+    {
+        await foreach (var _ in _collection.GetAsync(filter, 1, new FilteredRecordRetrievalOptions<Dictionary<string, object?>> { IncludeVectors = false }, ct).ConfigureAwait(false))
+            return true;
+        return false;
+    }
+
     private object ConvertKey(string key) => options.KeyType == RagKeyType.Guid ? ChunkKeys.ToGuid(key) : key;
 }

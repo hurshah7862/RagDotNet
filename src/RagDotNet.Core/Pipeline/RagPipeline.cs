@@ -1,4 +1,3 @@
-using RagDotNet.Access;
 using RagDotNet.Documents;
 using RagDotNet.Ingestion;
 using RagDotNet.Retrieval;
@@ -9,10 +8,11 @@ internal sealed class RagPipeline(RagEngine engine) : IRagPipeline
 {
     internal RagEngine Engine => engine;
 
-    public Task<IngestResult> IngestAsync(DocumentSource source, IngestOptions? options = null, IProgress<IngestProgress>? progress = null, CancellationToken cancellationToken = default)
+    public async Task<IngestResult> IngestAsync(DocumentSource source, IngestOptions? options = null, IProgress<IngestProgress>? progress = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(source);
-        return engine.Ingestor.IngestAsync(source, ResolvedScope.None, options, progress, cancellationToken);
+        var scope = await engine.ResolveScopeAsync(cancellationToken).ConfigureAwait(false);
+        return await engine.Ingestor.IngestAsync(source, scope, options, progress, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<IReadOnlyList<IngestResult>> IngestManyAsync(IEnumerable<DocumentSource> sources, IngestOptions? options = null, IProgress<IngestProgress>? progress = null, CancellationToken cancellationToken = default)
@@ -27,24 +27,27 @@ internal sealed class RagPipeline(RagEngine engine) : IRagPipeline
                 throw new ArgumentException($"Duplicate document id '{s.DocumentId}'.", nameof(sources));
         }
 
+        var scope = await engine.ResolveScopeAsync(cancellationToken).ConfigureAwait(false);
         var results = new IngestResult[list.Count];
         await Parallel.ForEachAsync(
             Enumerable.Range(0, list.Count),
             new ParallelOptions { MaxDegreeOfParallelism = Math.Max(1, engine.Options.IngestParallelism), CancellationToken = cancellationToken },
-            async (i, ct) => results[i] = await engine.Ingestor.IngestAsync(list[i], ResolvedScope.None, options, progress, ct).ConfigureAwait(false))
+            async (i, ct) => results[i] = await engine.Ingestor.IngestAsync(list[i], scope, options, progress, ct).ConfigureAwait(false))
             .ConfigureAwait(false);
         return results;
     }
 
-    public Task<bool> DeleteDocumentAsync(string documentId, CancellationToken cancellationToken = default)
+    public async Task<bool> DeleteDocumentAsync(string documentId, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(documentId);
-        return engine.Ingestor.DeleteAsync(documentId, ResolvedScope.None, cancellationToken);
+        var scope = await engine.ResolveScopeAsync(cancellationToken).ConfigureAwait(false);
+        return await engine.Ingestor.DeleteAsync(documentId, scope, cancellationToken).ConfigureAwait(false);
     }
 
-    public Task<IReadOnlyList<RetrievedChunk>> RetrieveAsync(string query, RetrievalOptions? options = null, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<RetrievedChunk>> RetrieveAsync(string query, RetrievalOptions? options = null, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query);
-        return engine.Retriever.RetrieveAsync(query, ResolvedScope.None, options ?? new RetrievalOptions(), cancellationToken);
+        var scope = await engine.ResolveScopeAsync(cancellationToken).ConfigureAwait(false);
+        return await engine.Retriever.RetrieveAsync(query, scope, options ?? new RetrievalOptions(), cancellationToken).ConfigureAwait(false);
     }
 }

@@ -188,9 +188,7 @@ internal sealed class Ingestor(RagEngine engine)
         {
             if (!schema.Fields.TryGetValue(k, out var type) || type != typeof(string))
                 throw new InvalidOperationException($"Partition key '{k}' must be declared as a string metadata field.");
-            if (s.Metadata.TryGetValue(k, out var supplied) && supplied is not null && !Equals(supplied, v))
-                throw new ArgumentException($"Metadata key '{k}' conflicts with the partition value.", nameof(s));
-            result[k] = v;
+            result[k] = v; // the partition value always overrides caller metadata
         }
 
         return result;

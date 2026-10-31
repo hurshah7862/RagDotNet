@@ -1,5 +1,6 @@
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
+using RagDotNet.Access;
 using RagDotNet.Chunking;
 using RagDotNet.Configuration;
 using RagDotNet.Content;
@@ -24,7 +25,8 @@ internal sealed class RagEngine
         IEmbeddingGenerator<string, Embedding<float>> embedder,
         ChunkStore chunks,
         ManifestStore manifests,
-        ILogger logger)
+        ILogger logger,
+        IAccessScope? accessScope = null)
     {
         if (options.ContentStorage == ContentStorageMode.External)
             throw new NotSupportedException("External content storage is not supported yet.");
@@ -40,11 +42,14 @@ internal sealed class RagEngine
         EmbeddingModelId = options.EmbeddingModelId
             ?? embedder.GetService<EmbeddingGeneratorMetadata>()?.DefaultModelId
             ?? "unknown";
+        Scope = new ScopeResolver(accessScope, options, manifests);
         Ingestor = new Ingestor(this);
         Retriever = new Retriever(this);
     }
 
     public Retriever Retriever { get; }
+
+    public ScopeResolver Scope { get; }
 
     public RagOptions Options { get; }
 
@@ -67,6 +72,10 @@ internal sealed class RagEngine
     public string EmbeddingModelId { get; }
 
     public Ingestor Ingestor { get; }
+
+    /// <summary>Resolves the caller's scope once for a public call.</summary>
+    public ValueTask<ResolvedScope> ResolveScopeAsync(CancellationToken cancellationToken) =>
+        Scope.ResolveAsync(cancellationToken);
 
     /// <summary>Creates both collections once; thread-safe, and retried if it failed.</summary>
     public async Task EnsureReadyAsync(CancellationToken cancellationToken)
