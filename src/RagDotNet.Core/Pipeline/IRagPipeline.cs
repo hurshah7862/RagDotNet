@@ -1,5 +1,3 @@
-// The conversation overloads differ from the string overloads in the type of their first argument, so a call is never ambiguous.
-#pragma warning disable RS0026 // Do not add multiple overloads with optional parameters
 using Microsoft.Extensions.AI;
 using RagDotNet.Access;
 using RagDotNet.Documents;
@@ -59,12 +57,16 @@ public interface IRagPipeline
     /// <exception cref="EmbeddingModelMismatchException">The store holds data from another embedding model, or a reindex to another model is in progress. Run <see cref="IRagAdmin.ReindexAsync"/>.</exception>
     Task<bool> DeleteDocumentAsync(string documentId, CancellationToken cancellationToken = default);
 
+    // RS0026: the string and conversation overloads (spec 5.5/5.6) differ by the type of their first parameter
+    // (string vs IList<ChatMessage>) on purpose. A literal null first argument is ambiguous and must be cast.
+#pragma warning disable RS0026 // Do not add multiple overloads with optional parameters
     /// <summary>Finds the chunks most similar to a query.</summary>
     /// <param name="query">The query text.</param>
     /// <param name="options">Per-call options.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Chunks ordered by descending score.</returns>
     /// <exception cref="ArgumentException">The query is empty or whitespace, or the filter is invalid.</exception>
+    /// <exception cref="InvalidOperationException">A configured query transformer needs a chat client and none is configured. Call <c>UseChatClient</c>.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><see cref="RetrievalOptions.TopK"/> is outside 1 to 100.</exception>
     /// <exception cref="RagAccessDeniedException">The access scope does not grant <see cref="RagPermissions.Read"/>.</exception>
     /// <exception cref="EmbeddingModelMismatchException">The store holds data from another embedding model, or a reindex to another model is in progress. Run <see cref="IRagAdmin.ReindexAsync"/>.</exception>
@@ -79,7 +81,7 @@ public interface IRagPipeline
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Chunks ordered by descending score.</returns>
     /// <exception cref="ArgumentException">The conversation is null, empty, or does not end with a user message that has text; or the filter is invalid.</exception>
-    /// <exception cref="InvalidOperationException">The conversation has history and no chat client is configured. Call <c>UseChatClient</c>.</exception>
+    /// <exception cref="InvalidOperationException">No chat client is configured and the conversation has history, or a configured query transformer needs one. Call <c>UseChatClient</c>.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><see cref="RetrievalOptions.TopK"/> is outside 1 to 100.</exception>
     /// <exception cref="RagAccessDeniedException">The access scope does not grant <see cref="RagPermissions.Read"/>.</exception>
     /// <exception cref="EmbeddingModelMismatchException">The store holds data from another embedding model, or a reindex to another model is in progress. Run <see cref="IRagAdmin.ReindexAsync"/>.</exception>
@@ -129,4 +131,5 @@ public interface IRagPipeline
     /// <exception cref="RagAccessDeniedException">The access scope does not grant <see cref="RagPermissions.Read"/>.</exception>
     /// <exception cref="EmbeddingModelMismatchException">The store holds data from another embedding model, or a reindex to another model is in progress. Run <see cref="IRagAdmin.ReindexAsync"/>.</exception>
     IAsyncEnumerable<RagAnswerUpdate> AskStreamingAsync(IList<ChatMessage> conversation, AskOptions? options = null, CancellationToken cancellationToken = default);
+#pragma warning restore RS0026
 }
