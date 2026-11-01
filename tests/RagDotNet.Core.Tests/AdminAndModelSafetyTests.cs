@@ -30,6 +30,7 @@ public class AdminAndModelSafetyTests
             {
                 o.EmbeddingModelId = modelId;
                 o.EmbeddingBatchSize = 2;
+                o.ModelCheckInterval = TimeSpan.Zero; // reindex waits one interval after writing its marker
                 if (partitioned)
                 {
                     o.Metadata.Add<string>("tenant");
@@ -114,7 +115,7 @@ public class AdminAndModelSafetyTests
         var second = await admin.ReindexAsync(cancellationToken: Ct);
         Assert.Equal(0, second.DocumentsReindexed);
         Assert.Equal(2, second.DocumentsSkipped);
-        Assert.Equal(calls, embedder.CallCount);
+        Assert.Equal(calls + 1, embedder.CallCount); // only the dimension probe, which always runs first
     }
 
     [Fact]
@@ -158,12 +159,18 @@ public class AdminAndModelSafetyTests
         var builder = new RagPipelineBuilder()
             .UseEmbeddingGenerator(embedder)
             .UseVectorStore(store, "test", 64)
-            .Configure(o => o.EmbeddingModelId = "other");
+            .Configure(o =>
+            {
+                o.EmbeddingModelId = "other";
+                o.ModelCheckInterval = TimeSpan.Zero;
+            });
         var admin = builder.BuildAdmin();
         var rag = builder.Build();
 
         await Assert.ThrowsAsync<IOException>(() => admin.ReindexAsync(cancellationToken: Ct));
-        await Assert.ThrowsAsync<EmbeddingModelMismatchException>(() => rag.RetrieveAsync("alpha", cancellationToken: Ct));
+        // The marker stays: reads keep working over the re-embedded document only.
+        var during = await rag.RetrieveAsync("alpha", new() { TopK = 10 }, Ct);
+        Assert.Equal(["d1"], during.Select(h => h.DocumentId).Distinct());
         Assert.Equal(["fake-embed", "other"], (await admin.GetStatsAsync(Ct)).EmbeddingModelIds);
 
         var result = await admin.ReindexAsync(cancellationToken: Ct);

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using CommunityToolkit.VectorData.InMemory;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Testing;
 using Microsoft.Extensions.Options;
@@ -36,10 +37,11 @@ public class ReindexCoordinationTests
     }
 
     private static RagPipelineBuilder Builder(
-        InMemoryVectorStore store, string model, TimeSpan? interval = null, TimeProvider? time = null, ILoggerFactory? loggers = null)
+        InMemoryVectorStore store, string model, TimeSpan? interval = null, TimeProvider? time = null, ILoggerFactory? loggers = null,
+        IEmbeddingGenerator<string, Embedding<float>>? embedder = null)
     {
         var b = new RagPipelineBuilder()
-            .UseEmbeddingGenerator(new FakeEmbeddingGenerator(64))
+            .UseEmbeddingGenerator(embedder ?? new FakeEmbeddingGenerator(64))
             .UseChatClient(new FakeChatClient())
             .UseVectorStore(store, "test", 64)
             .Configure(o =>
@@ -228,5 +230,322 @@ public class ReindexCoordinationTests
     {
         var (_, builder, _, _, _) = Create();
         Assert.Throws<InvalidOperationException>(() => builder.UseTimeProvider(TimeProvider.System));
+    }
+
+    // ---- Reindex coordination (marker lifecycle, document locks, re-read before write) ----
+
+    private static readonly TimeSpan Bounded = TimeSpan.FromSeconds(10);
+
+    private static RagEngine Engine(IRagPipeline rag) => ((RagPipeline)rag).Engine;
+
+    private static Func<IReadOnlyList<string>, bool> Has(string text) => batch => batch.Any(t => t.Contains(text, StringComparison.Ordinal));
+
+    /// <summary>Seeds d1 ("alpha one") and d2 ("alpha two") on m1.</summary>
+    private static async Task<InMemoryVectorStore> SeedTwoAsync()
+    {
+        var store = await SeedM1Async();
+        await Builder(store, "m1").Build().IngestAsync(Md("d2", "alpha two"), cancellationToken: Ct);
+        return store;
+    }
+
+    private static async Task WithinAsync(Task task)
+    {
+        var done = await Task.WhenAny(task, Task.Delay(Bounded, Ct));
+        Assert.True(done == task, "Timed out waiting for the task.");
+        await task;
+    }
+
+    private static async Task<T> WithinAsync<T>(Task<T> task)
+    {
+        await WithinAsync((Task)task);
+        return await task;
+    }
+
+    private static async Task<List<string>> ChunkModelsAsync(InMemoryVectorStore store)
+    {
+        var chunks = new ChunkStore(store, new RagOptions { CollectionName = "test", EmbeddingDimensions = 64 });
+        var records = await chunks.GetAsync([ChunkKeys.Chunk("", "d1", 0), ChunkKeys.Chunk("", "d2", 0)], false, Ct);
+        return records.Select(r => (string)r["EmbeddingModelId"]!).ToList();
+    }
+
+    /// <summary>Throws an IOException for any batch the predicate selects.</summary>
+    private sealed class FailingEmbedder(IEmbeddingGenerator<string, Embedding<float>> inner, Func<IReadOnlyList<string>, bool> fail)
+        : IEmbeddingGenerator<string, Embedding<float>>
+    {
+        public Task<GeneratedEmbeddings<Embedding<float>>> GenerateAsync(
+            IEnumerable<string> values, EmbeddingGenerationOptions? options = null, CancellationToken cancellationToken = default)
+        {
+            var list = values.ToList();
+            if (fail(list)) throw new IOException("Simulated embedder failure.");
+            return inner.GenerateAsync(list, options, cancellationToken);
+        }
+
+        public object? GetService(Type serviceType, object? serviceKey = null) => inner.GetService(serviceType, serviceKey);
+
+        public void Dispose() { }
+    }
+
+    /// <summary>System clock whose timers fire only when the test calls <see cref="CapturedTimer.Fire"/>.</summary>
+    private sealed class TimerCaptureTimeProvider : TimeProvider
+    {
+        private readonly TaskCompletionSource<CapturedTimer> _created = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task<CapturedTimer> TimerCreated => _created.Task;
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            var timer = new CapturedTimer(callback, state, dueTime);
+            _created.TrySetResult(timer);
+            return timer;
+        }
+    }
+
+    private sealed class CapturedTimer(TimerCallback callback, object? state, TimeSpan dueTime) : ITimer
+    {
+        public TimeSpan DueTime { get; } = dueTime;
+
+        public void Fire() => callback(state);
+
+        public bool Change(TimeSpan dueTime, TimeSpan period) => true;
+
+        public void Dispose() { }
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    [Fact]
+    public async Task Reads_during_reindex_return_reembedded_documents_then_all()
+    {
+        var store = await SeedTwoAsync();
+        var gate = new GatedEmbeddingGenerator(new FakeEmbeddingGenerator(64), Has("alpha two"));
+        var builder = Builder(store, "m2", TimeSpan.Zero, embedder: gate);
+        var rag = builder.Build();
+        var admin = builder.BuildAdmin();
+
+        var reindex = admin.ReindexAsync(cancellationToken: Ct);
+        await WithinAsync(gate.Reached);
+
+        var during = await rag.RetrieveAsync("alpha", new() { TopK = 10 }, Ct);
+        Assert.Equal(["d1"], during.Select(h => h.DocumentId).Distinct());
+
+        gate.Gate.SetResult();
+        var result = await WithinAsync(reindex);
+        Assert.Equal(2, result.DocumentsReindexed);
+
+        var after = await rag.RetrieveAsync("alpha", new() { TopK = 10 }, Ct);
+        Assert.Equal(["d1", "d2"], after.Select(h => h.DocumentId).Distinct().Order());
+        Assert.Null(await Manifests(rag).GetMarkerAsync(Ct));
+    }
+
+    [Fact]
+    public async Task Ingest_of_the_document_being_reindexed_waits_for_it()
+    {
+        var store = await SeedTwoAsync();
+        var gate = new GatedEmbeddingGenerator(new FakeEmbeddingGenerator(64), Has("alpha one"));
+        var builder = Builder(store, "m2", TimeSpan.Zero, embedder: gate);
+        var rag = builder.Build();
+        var admin = builder.BuildAdmin();
+
+        var reindex = admin.ReindexAsync(cancellationToken: Ct);
+        await WithinAsync(gate.Reached);
+
+        var ingest = rag.IngestAsync(Md("d1", "changed"), cancellationToken: Ct);
+        Assert.NotSame(ingest, await Task.WhenAny(ingest, Task.Delay(100, Ct)));
+
+        gate.Gate.SetResult();
+        await WithinAsync(reindex);
+        Assert.Equal(IngestStatus.Updated, (await WithinAsync(ingest)).Status);
+
+        var hits = await rag.RetrieveAsync("changed", new() { TopK = 10 }, Ct);
+        Assert.Equal("changed", hits.Single(h => h.DocumentId == "d1").Text);
+        Assert.Equal(["m2"], (await admin.GetStatsAsync(Ct)).EmbeddingModelIds);
+    }
+
+    [Fact]
+    public async Task Write_from_another_process_during_reindex_is_not_overwritten()
+    {
+        var store = await SeedTwoAsync();
+        var gate = new GatedEmbeddingGenerator(new FakeEmbeddingGenerator(64), Has("alpha one"));
+        var a = Builder(store, "m2", TimeSpan.Zero, embedder: gate);
+        var adminA = a.BuildAdmin();
+        var b = Builder(store, "m2", TimeSpan.Zero).Build();
+
+        var reindex = adminA.ReindexAsync(cancellationToken: Ct);
+        await WithinAsync(gate.Reached);
+        Assert.Equal(IngestStatus.Updated, (await b.IngestAsync(Md("d1", "from B"), cancellationToken: Ct)).Status);
+
+        gate.Gate.SetResult();
+        await WithinAsync(reindex);
+
+        var hits = await b.RetrieveAsync("from B", new() { TopK = 10 }, Ct);
+        Assert.Equal("from B", hits.Single(h => h.DocumentId == "d1").Text);
+        Assert.Equal(["m2"], (await adminA.GetStatsAsync(Ct)).EmbeddingModelIds);
+        Assert.Null(await Manifests(b).GetMarkerAsync(Ct));
+    }
+
+    [Fact]
+    public async Task Document_moved_back_to_the_old_model_during_reindex_leaves_the_marker_and_asks_for_a_rerun()
+    {
+        var store = await SeedTwoAsync();
+        var logger = new FakeLogger();
+        var gate = new GatedEmbeddingGenerator(new FakeEmbeddingGenerator(64), Has("alpha one"));
+        var a = Builder(store, "m2", TimeSpan.Zero, loggers: new SingleLoggerFactory(logger), embedder: gate);
+        var adminA = a.BuildAdmin();
+        var ragA = a.Build();
+        // An old instance that has not restarted and whose cached "all on m1" state has not expired.
+        var old = Builder(store, "m1", TimeSpan.FromHours(1)).Build();
+        await old.RetrieveAsync("alpha", cancellationToken: Ct);
+
+        var reindex = adminA.ReindexAsync(cancellationToken: Ct);
+        await WithinAsync(gate.Reached);
+        await old.IngestAsync(Md("d1", "from old"), cancellationToken: Ct);
+        gate.Gate.SetResult();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => WithinAsync(reindex));
+        Assert.Equal("Some documents changed during reindex and are not yet on the configured model. Run ReindexAsync again.", ex.Message);
+        var marker = await Manifests(ragA).GetMarkerAsync(Ct);
+        Assert.Equal(("m2", Engine(ragA).InstanceId), (marker!.TargetModelId, marker.OwnerId));
+        Assert.Contains(logger.Collector.GetSnapshot(),
+            e => e.Level == LogLevel.Warning && e.Message == "Document d1 changed during reindex; skipped.");
+
+        var rerun = await adminA.ReindexAsync(cancellationToken: Ct);
+        Assert.Equal(1, rerun.DocumentsReindexed);
+        Assert.Null(await Manifests(ragA).GetMarkerAsync(Ct));
+        var hits = await ragA.RetrieveAsync("from old", new() { TopK = 10 }, Ct);
+        Assert.Equal("from old", hits.Single(h => h.DocumentId == "d1").Text);
+    }
+
+    [Fact]
+    public async Task Cancelled_reindex_resumes_immediately_in_the_same_process()
+    {
+        var store = await SeedTwoAsync();
+        var paused = 0;
+        var gate = new GatedEmbeddingGenerator(new FakeEmbeddingGenerator(64),
+            batch => Has("alpha two")(batch) && Interlocked.Increment(ref paused) == 1);
+        var builder = Builder(store, "m2", TimeSpan.Zero, embedder: gate);
+        var rag = builder.Build();
+        var admin = builder.BuildAdmin();
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+        var first = admin.ReindexAsync(cancellationToken: cts.Token);
+        await WithinAsync(gate.Reached);
+        await cts.CancelAsync();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => WithinAsync(first));
+
+        Assert.Equal(Engine(rag).InstanceId, (await Manifests(rag).GetMarkerAsync(Ct))!.OwnerId);
+        var during = await rag.RetrieveAsync("alpha", new() { TopK = 10 }, Ct);
+        Assert.Equal(["d1"], during.Select(h => h.DocumentId).Distinct());
+
+        var second = await WithinAsync(admin.ReindexAsync(cancellationToken: Ct));
+        Assert.Equal((1, 1), (second.DocumentsReindexed, second.DocumentsSkipped));
+        var after = await rag.RetrieveAsync("alpha", new() { TopK = 10 }, Ct);
+        Assert.Equal(["d1", "d2"], after.Select(h => h.DocumentId).Distinct().Order());
+        Assert.Null(await Manifests(rag).GetMarkerAsync(Ct));
+    }
+
+    [Fact]
+    public async Task Fresh_foreign_marker_refuses_reindex_and_stale_one_is_taken_over()
+    {
+        var store = await SeedM1Async();
+        var time = new ManualTimeProvider(Start);
+        var builder = Builder(store, "m2", TimeSpan.Zero, time);
+        var rag = builder.Build();
+        var admin = builder.BuildAdmin();
+        await Manifests(rag).UpsertMarkerAsync(new ReindexMarker("m2", "foreign", Start.ToUnixTimeMilliseconds()), Ct);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => WithinAsync(admin.ReindexAsync(cancellationToken: Ct)));
+        Assert.Equal("Another reindex (to 'm2') holds the marker; it is considered abandoned after 5 minutes without a heartbeat.", ex.Message);
+        time.Advance(TimeSpan.FromMinutes(5));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => admin.ReindexAsync(cancellationToken: Ct)); // exactly 5 min: still fresh
+        Assert.Equal("foreign", (await Manifests(rag).GetMarkerAsync(Ct))!.OwnerId);
+
+        time.Advance(TimeSpan.FromSeconds(1));
+        var result = await admin.ReindexAsync(cancellationToken: Ct);
+        Assert.Equal(1, result.DocumentsReindexed);
+        Assert.Null(await Manifests(rag).GetMarkerAsync(Ct));
+    }
+
+    [Fact]
+    public async Task Foreign_marker_with_a_heartbeat_in_the_future_counts_as_fresh()
+    {
+        var store = await SeedM1Async();
+        var time = new ManualTimeProvider(Start);
+        var builder = Builder(store, "m2", TimeSpan.Zero, time);
+        var rag = builder.Build();
+        await Manifests(rag).UpsertMarkerAsync(new ReindexMarker("m3", "foreign", Start.ToUnixTimeMilliseconds()), Ct);
+
+        time.Advance(TimeSpan.FromHours(-1)); // the clock stepped back: the heartbeat now lies in the future
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => builder.BuildAdmin().ReindexAsync(cancellationToken: Ct));
+        Assert.Contains("(to 'm3')", ex.Message);
+        Assert.Equal(new ReindexMarker("m3", "foreign", Start.ToUnixTimeMilliseconds()), await Manifests(rag).GetMarkerAsync(Ct));
+    }
+
+    [Fact]
+    public async Task Concurrent_reindex_in_one_process_is_refused()
+    {
+        var store = await SeedTwoAsync();
+        var gate = new GatedEmbeddingGenerator(new FakeEmbeddingGenerator(64), Has("alpha one"));
+        var admin = Builder(store, "m2", TimeSpan.Zero, embedder: gate).BuildAdmin();
+
+        var first = admin.ReindexAsync(cancellationToken: Ct);
+        await WithinAsync(gate.Reached);
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => WithinAsync(admin.ReindexAsync(cancellationToken: Ct)));
+        Assert.Equal("A reindex is already running in this process.", ex.Message);
+
+        gate.Gate.SetResult();
+        Assert.Equal(2, (await WithinAsync(first)).DocumentsReindexed);
+    }
+
+    [Fact]
+    public async Task Dimension_mismatch_throws_before_the_marker_is_written()
+    {
+        var store = await SeedM1Async();
+        var builder = Builder(store, "m2", TimeSpan.Zero, embedder: new FakeEmbeddingGenerator(32));
+        var rag = builder.Build();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => builder.BuildAdmin().ReindexAsync(cancellationToken: Ct));
+
+        Assert.Null(await Manifests(rag).GetMarkerAsync(Ct));
+    }
+
+    [Fact]
+    public async Task Heartbeat_is_refreshed_after_60_seconds()
+    {
+        var store = await SeedTwoAsync();
+        var time = new ManualTimeProvider(Start);
+        var gate = new GatedEmbeddingGenerator(new FailingEmbedder(new FakeEmbeddingGenerator(64), Has("alpha two")), Has("alpha one"));
+        var builder = Builder(store, "m2", TimeSpan.Zero, time, embedder: gate);
+        var rag = builder.Build();
+
+        var reindex = builder.BuildAdmin().ReindexAsync(cancellationToken: Ct);
+        await WithinAsync(gate.Reached);
+        Assert.Equal(Start.ToUnixTimeMilliseconds(), (await Manifests(rag).GetMarkerAsync(Ct))!.HeartbeatUnixMs);
+        time.Advance(TimeSpan.FromSeconds(61));
+        gate.Gate.SetResult();
+        await Assert.ThrowsAsync<IOException>(() => WithinAsync(reindex)); // d2 fails, so the marker stays for inspection
+
+        Assert.Equal(new ReindexMarker("m2", Engine(rag).InstanceId, Start.AddSeconds(61).ToUnixTimeMilliseconds()),
+            await Manifests(rag).GetMarkerAsync(Ct));
+    }
+
+    [Fact]
+    public async Task Reindex_waits_one_check_interval_before_writing()
+    {
+        var store = await SeedM1Async();
+        var time = new TimerCaptureTimeProvider();
+        var builder = Builder(store, "m2", TimeSpan.FromMilliseconds(200), time);
+        var rag = builder.Build();
+
+        var reindex = builder.BuildAdmin().ReindexAsync(cancellationToken: Ct);
+        var timer = await WithinAsync(time.TimerCreated);
+
+        Assert.Equal(TimeSpan.FromMilliseconds(200), timer.DueTime);
+        Assert.Equal("m2", (await Manifests(rag).GetMarkerAsync(Ct))!.TargetModelId);
+        Assert.Equal(["m1"], await ChunkModelsAsync(store)); // the marker is visible, no vector on m2 yet
+        Assert.False(reindex.IsCompleted);
+
+        timer.Fire();
+        Assert.Equal(1, (await WithinAsync(reindex)).DocumentsReindexed);
+        Assert.Equal(["m2"], await ChunkModelsAsync(store));
     }
 }

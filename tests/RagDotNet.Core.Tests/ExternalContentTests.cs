@@ -54,7 +54,11 @@ public class ExternalContentTests
             .UseChatClient(new FakeChatClient())
             .UseVectorStore(store, "test", 64)
             .UseContentStore(content)
-            .Configure(o => o.EmbeddingModelId = model);
+            .Configure(o =>
+            {
+                o.EmbeddingModelId = model;
+                o.ModelCheckInterval = TimeSpan.Zero; // reindex waits one interval after writing its marker
+            });
 
     private static async Task<List<Dictionary<string, object?>>> RawChunks(VectorStore store, string docId, int n, RagKeyType keyType = RagKeyType.String)
     {

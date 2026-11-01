@@ -101,6 +101,12 @@ internal sealed class RagEngine
     /// <summary>Serializes ingest and delete of the same document within this process, across every pipeline over this engine.</summary>
     public DocumentLocks DocumentLocks { get; } = new();
 
+    /// <summary>Identifies this engine as the owner of a reindex marker; a rerun in the same process resumes its own marker.</summary>
+    public string InstanceId { get; } = Guid.NewGuid().ToString("N");
+
+    /// <summary>Refuses a second concurrent reindex in this process; taken with a zero timeout.</summary>
+    public SemaphoreSlim ReindexGate { get; } = new(1, 1);
+
     /// <summary>Resolves the caller's scope once for a public call.</summary>
     public ValueTask<ResolvedScope> ResolveScopeAsync(IAccessScope? scope, CancellationToken cancellationToken) =>
         Scope.ResolveAsync(scope, cancellationToken);
