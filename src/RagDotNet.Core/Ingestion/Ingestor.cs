@@ -296,7 +296,9 @@ internal sealed class Ingestor(RagEngine engine)
         foreach (var (name, type) in schema.Fields)
         {
             s.Metadata.TryGetValue(name, out var v);
-            result[name] = type == typeof(long) && v is int i ? (long)i : v;
+            result[name] = type == typeof(long) && v is int i ? (long)i
+                : type == typeof(string[]) ? v ?? Array.Empty<string>() // omitted arrays are stored empty so Contains never sees null
+                : v;
         }
 
         foreach (var (k, v) in scope.Partition)

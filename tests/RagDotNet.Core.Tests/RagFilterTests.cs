@@ -1,6 +1,7 @@
 using CommunityToolkit.VectorData.InMemory;
 using Microsoft.Extensions.VectorData;
 using RagDotNet.Filtering;
+using static RagDotNet.Core.Tests.Fakes.TestRag;
 
 namespace RagDotNet.Core.Tests;
 
@@ -294,5 +295,68 @@ public class RagFilterTests
         Assert.True(RagFilterEvaluator.Matches(RagFilter.Or(RagFilter.Eq("kind", "memo"), RagFilter.ContainsAny("groups", ["x", "HR"])), schema, "d", v));
         Assert.False(RagFilterEvaluator.Matches(RagFilter.Eq("DocumentId", "other"), schema, "d", v));
         Assert.Throws<ArgumentException>(() => RagFilterEvaluator.Matches(RagFilter.Eq("unknown", "x"), schema, "d", v));
+    }
+
+    private static CancellationToken Ct => TestContext.Current.CancellationToken;
+
+    private static void AllFields(RagDotNet.Configuration.RagOptions o)
+    {
+        o.Metadata.Add<int>("level"); o.Metadata.Add<long>("big"); o.Metadata.Add<bool>("flag");
+        o.Metadata.Add<DateTimeOffset>("when"); o.Metadata.Add<string[]>("groups"); o.Metadata.Add<string>("kind");
+    }
+
+    [Theory]
+    [InlineData("level")]
+    [InlineData("big")]
+    [InlineData("flag")]
+    [InlineData("when")]
+    [InlineData("groups")]
+    [InlineData("kind")]
+    public async Task Filter_on_a_missing_value_does_not_match_and_does_not_throw(string field)
+    {
+        var (rag, _, _, _, _) = Create(AllFields);
+        await rag.IngestAsync(Md("d1", "alpha beta"), cancellationToken: Ct);
+        RagFilter f = field switch
+        {
+            "level" => RagFilter.Eq("level", 3),
+            "big" => RagFilter.Eq("big", 3L),
+            "flag" => RagFilter.Eq("flag", true),
+            "when" => RagFilter.Eq("when", DateTimeOffset.UnixEpoch),
+            "groups" => RagFilter.ContainsAny("groups", ["hr"]),
+            _ => RagFilter.Eq("kind", "memo"),
+        };
+        Assert.Empty(await rag.RetrieveAsync("alpha", new() { Filter = f }, Ct));
+    }
+
+    [Fact]
+    public async Task Present_values_still_match_after_the_nullable_comparison()
+    {
+        var (rag, _, _, _, _) = Create(AllFields);
+        await rag.IngestAsync(Md("d1", "alpha beta", new Dictionary<string, object?>
+        {
+            ["level"] = 3, ["flag"] = true, ["when"] = DateTimeOffset.UnixEpoch, ["groups"] = new[] { "hr" },
+        }), cancellationToken: Ct);
+        await rag.IngestAsync(Md("d2", "alpha beta"), cancellationToken: Ct);
+        RagFilter[] filters =
+        [
+            RagFilter.Eq("level", 3), RagFilter.Eq("flag", true), RagFilter.Eq("when", DateTimeOffset.UnixEpoch),
+            RagFilter.Contains("groups", "hr"), RagFilter.In("level", [1, 3]),
+        ];
+        foreach (var f in filters)
+        {
+            var r = await rag.RetrieveAsync("alpha", new() { Filter = f }, Ct);
+            Assert.NotEmpty(r);
+            Assert.All(r, c => Assert.Equal("d1", c.DocumentId));
+        }
+    }
+
+    [Fact]
+    public async Task Omitted_array_metadata_is_returned_as_empty()
+    {
+        var (rag, _, _, _, _) = Create(AllFields);
+        await rag.IngestAsync(Md("d1", "alpha beta"), cancellationToken: Ct);
+        var r = await rag.RetrieveAsync("alpha", cancellationToken: Ct);
+        var groups = Assert.IsType<string[]>(r[0].Metadata["groups"]);
+        Assert.Empty(groups);
     }
 }

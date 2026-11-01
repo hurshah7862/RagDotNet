@@ -125,6 +125,13 @@ internal static class RagFilterTranslator
     {
         var type = FieldType(field, schema);
         var converted = ConvertValue(value, type, field);
+        // Value types compare through Nullable<T> so a missing (null) value is simply "not equal" instead of throwing.
+        if (type.IsValueType)
+        {
+            var nullable = typeof(Nullable<>).MakeGenericType(type);
+            return Expression.Equal(Field(field, nullable, schema, p), Expression.Constant(converted, nullable));
+        }
+
         return Expression.Equal(Field(field, type, schema, p), Expression.Constant(converted, type));
     }
 

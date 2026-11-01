@@ -541,4 +541,18 @@ public class AccessScopeTests
         scope.Current = AccessScope.Unpartitioned();
         Assert.Equal(["d1"], (await rag.RetrieveAsync("alpha", new() { IncludeCommon = false }, Ct)).Select(h => h.DocumentId));
     }
+
+    [Fact]
+    public async Task Scope_filter_on_groups_hides_documents_without_groups_instead_of_crashing()
+    {
+        var (rag, scope) = CreateScoped(o => o.Metadata.Add<string[]>("groups"));
+        scope.Current = null;
+        await rag.IngestAsync(Md("c1", "alpha beta"), cancellationToken: Ct);
+        await rag.IngestAsync(Md("c2", "alpha beta", Groups("eng")), cancellationToken: Ct);
+
+        scope.Current = Tenant("a", RagFilter.ContainsAny("groups", ["eng"]));
+        var r = await rag.RetrieveAsync("alpha beta", cancellationToken: Ct);
+        Assert.NotEmpty(r);
+        Assert.All(r, c => Assert.Equal("c2", c.DocumentId));
+    }
 }

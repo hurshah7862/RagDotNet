@@ -11,7 +11,7 @@ namespace RagDotNet.Retrieval;
 /// <param name="PageEnd">The last page, when known.</param>
 /// <param name="HeadingPath">The headings enclosing the chunk, outermost first.</param>
 /// <param name="SourceName">The source name of the document.</param>
-/// <param name="Metadata">Declared metadata, keyed by field name.</param>
+/// <param name="Metadata">Declared metadata, keyed by field name. Omitted values are null, except omitted <c>string[]</c> values, which come back as an empty array.</param>
 public sealed record RetrievedChunk(
     string ChunkKey,
     string DocumentId,
