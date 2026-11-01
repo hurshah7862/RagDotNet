@@ -27,7 +27,7 @@ internal sealed class RagAdmin(RagEngine engine, IChatClient? chat = null) : IRa
 
     /// <summary>
     /// The owner refreshes its heartbeat once this much time has passed since the last refresh, checked after the pre-write
-    /// wait, between embedding batches and after each document.
+    /// wait, between embedding batches, after each document and every 60 seconds while waiting for a document lock.
     /// </summary>
     private static readonly TimeSpan HeartbeatEvery = TimeSpan.FromSeconds(60);
 
@@ -104,7 +104,7 @@ internal sealed class RagAdmin(RagEngine engine, IChatClient? chat = null) : IRa
                 }
                 else
                 {
-                    using var documentLock = await engine.DocumentLocks.AcquireAsync(listed.Partition, listed.DocumentId, ct).ConfigureAwait(false);
+                    using var documentLock = await AcquireDocumentLockAsync(listed, heartbeat, ct).ConfigureAwait(false);
                     var (done, chunks) = await ReembedAsync(listed, batchSize, heartbeat, ct).ConfigureAwait(false);
                     chunkTotal += chunks;
                     if (done) reindexed++;
@@ -131,6 +131,48 @@ internal sealed class RagAdmin(RagEngine engine, IChatClient? chat = null) : IRa
         finally
         {
             engine.ReindexGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Takes the document lock, refreshing the heartbeat every 60 seconds while an in-process ingest or delete holds it, so a
+    /// long write does not make the marker look abandoned. If a refresh throws or <paramref name="ct"/> is cancelled, the pending
+    /// wait is cancelled and a lock acquired anyway is released.
+    /// </summary>
+    private async Task<DocumentLocks.Releaser> AcquireDocumentLockAsync(ManifestRecord listed, Heartbeat heartbeat, CancellationToken ct)
+    {
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var pending = engine.DocumentLocks.AcquireAsync(listed.Partition, listed.DocumentId, stop.Token);
+        if (pending.IsCompletedSuccessfully) return pending.Result;
+
+        var acquire = pending.AsTask();
+        try
+        {
+            while (await Task.WhenAny(acquire, Task.Delay(HeartbeatEvery, engine.Time, stop.Token)).ConfigureAwait(false) != acquire)
+            {
+                ct.ThrowIfCancellationRequested();
+                await heartbeat.RefreshIfDueAsync(ct).ConfigureAwait(false);
+            }
+
+            return await acquire.ConfigureAwait(false);
+        }
+        catch
+        {
+            await stop.CancelAsync().ConfigureAwait(false);
+            try
+            {
+                (await acquire.ConfigureAwait(false)).Dispose(); // the wait completed before the cancellation: release it
+            }
+            catch (OperationCanceledException)
+            {
+                // the wait was cancelled: nothing is held
+            }
+
+            throw;
+        }
+        finally
+        {
+            await stop.CancelAsync().ConfigureAwait(false); // stops the pending delay
         }
     }
 
@@ -194,7 +236,8 @@ internal sealed class RagAdmin(RagEngine engine, IChatClient? chat = null) : IRa
             && check.UpdatedAtUnixMs == fresh.UpdatedAtUnixMs
             && check.MetadataHash == fresh.MetadataHash
             && check.ChunkCount == fresh.ChunkCount
-            && check.ChunkHighWater == fresh.ChunkHighWater)
+            && check.ChunkHighWater == fresh.ChunkHighWater
+            && check.ChunkingHash == fresh.ChunkingHash)
             return false;
 
         engine.Logger.LogWarning("Document {DocumentId} changed during reindex; skipped.", fresh.DocumentId);

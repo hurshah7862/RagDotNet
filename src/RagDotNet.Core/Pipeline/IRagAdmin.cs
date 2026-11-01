@@ -11,8 +11,9 @@ public interface IRagAdmin
     /// The embedding dimensions are probed first, before anything is written. Reindex then writes a reindex marker naming the
     /// configured model and this engine, and waits one <see cref="Configuration.RagOptions.ModelCheckInterval"/> (at most
     /// 1 minute) before writing any new vector, so other instances see the marker first. The heartbeat is refreshed once 60
-    /// seconds have passed since the last refresh, checked after that wait, between embedding batches and after each
-    /// document, so one slow embedding call delays it. The marker is deleted when every document is on the configured model.
+    /// seconds have passed since the last refresh, checked after that wait, between embedding batches, after each document
+    /// and every 60 seconds while waiting for a document that is being ingested or deleted in this process, so one slow
+    /// embedding call delays it. The marker is deleted when every document is on the configured model.
     /// </para>
     /// <para>
     /// While the marker exists, retrieval and questions on pipelines configured with the same model keep working over the

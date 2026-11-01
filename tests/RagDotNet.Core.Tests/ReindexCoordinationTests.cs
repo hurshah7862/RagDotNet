@@ -634,4 +634,104 @@ public class ReindexCoordinationTests
         var after = (await Manifests(rag).GetAsync("", "d1", Ct))!;
         Assert.Equal(("m1", manifest.ChunkHighWater + 1), (after.EmbeddingModelId, after.ChunkHighWater)); // the other write survives
     }
+
+    [Fact]
+    public async Task Manifest_change_to_chunking_hash_only_abandons_the_document()
+    {
+        var store = await SeedM1Async();
+        var gate = new GatedEmbeddingGenerator(new FakeEmbeddingGenerator(64), Has("alpha one"));
+        var builder = Builder(store, "m2", TimeSpan.Zero, embedder: gate);
+        var rag = builder.Build();
+
+        var reindex = builder.BuildAdmin().ReindexAsync(cancellationToken: Ct);
+        await WithinAsync(gate.Reached);
+        // Another process re-chunked with other options: same content hash, timestamp and counts, a new chunking hash.
+        var manifest = (await Manifests(rag).GetAsync("", "d1", Ct))!;
+        await Manifests(rag).UpsertAsync(manifest with { ChunkingHash = manifest.ChunkingHash + "-other" }, Ct);
+        gate.Gate.SetResult();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => WithinAsync(reindex));
+        Assert.Equal("Some documents changed during reindex and are not yet on the configured model. Run ReindexAsync again.", ex.Message);
+        Assert.Equal("m2", (await Manifests(rag).GetMarkerAsync(Ct))!.TargetModelId);
+        var after = (await Manifests(rag).GetAsync("", "d1", Ct))!;
+        Assert.Equal(("m1", manifest.ChunkingHash + "-other"), (after.EmbeddingModelId, after.ChunkingHash));
+    }
+
+    /// <summary>Polls the marker until its heartbeat equals <paramref name="expectedMs"/>, within the test bound.</summary>
+    private static async Task HeartbeatReachesAsync(IRagPipeline rag, long expectedMs)
+    {
+        var deadline = Stopwatch.StartNew();
+        while ((await Manifests(rag).GetMarkerAsync(Ct))!.HeartbeatUnixMs != expectedMs)
+        {
+            Assert.True(deadline.Elapsed < Bounded, "Timed out waiting for the heartbeat refresh.");
+            await Task.Delay(10, Ct);
+        }
+    }
+
+    [Fact]
+    public async Task Heartbeat_is_refreshed_while_waiting_for_a_document_lock()
+    {
+        var store = await SeedM1Async();
+        var time = new TimerCaptureTimeProvider(Start);
+        var builder = Builder(store, "m2", TimeSpan.Zero, time);
+        var rag = builder.Build();
+        var held = await Engine(rag).DocumentLocks.AcquireAsync("", "d1", Ct); // an in-process ingest of d1
+
+        var reindex = builder.BuildAdmin().ReindexAsync(cancellationToken: Ct);
+        var timer = await WithinAsync(time.TimerCreated);
+        Assert.Equal(TimeSpan.FromSeconds(60), timer.DueTime);
+        Assert.Equal(Start.ToUnixTimeMilliseconds(), (await Manifests(rag).GetMarkerAsync(Ct))!.HeartbeatUnixMs);
+
+        time.Advance(TimeSpan.FromSeconds(61));
+        timer.Fire();
+        await HeartbeatReachesAsync(rag, Start.AddSeconds(61).ToUnixTimeMilliseconds());
+        Assert.False(reindex.IsCompleted); // still waiting for the lock
+
+        held.Dispose();
+        Assert.Equal(1, (await WithinAsync(reindex)).DocumentsReindexed);
+        Assert.Equal(0, Engine(rag).DocumentLocks.Count);
+    }
+
+    [Fact]
+    public async Task Takeover_while_waiting_for_a_document_lock_stops_the_wait_without_leaking_it()
+    {
+        var store = await SeedM1Async();
+        var time = new TimerCaptureTimeProvider(Start);
+        var builder = Builder(store, "m2", TimeSpan.Zero, time);
+        var rag = builder.Build();
+        var held = await Engine(rag).DocumentLocks.AcquireAsync("", "d1", Ct);
+
+        var reindex = builder.BuildAdmin().ReindexAsync(cancellationToken: Ct);
+        var timer = await WithinAsync(time.TimerCreated);
+        await Manifests(rag).UpsertMarkerAsync(new ReindexMarker("m2", "foreign", Start.ToUnixTimeMilliseconds()), Ct);
+        time.Advance(TimeSpan.FromSeconds(61));
+        timer.Fire();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => WithinAsync(reindex));
+        Assert.StartsWith("Another reindex (to 'm2') holds the marker", ex.Message);
+        Assert.Equal(1, Engine(rag).DocumentLocks.Count); // only the held lock: the reindex waiter is gone
+        held.Dispose();
+        Assert.Equal(0, Engine(rag).DocumentLocks.Count);
+        using var again = await WithinAsync(Engine(rag).DocumentLocks.AcquireAsync("", "d1", Ct).AsTask());
+    }
+
+    [Fact]
+    public async Task Cancellation_while_waiting_for_a_document_lock_does_not_leak_it()
+    {
+        var store = await SeedM1Async();
+        var time = new TimerCaptureTimeProvider(Start);
+        var builder = Builder(store, "m2", TimeSpan.Zero, time);
+        var rag = builder.Build();
+        var held = await Engine(rag).DocumentLocks.AcquireAsync("", "d1", Ct);
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+        var reindex = builder.BuildAdmin().ReindexAsync(cancellationToken: cts.Token);
+        await WithinAsync(time.TimerCreated);
+        await cts.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => WithinAsync(reindex));
+        Assert.Equal(1, Engine(rag).DocumentLocks.Count);
+        held.Dispose();
+        Assert.Equal(0, Engine(rag).DocumentLocks.Count);
+    }
 }
