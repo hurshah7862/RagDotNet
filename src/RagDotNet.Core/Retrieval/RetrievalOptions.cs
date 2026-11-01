@@ -19,4 +19,9 @@ public sealed record RetrievalOptions
     /// With full access, false limits the search to tenant partitions. Has no effect when no partition keys are configured.
     /// </summary>
     public bool IncludeCommon { get; init; } = true;
+
+    /// <summary>
+    /// Query transformers for this call. Null uses <see cref="Configuration.RagOptions.QueryTransformers"/>; an empty list runs none.
+    /// </summary>
+    public IReadOnlyList<IQueryTransformer>? QueryTransformers { get; init; }
 }

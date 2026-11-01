@@ -665,3 +665,33 @@ RagDotNet.Chunking.StructureAwareChunker.Name.get -> string!
 RagDotNet.Chunking.StructureAwareChunker.Version.get -> string!
 RagDotNet.Configuration.IRagBuilder.AddChunker<TChunker>() -> RagDotNet.Configuration.IRagBuilder!
 RagDotNet.Configuration.RagPipelineBuilder.AddChunker(RagDotNet.Chunking.IChunker! chunker) -> RagDotNet.Configuration.RagPipelineBuilder!
+RagDotNet.Configuration.RagOptions.QueryTransformers.get -> System.Collections.Generic.IList<RagDotNet.Retrieval.IQueryTransformer!>!
+RagDotNet.Configuration.RagOptions.QueryTransformers.set -> void
+RagDotNet.Retrieval.HydeQueryTransformer
+RagDotNet.Retrieval.HydeQueryTransformer.HydeQueryTransformer() -> void
+RagDotNet.Retrieval.HydeQueryTransformer.TransformAsync(RagDotNet.Retrieval.QueryContext! context, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<string!>!>!
+RagDotNet.Retrieval.IQueryTransformer
+RagDotNet.Retrieval.IQueryTransformer.TransformAsync(RagDotNet.Retrieval.QueryContext! context, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<string!>!>!
+RagDotNet.Retrieval.MultiQueryTransformer
+RagDotNet.Retrieval.MultiQueryTransformer.MultiQueryTransformer(int count = 3) -> void
+RagDotNet.Retrieval.MultiQueryTransformer.TransformAsync(RagDotNet.Retrieval.QueryContext! context, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<string!>!>!
+RagDotNet.Retrieval.QueryContext
+RagDotNet.Retrieval.QueryContext.ChatClient.get -> Microsoft.Extensions.AI.IChatClient?
+RagDotNet.Retrieval.QueryContext.ChatClient.init -> void
+RagDotNet.Retrieval.QueryContext.Deconstruct(out string! Question, out System.Collections.Generic.IReadOnlyList<Microsoft.Extensions.AI.ChatMessage!>! History, out System.Collections.Generic.IReadOnlyList<string!>! Queries, out Microsoft.Extensions.AI.IChatClient? ChatClient) -> void
+RagDotNet.Retrieval.QueryContext.Equals(RagDotNet.Retrieval.QueryContext? other) -> bool
+RagDotNet.Retrieval.QueryContext.History.get -> System.Collections.Generic.IReadOnlyList<Microsoft.Extensions.AI.ChatMessage!>!
+RagDotNet.Retrieval.QueryContext.History.init -> void
+RagDotNet.Retrieval.QueryContext.Queries.get -> System.Collections.Generic.IReadOnlyList<string!>!
+RagDotNet.Retrieval.QueryContext.Queries.init -> void
+RagDotNet.Retrieval.QueryContext.QueryContext(string! Question, System.Collections.Generic.IReadOnlyList<Microsoft.Extensions.AI.ChatMessage!>! History, System.Collections.Generic.IReadOnlyList<string!>! Queries, Microsoft.Extensions.AI.IChatClient? ChatClient) -> void
+RagDotNet.Retrieval.QueryContext.Question.get -> string!
+RagDotNet.Retrieval.QueryContext.Question.init -> void
+RagDotNet.Retrieval.RetrievalOptions.QueryTransformers.get -> System.Collections.Generic.IReadOnlyList<RagDotNet.Retrieval.IQueryTransformer!>?
+RagDotNet.Retrieval.RetrievalOptions.QueryTransformers.init -> void
+override RagDotNet.Retrieval.QueryContext.Equals(object? obj) -> bool
+override RagDotNet.Retrieval.QueryContext.GetHashCode() -> int
+override RagDotNet.Retrieval.QueryContext.ToString() -> string!
+static RagDotNet.Retrieval.QueryContext.operator !=(RagDotNet.Retrieval.QueryContext? left, RagDotNet.Retrieval.QueryContext? right) -> bool
+static RagDotNet.Retrieval.QueryContext.operator ==(RagDotNet.Retrieval.QueryContext? left, RagDotNet.Retrieval.QueryContext? right) -> bool
+RagDotNet.Retrieval.QueryContext.<Clone>$() -> RagDotNet.Retrieval.QueryContext!

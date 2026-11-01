@@ -51,7 +51,10 @@ internal sealed class RagEngine
         ModelGuard = new EmbeddingModelGuard(this);
         Ingestor = new Ingestor(this);
         Retriever = new Retriever(this);
+        QueryPlanner = new QueryPlanner(options);
     }
+
+    public QueryPlanner QueryPlanner { get; }
 
     public EmbeddingModelGuard ModelGuard { get; }
 

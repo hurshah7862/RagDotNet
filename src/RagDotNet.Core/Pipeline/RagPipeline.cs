@@ -55,7 +55,9 @@ internal sealed class RagPipeline(RagEngine engine, IAccessScope? accessScope = 
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query);
         var scope = await engine.ResolveScopeAsync(accessScope, cancellationToken).ConfigureAwait(false);
-        return await engine.Retriever.RetrieveAsync([query], scope, options ?? new RetrievalOptions(), cancellationToken).ConfigureAwait(false);
+        options ??= new RetrievalOptions();
+        var queries = await engine.QueryPlanner.PlanAsync(query, [], options, chatClient, cancellationToken).ConfigureAwait(false);
+        return await engine.Retriever.RetrieveAsync(queries, scope, options, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<RagAnswer> AskAsync(string question, AskOptions? options = null, CancellationToken cancellationToken = default)
@@ -136,7 +138,9 @@ internal sealed class RagPipeline(RagEngine engine, IAccessScope? accessScope = 
     private async Task<(IList<ChatMessage>? Prompt, IReadOnlyList<RetrievedChunk> Context, IReadOnlyList<RetrievedChunk> Retrieved)> PrepareAsync(string question, AskOptions? options, CancellationToken ct)
     {
         var scope = await engine.ResolveScopeAsync(accessScope, ct).ConfigureAwait(false);
-        var retrieved = await engine.Retriever.RetrieveAsync([question], scope, options?.Retrieval ?? new RetrievalOptions(), ct).ConfigureAwait(false);
+        var retrieval = options?.Retrieval ?? new RetrievalOptions();
+        var queries = await engine.QueryPlanner.PlanAsync(question, [], retrieval, chatClient, ct).ConfigureAwait(false);
+        var retrieved = await engine.Retriever.RetrieveAsync(queries, scope, retrieval, ct).ConfigureAwait(false);
         if (retrieved.Count == 0) return (null, [], retrieved);
 
         var budget = options?.MaxContextTokens ?? engine.Options.MaxContextTokens;

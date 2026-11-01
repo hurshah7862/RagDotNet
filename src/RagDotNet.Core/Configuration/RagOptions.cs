@@ -65,4 +65,7 @@ public sealed class RagOptions
 
     /// <summary>When true, document text may appear in telemetry.</summary>
     public bool EnableSensitiveData { get; set; }
+
+    /// <summary>Query transformers applied, in order, to every question. Empty by default. <see cref="Retrieval.RetrievalOptions.QueryTransformers"/> overrides this per call.</summary>
+    public IList<Retrieval.IQueryTransformer> QueryTransformers { get; set; } = [];
 }
