@@ -16,9 +16,9 @@ internal sealed class RagRegistrations
 internal sealed class RagOptionsValidator(RagRegistrations registrations, IServiceProviderIsService serviceCheck) : IValidateOptions<RagOptions>
 {
     public ValidateOptionsResult Validate(string? name, RagOptions options) =>
-        Validate(options, registrations.HasAccessScope, registrations.HasContentStore || serviceCheck.IsService(typeof(IChunkContentStore)), requireScopeForPartitions: true);
+        Validate(options, registrations.HasContentStore || serviceCheck.IsService(typeof(IChunkContentStore)));
 
-    public static ValidateOptionsResult Validate(RagOptions options, bool hasAccessScope, bool hasContentStore, bool requireScopeForPartitions)
+    public static ValidateOptionsResult Validate(RagOptions options, bool hasContentStore)
     {
         ArgumentNullException.ThrowIfNull(options);
         var failures = new List<string>();
@@ -35,12 +35,6 @@ internal sealed class RagOptionsValidator(RagRegistrations registrations, IServi
             else if (type != typeof(string))
                 failures.Add($"Partition key '{key}' must be of type string but is {type.Name}.");
         }
-
-        if (requireScopeForPartitions && options.PartitionKeys.Count > 0 && !hasAccessScope)
-            failures.Add($"Partition keys [{string.Join(", ", options.PartitionKeys)}] require an access scope. Register one with AddAccessScope<T>() or UseAccessScope().");
-
-        if (hasAccessScope && options.PartitionKeys.Count == 0)
-            failures.Add("An access scope is registered but PartitionKeys is empty. Add the partition key(s) the scope supplies (declared in Metadata as string).");
 
         if (hasContentStore && options.ContentStorage != ContentStorageMode.External)
             failures.Add("A content store is registered but ContentStorage is VectorStore. Use UseExternalContent<T>() / UseContentStore(), or set ContentStorage = External.");

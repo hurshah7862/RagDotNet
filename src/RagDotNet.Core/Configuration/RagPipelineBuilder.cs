@@ -129,12 +129,12 @@ public sealed class RagPipelineBuilder
     /// <summary>Builds the pipeline and freezes the builder. Repeated calls share one engine.</summary>
     /// <returns>The pipeline.</returns>
     /// <exception cref="InvalidOperationException">The embedding generator or vector store is missing.</exception>
-    /// <exception cref="OptionsValidationException">The options are invalid, partition keys are configured without an access scope, or External content storage is selected without a content store.</exception>
+    /// <exception cref="OptionsValidationException">The options are invalid or External content storage is selected without a content store.</exception>
     public IRagPipeline Build()
     {
         if (_embedder is null) throw new InvalidOperationException("No embedding generator configured. Call UseEmbeddingGenerator().");
         if (_store is null) throw new InvalidOperationException("No vector store configured. Call UseVectorStore().");
-        Validate(requireScopeForPartitions: true);
+        Validate();
         _engine ??= CreateEngine(_embedder, _store);
         _frozen = true;
         return new RagPipeline(_engine, _scope, _chat);
@@ -148,7 +148,7 @@ public sealed class RagPipelineBuilder
     {
         if (_embedder is null) throw new InvalidOperationException("No embedding generator configured. Call UseEmbeddingGenerator().");
         if (_store is null) throw new InvalidOperationException("No vector store configured. Call UseVectorStore().");
-        Validate(requireScopeForPartitions: false);
+        Validate();
         _engine ??= CreateEngine(_embedder, _store);
         _frozen = true;
         return new RagAdmin(_engine);
@@ -165,9 +165,9 @@ public sealed class RagPipelineBuilder
             throw new InvalidOperationException("RagPipelineBuilder cannot be changed after Build(); create a new builder.");
     }
 
-    private void Validate(bool requireScopeForPartitions)
+    private void Validate()
     {
-        var result = RagOptionsValidator.Validate(_options, _scope is not null, _contentStore is not null, requireScopeForPartitions);
+        var result = RagOptionsValidator.Validate(_options, _contentStore is not null);
         if (result.Failed) throw new OptionsValidationException(Options.DefaultName, typeof(RagOptions), result.Failures);
     }
 }

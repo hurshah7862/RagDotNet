@@ -291,7 +291,7 @@ public class ExternalContentTests
 
     private sealed class FixedScope(string tenant) : RagDotNet.Access.IAccessScope
     {
-        public ValueTask<RagDotNet.Access.AccessScope> GetScopeAsync(CancellationToken cancellationToken) =>
+        public ValueTask<RagDotNet.Access.AccessScope?> GetScopeAsync(CancellationToken cancellationToken) =>
             new(new RagDotNet.Access.AccessScope(new Dictionary<string, string> { ["tenant"] = tenant }));
     }
 

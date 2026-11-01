@@ -87,7 +87,7 @@ internal sealed class RagAdmin(RagEngine engine) : IRagAdmin
                     nameof(partition));
         }
 
-        var scope = new ResolvedScope(values, ChunkKeys.Partition(values), null);
+        var scope = new ResolvedScope(values, ChunkKeys.Partition(values), null, RagPermissions.All, false);
         return await engine.Ingestor.DeleteUnguardedAsync(documentId, scope, cancellationToken).ConfigureAwait(false);
     }
 

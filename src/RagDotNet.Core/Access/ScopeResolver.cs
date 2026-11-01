@@ -4,30 +4,49 @@ using RagDotNet.Storage;
 
 namespace RagDotNet.Access;
 
-internal sealed record ResolvedScope(IReadOnlyDictionary<string, string> Partition, string PartitionKey, RagFilter? Filter, bool HasScopeFilter = false)
+internal sealed record ResolvedScope(
+    IReadOnlyDictionary<string, string> Partition, string PartitionKey, RagFilter? UserFilter, RagPermissions Permissions, bool IsFullAccess)
 {
-    public static ResolvedScope None { get; } = new(new Dictionary<string, string>(), "", null);
+    public static ResolvedScope FullAccess { get; } =
+        new(new Dictionary<string, string>(), "", null, RagPermissions.All, true);
+
+    /// <summary>Partition equality ANDed with the scope's own filter; null when neither applies. Full access has no partition condition.</summary>
+    public RagFilter? PartitionAndUserFilter()
+    {
+        var parts = new List<RagFilter>();
+        if (!IsFullAccess)
+            parts.AddRange(Partition.OrderBy(kv => kv.Key, StringComparer.Ordinal).Select(kv => RagFilter.Eq(kv.Key, kv.Value)));
+        if (UserFilter is not null) parts.Add(UserFilter);
+        return parts.Count switch
+        {
+            0 => null,
+            1 => parts[0],
+            _ => new RagFilter.AndFilter(parts),
+        };
+    }
 }
 
-/// <remarks>Shared and thread-safe; holds only the unscoped-data check cache. The scope provider is passed per call.</remarks>
-internal sealed class ScopeResolver(RagOptions options, ManifestStore manifests)
+/// <remarks>Shared and thread-safe; stateless. The scope provider is passed per call.</remarks>
+internal sealed class ScopeResolver(RagOptions options)
 {
-    private readonly SemaphoreSlim _checkLock = new(1, 1);
-    private volatile bool _unscopedCheckPassed;
-
     public async ValueTask<ResolvedScope> ResolveAsync(IAccessScope? scope, CancellationToken ct)
     {
-        if (scope is null) return ResolvedScope.None;
+        if (scope is null) return ResolvedScope.FullAccess;
 
-        var s = await scope.GetScopeAsync(ct).ConfigureAwait(false)
-            ?? throw new InvalidOperationException("The access scope returned null.");
-        var resolved = Validate(s);
-        await EnsureNoUnscopedDataAsync(ct).ConfigureAwait(false);
-        return resolved;
+        var s = await scope.GetScopeAsync(ct).ConfigureAwait(false);
+        return s is null ? ResolvedScope.FullAccess : Validate(s);
     }
 
     private ResolvedScope Validate(AccessScope s)
     {
+        if (options.PartitionKeys.Count == 0)
+        {
+            if (s.Partition is { Count: > 0 })
+                throw new InvalidOperationException(
+                    "The access scope sets partition values, but no PartitionKeys are configured. Use AccessScope.Unpartitioned for a single-tenant app.");
+            return new ResolvedScope(new Dictionary<string, string>(), "", s.Filter, s.Permissions, false);
+        }
+
         if (s.Partition is null || s.Partition.Count == 0)
             throw new InvalidOperationException("The access scope has an empty partition. A scope must set a value for every partition key.");
 
@@ -46,30 +65,6 @@ internal sealed class ScopeResolver(RagOptions options, ManifestStore manifests)
                 throw new InvalidOperationException($"Partition key '{k}' must be declared as a string metadata field.");
         }
 
-        var partitionKey = ChunkKeys.Partition(partition);
-        var parts = partition.OrderBy(kv => kv.Key, StringComparer.Ordinal)
-            .Select(kv => RagFilter.Eq(kv.Key, kv.Value))
-            .ToList();
-        if (s.Filter is not null) parts.Add(s.Filter);
-        RagFilter filter = parts.Count == 1 ? parts[0] : new RagFilter.AndFilter(parts);
-        return new ResolvedScope(partition, partitionKey, filter, s.Filter is not null);
-    }
-
-    private async Task EnsureNoUnscopedDataAsync(CancellationToken ct)
-    {
-        if (_unscopedCheckPassed) return;
-        await _checkLock.WaitAsync(ct).ConfigureAwait(false);
-        try
-        {
-            if (_unscopedCheckPassed) return;
-            await manifests.EnsureExistsAsync(ct).ConfigureAwait(false);
-            if (await manifests.AnyAsync(r => (string)r["Partition"]! == "", ct).ConfigureAwait(false))
-                throw new UnscopedDataException();
-            _unscopedCheckPassed = true; // only success is cached
-        }
-        finally
-        {
-            _checkLock.Release();
-        }
+        return new ResolvedScope(partition, ChunkKeys.Partition(partition), s.Filter, s.Permissions, false);
     }
 }

@@ -345,7 +345,7 @@ public class GenerationTests
     {
         public string Tenant { get; set; } = tenant;
 
-        public ValueTask<RagDotNet.Access.AccessScope> GetScopeAsync(CancellationToken cancellationToken) =>
+        public ValueTask<RagDotNet.Access.AccessScope?> GetScopeAsync(CancellationToken cancellationToken) =>
             new(new RagDotNet.Access.AccessScope(new Dictionary<string, string> { ["tenant"] = Tenant }));
     }
 

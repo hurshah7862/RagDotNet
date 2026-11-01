@@ -43,6 +43,7 @@ internal sealed class Ingestor(RagEngine engine)
         DocumentSource s, ResolvedScope scope, IngestOptions? o, IProgress<IngestProgress>? p, CancellationToken ct)
     {
         var options = engine.Options;
+        scope = TargetFor(s, scope);
         var metadata = BuildMetadata(s, scope);
         await engine.EnsureReadyAsync(ct).ConfigureAwait(false);
         await engine.ModelGuard.EnsureCompatibleAsync(ct).ConfigureAwait(false);
@@ -177,7 +178,7 @@ internal sealed class Ingestor(RagEngine engine)
         if (existing is null) return false;
 
         // The scope's read filter must authorize the document. A document with no chunks cannot be authorized.
-        if (scope.HasScopeFilter && !await IsVisibleAsync(scope, documentId, ct).ConfigureAwait(false))
+        if (scope.UserFilter is not null && !await IsVisibleAsync(scope, documentId, ct).ConfigureAwait(false))
             return false;
 
         // Chunks first, so a crash leaves the manifest and a retry finishes the job.
@@ -188,7 +189,7 @@ internal sealed class Ingestor(RagEngine engine)
 
     private async Task<bool> IsVisibleAsync(ResolvedScope scope, string documentId, CancellationToken ct)
     {
-        var translated = RagFilterTranslator.Translate(scope.Filter, engine.Options.Metadata, out var matchesNothing);
+        var translated = RagFilterTranslator.Translate(scope.PartitionAndUserFilter(), engine.Options.Metadata, out var matchesNothing);
         if (matchesNothing || translated is null) return false;
 
         var p = translated.Parameters[0];
@@ -249,6 +250,35 @@ internal sealed class Ingestor(RagEngine engine)
         }
 
         return vectors;
+    }
+
+    /// <summary>Scoped calls write to their own area. Full access writes to the tenant named by the document's metadata, or to the common area when it names none.</summary>
+    private ResolvedScope TargetFor(DocumentSource s, ResolvedScope scope)
+    {
+        if (!scope.IsFullAccess) return scope;
+        var keys = engine.Options.PartitionKeys;
+        if (keys.Count == 0) return ResolvedScope.FullAccess;
+
+        var values = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var key in keys)
+        {
+            if (!s.Metadata.TryGetValue(key, out var v) || v is null) continue;
+            if (v is not string str)
+                throw new ArgumentException($"Partition value for '{key}' must be a string.", nameof(s));
+            if (str.Length == 0)
+                throw new ArgumentException($"Partition value for '{key}' must not be empty.", nameof(s));
+            values[key] = str;
+        }
+
+        if (values.Count == 0) return ResolvedScope.FullAccess;
+        if (values.Count != keys.Count)
+        {
+            var missing = keys.First(k => !values.ContainsKey(k));
+            throw new ArgumentException(
+                $"Full-access ingest must set all partition keys [{string.Join(", ", keys)}] or none; '{missing}' is missing.", nameof(s));
+        }
+
+        return new ResolvedScope(values, ChunkKeys.Partition(values), null, RagPermissions.All, true);
     }
 
     /// <summary>Validates caller metadata and returns a value for every declared field (null when omitted), with partition values stamped.</summary>

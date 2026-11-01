@@ -25,7 +25,7 @@ public class DependencyInjectionTests
 
     private sealed class HolderScope(TenantHolder holder) : IAccessScope
     {
-        public ValueTask<AccessScope> GetScopeAsync(CancellationToken cancellationToken) =>
+        public ValueTask<AccessScope?> GetScopeAsync(CancellationToken cancellationToken) =>
             new(new AccessScope(new Dictionary<string, string> { ["tenant"] = holder.Tenant }));
     }
 
@@ -117,14 +117,13 @@ public class DependencyInjectionTests
     }
 
     [Fact]
-    public void Partition_keys_without_a_registered_scope_fail_validation()
+    public void Partition_keys_without_a_registered_scope_are_allowed()
     {
         var (services, _) = BaseServices();
         services.AddRag(o => { o.EmbeddingDimensions = 64; o.Metadata.Add<string>("tenant"); o.PartitionKeys.Add("tenant"); });
         using var provider = services.BuildServiceProvider();
 
-        var ex = Assert.Throws<OptionsValidationException>(() => provider.GetRequiredService<RagEngine>());
-        Assert.Contains("access scope", ex.Message);
+        Assert.NotNull(provider.GetRequiredService<RagEngine>());
     }
 
     [Fact]
@@ -224,26 +223,19 @@ public class DependencyInjectionTests
     }
 
     [Fact]
-    public void Scope_registered_with_empty_partition_keys_fails_validation()
+    public void Scope_without_partition_keys_is_allowed_for_single_tenant_apps()
     {
         var (services, _) = BaseServices();
         services.AddSingleton<TenantHolder>();
         services.AddRag(o => o.EmbeddingDimensions = 64).AddAccessScope<HolderScope>();
         using var provider = services.BuildServiceProvider();
+        Assert.NotNull(provider.GetRequiredService<IOptions<RagOptions>>().Value);
 
-        var ex = Assert.Throws<OptionsValidationException>(() => provider.GetRequiredService<IOptions<RagOptions>>().Value);
-        Assert.Contains("PartitionKeys", ex.Message);
-    }
-
-    [Fact]
-    public void Builder_scope_with_empty_partition_keys_fails_build()
-    {
         var b = new RagPipelineBuilder()
             .UseEmbeddingGenerator(new FakeEmbeddingGenerator(64))
             .UseVectorStore(new InMemoryVectorStore(), "test", 64)
             .UseAccessScope(new HolderScope(new TenantHolder()));
-        var ex = Assert.Throws<OptionsValidationException>(() => b.Build());
-        Assert.Contains("PartitionKeys", ex.Message);
+        Assert.NotNull(b.Build());
     }
 
     [Fact]

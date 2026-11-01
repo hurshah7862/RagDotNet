@@ -12,21 +12,7 @@ public class AccessScopeTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private sealed class MutableScope : IAccessScope
-    {
-        public AccessScope? Current { get; set; }
-
-        public int Calls { get; private set; }
-
-        public ValueTask<AccessScope> GetScopeAsync(CancellationToken cancellationToken)
-        {
-            Calls++;
-            return new ValueTask<AccessScope>(Current!);
-        }
-    }
-
-    private static AccessScope Tenant(string t, RagFilter? filter = null) =>
-        new(new Dictionary<string, string> { ["tenant"] = t }, filter);
+    private static AccessScope Tenant(string t, RagFilter? filter = null) => TestScopes.Tenant(t, filter);
 
     private static (IRagPipeline Rag, MutableScope Scope) CreateScoped(Action<RagOptions>? configure = null)
     {
@@ -131,14 +117,6 @@ public class AccessScopeTests
 
         scope.Current = Tenant("a");
         Assert.True(await rag.DeleteDocumentAsync("empty", Ct));
-    }
-
-    [Fact]
-    public void Partition_keys_without_a_scope_throw_at_build()
-    {
-        var ex = Assert.Throws<Microsoft.Extensions.Options.OptionsValidationException>(
-            () => Create(o => { o.Metadata.Add<string>("tenant"); o.PartitionKeys.Add("tenant"); }));
-        Assert.Contains("access scope", ex.Message);
     }
 
     [Fact]
@@ -284,22 +262,71 @@ public class AccessScopeTests
     }
 
     [Fact]
-    public async Task Enabling_scope_over_unscoped_data_throws_UnscopedDataException()
+    public async Task Partition_keys_without_a_scope_build_and_write_to_the_common_area()
     {
-        var store = new InMemoryVectorStore();
-        var embedder = new FakeEmbeddingGenerator(64);
-        var plain = new RagPipelineBuilder().UseEmbeddingGenerator(embedder).UseVectorStore(store, "test", 64)
-            .Configure(o => o.Metadata.Add<string>("tenant")).Build();
-        await plain.IngestAsync(Md("old", "alpha beta"), cancellationToken: Ct);
+        var (rag, _, _, _, _) = Create(o => { o.Metadata.Add<string>("tenant"); o.PartitionKeys.Add("tenant"); });
+        await rag.IngestAsync(Md("c1", "alpha beta"), cancellationToken: Ct);
+        var hits = await rag.RetrieveAsync("alpha beta", cancellationToken: Ct);
+        Assert.Equal("c1:0", Assert.Single(hits).ChunkKey);
+    }
 
+    [Fact]
+    public async Task Null_scope_means_full_access_and_sees_every_partition()
+    {
+        var (rag, scope) = CreateScoped();
+        scope.Current = Tenant("a");
+        await rag.IngestAsync(Md("a1", "alpha beta"), cancellationToken: Ct);
+        scope.Current = null;
+        await rag.IngestAsync(Md("c1", "alpha gamma"), cancellationToken: Ct);
+        var hits = await rag.RetrieveAsync("alpha", new() { TopK = 10 }, Ct);
+        Assert.Equal(["a1", "c1"], hits.Select(h => h.DocumentId).Order());
+    }
+
+    [Fact]
+    public async Task Full_access_ingest_naming_a_tenant_goes_to_that_tenant()
+    {
+        var (rag, scope) = CreateScoped();
+        scope.Current = null;
+        await rag.IngestAsync(Md("t1", "alpha beta", new Dictionary<string, object?> { ["tenant"] = "a" }), cancellationToken: Ct);
+        var hits = await rag.RetrieveAsync("alpha beta", cancellationToken: Ct);
+        Assert.Equal("tenant=a|t1:0", Assert.Single(hits).ChunkKey);
+    }
+
+    [Fact]
+    public async Task Full_access_ingest_with_partial_or_empty_partition_values_throws()
+    {
+        var scope = new MutableScope { Current = null };
+        var (rag, _, _, _, _) = Create(
+            o => { o.Metadata.Add<string>("tenant"); o.Metadata.Add<string>("region"); o.PartitionKeys.Add("tenant"); o.PartitionKeys.Add("region"); },
+            b => b.UseAccessScope(scope));
+
+        var partial = await Assert.ThrowsAsync<ArgumentException>(
+            () => rag.IngestAsync(Md("p1", "alpha", new Dictionary<string, object?> { ["tenant"] = "a" }), cancellationToken: Ct));
+        Assert.Contains("region", partial.Message);
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => rag.IngestAsync(Md("p2", "alpha", new Dictionary<string, object?> { ["tenant"] = "", ["region"] = "eu" }), cancellationToken: Ct));
+        Assert.Empty(await rag.RetrieveAsync("alpha", cancellationToken: Ct));
+    }
+
+    [Fact]
+    public void Access_scope_defaults_to_all_permissions() =>
+        Assert.Equal(RagPermissions.All, new AccessScope(new Dictionary<string, string> { ["tenant"] = "a" }).Permissions);
+
+    [Fact]
+    public async Task Single_tenant_scope_resolves_without_a_partition()
+    {
+        var scope = new MutableScope { Current = AccessScope.Unpartitioned() };
+        var (rag, _, _, _, _) = Create(builder: b => b.UseAccessScope(scope));
+        await rag.IngestAsync(Md("d1", "alpha"), cancellationToken: Ct);
+        Assert.Equal("d1:0", Assert.Single(await rag.RetrieveAsync("alpha", cancellationToken: Ct)).ChunkKey);
+    }
+
+    [Fact]
+    public async Task Single_tenant_scope_with_partition_values_throws()
+    {
         var scope = new MutableScope { Current = Tenant("a") };
-        var scoped = new RagPipelineBuilder().UseEmbeddingGenerator(embedder).UseVectorStore(store, "test", 64)
-            .Configure(o => { o.Metadata.Add<string>("tenant"); o.PartitionKeys.Add("tenant"); })
-            .UseAccessScope(scope).Build();
-
-        await Assert.ThrowsAsync<UnscopedDataException>(() => scoped.RetrieveAsync("alpha", cancellationToken: Ct));
-        // A failed check is not cached: it runs again.
-        await Assert.ThrowsAsync<UnscopedDataException>(() => scoped.IngestAsync(Md("d", "x"), cancellationToken: Ct));
-        await Assert.ThrowsAsync<UnscopedDataException>(() => scoped.DeleteDocumentAsync("old", Ct));
+        var (rag, _, _, _, _) = Create(o => o.Metadata.Add<string>("tenant"), b => b.UseAccessScope(scope));
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => rag.RetrieveAsync("alpha", cancellationToken: Ct));
+        Assert.Contains("Unpartitioned", ex.Message);
     }
 }

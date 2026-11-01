@@ -16,7 +16,7 @@ public class AdminAndModelSafetyTests
 
     private sealed class FixedScope(string tenant) : IAccessScope
     {
-        public ValueTask<AccessScope> GetScopeAsync(CancellationToken cancellationToken) =>
+        public ValueTask<AccessScope?> GetScopeAsync(CancellationToken cancellationToken) =>
             new(new AccessScope(new Dictionary<string, string> { ["tenant"] = tenant }));
     }
 

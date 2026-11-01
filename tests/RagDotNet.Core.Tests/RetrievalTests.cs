@@ -16,7 +16,7 @@ public class RetrievalTests
 
     private sealed class FixedScope(string tenant) : IAccessScope
     {
-        public ValueTask<AccessScope> GetScopeAsync(CancellationToken cancellationToken) =>
+        public ValueTask<AccessScope?> GetScopeAsync(CancellationToken cancellationToken) =>
             new(new AccessScope(new Dictionary<string, string> { ["tenant"] = tenant }));
     }
 
@@ -202,7 +202,7 @@ public class RetrievalTests
         await p.IngestAsync(Md("b-doc", "alpha beta gamma", Meta("b", "doc")), cancellationToken: Ct);
     }
 
-    private static ResolvedScope Scope(RagFilter? filter) => new(new Dictionary<string, string>(), "", filter);
+    private static ResolvedScope Scope(RagFilter? filter) => new(new Dictionary<string, string>(), "", filter, RagPermissions.All, false);
 
     private static Task<IReadOnlyList<RetrievedChunk>> Retrieve(RagPipeline p, ResolvedScope scope, RetrievalOptions? o = null) =>
         p.Engine.Retriever.RetrieveAsync("alpha beta gamma", scope, o ?? new RetrievalOptions(), Ct);
@@ -267,7 +267,7 @@ public class RetrievalTests
             await Seed(p);
             store.NullSearchScores = true;
 
-            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => Retrieve(p, ResolvedScope.None));
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => Retrieve(p, ResolvedScope.FullAccess));
             Assert.Contains("without a score", ex.Message);
         }
     }
@@ -279,7 +279,7 @@ public class RetrievalTests
         await Seed(p);
         store.DropColumnOnSearch = "Partition";
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => Retrieve(p, ResolvedScope.None));
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => Retrieve(p, ResolvedScope.FullAccess));
         Assert.Contains("no Partition field", ex.Message);
     }
 
@@ -290,7 +290,7 @@ public class RetrievalTests
         await p.IngestAsync(Md("z", "alpha beta gamma", Meta("a", "doc")), cancellationToken: Ct);
         await p.IngestAsync(Md("m", "alpha beta gamma", Meta("a", "doc")), cancellationToken: Ct);
 
-        var results = await Retrieve(p, ResolvedScope.None);
+        var results = await Retrieve(p, ResolvedScope.FullAccess);
 
         Assert.Equal(["m", "z"], results.Select(r => r.DocumentId));
     }

@@ -15,7 +15,7 @@ public class PipelineBuilderTests
 
     private sealed class FixedScope : IAccessScope
     {
-        public ValueTask<AccessScope> GetScopeAsync(CancellationToken cancellationToken) => new(new AccessScope(new Dictionary<string, string>()));
+        public ValueTask<AccessScope?> GetScopeAsync(CancellationToken cancellationToken) => new(new AccessScope(new Dictionary<string, string>()));
     }
 
     public static TheoryData<string> Mutators() =>

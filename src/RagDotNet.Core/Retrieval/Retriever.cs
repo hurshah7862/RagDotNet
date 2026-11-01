@@ -45,7 +45,7 @@ internal sealed class Retriever(RagEngine engine)
             throw new ArgumentOutOfRangeException("TopK", o.TopK, "TopK must be between 1 and 100.");
 
         var options = engine.Options;
-        RagFilter? effective = (scope.Filter, o.Filter) switch
+        RagFilter? effective = (scope.PartitionAndUserFilter(), o.Filter) switch
         {
             (null, var f) => f,
             (var s, null) => s,

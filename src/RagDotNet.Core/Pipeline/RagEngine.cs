@@ -45,7 +45,7 @@ internal sealed class RagEngine
         EmbeddingModelId = options.EmbeddingModelId
             ?? embedder.GetService<EmbeddingGeneratorMetadata>()?.DefaultModelId
             ?? "unknown";
-        Scope = new ScopeResolver(options, manifests);
+        Scope = new ScopeResolver(options);
         ModelGuard = new EmbeddingModelGuard(this);
         Ingestor = new Ingestor(this);
         Retriever = new Retriever(this);
