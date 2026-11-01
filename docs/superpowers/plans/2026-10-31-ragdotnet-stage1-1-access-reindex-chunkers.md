@@ -2,11 +2,12 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Change RagDotNet.Core's public API and behaviour to spec revision 2. That means:
-- an optional access scope, where no scope means full access and writes go to a common area;
+**Goal:** Change RagDotNet.Core's public API and behaviour to spec revision 2.1. That means:
+- an optional access scope, where no scope means full access, and writes go to the tenant a document names or else to a common area;
 - per-user permissions;
 - "you can't change what you can't read";
-- a reindex that coordinates with concurrent writes;
+- filters that never crash on missing metadata values;
+- a reindex that coordinates with concurrent writes while questions keep working;
 - pluggable, named chunkers.
 
 **Architecture:** The work is mostly in existing Core types.
@@ -14,17 +15,17 @@
 - **Access:** `ScopeResolver` resolves each call to either full access or a validated scope with permissions.
 - **Reads:** they filter on `Partition == own OR Partition == ""`.
 - **Write checks:** they use an in-memory `RagFilterEvaluator` over the stored manifest's metadata.
-- **Reindex:** it writes a marker record into the manifest collection. `EmbeddingModelGuard` reads that marker on a timed cache and decides per operation kind (read or write).
+- **Reindex:** it writes a marker record into the manifest collection. `EmbeddingModelGuard` reads that marker on a timed cache and decides per operation kind (read or write). During a reindex, reads add `EmbeddingModelId == configured` to the store filter.
 - **Chunkers:** a `ChunkerRegistry` maps names to `IChunker`, and a `ChunkOutputGuard` normalizes every chunker's output.
 
-**Tech Stack:** .NET 10 SDK, `net8.0;net10.0`, Microsoft.Extensions.AI 10.11.0, Microsoft.Extensions.VectorData.Abstractions 10.8.2, System.Text.Json (BCL), xUnit v3, CommunityToolkit.VectorData.InMemory 1.0.1.
+**Tech Stack:** .NET 10 SDK, `net8.0;net10.0`, Microsoft.Extensions.AI 10.11.0, Microsoft.Extensions.VectorData.Abstractions 10.8.2, xUnit v3, CommunityToolkit.VectorData.InMemory 1.0.1.
 
-**Spec:** `docs/superpowers/specs/2026-10-18-ragdotnet-design.md`, revision 2. This plan covers §10 stage 1.1 and argues from §5.1, §5.2, §5.3, §5.4, §5.5, §5.8, §5.12 (JSON only), §5.14 and §6.
+**Spec:** `docs/superpowers/specs/2026-10-18-ragdotnet-design.md`, revision 2.1. This plan covers §10 stage 1.1 and argues from §5.1, §5.2, §5.3, §5.4, §5.5, §5.8, §5.14 and §6.
 
 ## Global Constraints
 
 - Target frameworks: `net8.0;net10.0` for every shipped package. Warnings are errors.
-- Core keeps its current dependency list. **No new package references in `src/`.** System.Text.Json and `TimeProvider` come from the BCL.
+- Core keeps its current dependency list. **No new package references in `src/`.** `TimeProvider` comes from the BCL.
 - Every public API change, whether added, removed or changed, is reflected in `src/RagDotNet.Core/PublicAPI.Unshipped.txt`. The PublicApiAnalyzers build must stay clean.
 - Every public member has XML docs, including `<exception>` tags for the exceptions it documents. Messages never contain document text.
 - Unit tests never need a model, network access or Docker. Use the fakes in `tests/RagDotNet.Core.Tests/Fakes` and `InMemoryVectorStore`.
@@ -41,7 +42,7 @@ These five inputs are the ones a person using the library is most likely to hit 
 1. A scoped user ingests a DocumentId that exists only in the common area. Expected: a separate tenant document is created, not a refusal, and the common document is unchanged. Test in Task 4.
 2. A scope filter on a `string[]` field (for example `ContainsAny("groups", …)`) is checked against a stored document whose field is null. Expected: the document is "not visible", never a `NullReferenceException`. Test in Task 4.
 3. A reindex is cancelled and then rerun right away in the same process. Expected: it resumes at once instead of being refused for 5 minutes by its own marker. Test in Task 8.
-4. After a reindex finishes in one process, a second process that cached "reindex in progress" starts answering again within `ModelCheckInterval`. Expected: no restart needed. Test in Task 7.
+4. A second instance already configured with the new model fails with a mismatch until a reindex starts. Expected: within `ModelCheckInterval` of the marker appearing, it starts answering (from re-embedded data) without a restart. Test in Task 7.
 5. A custom chunker returns duplicate or non-contiguous `Index` values. Expected: the library renumbers 0..n-1, so chunk keys never collide or leave gaps. Test in Task 9.
 
 ---
@@ -49,6 +50,12 @@ These five inputs are the ones a person using the library is most likely to hit 
 ## Decisions this plan makes *(builder's calls, beyond the spec)*
 
 - **Full access with `IncludeCommon = false`:** the read is limited to tenant partitions (`Partition != ""`).
+- **Single-tenant apps** (no `PartitionKeys`):
+  - A scope is allowed. Its `Partition` must be empty, and `AccessScope.Unpartitioned(filter, permissions)` builds one.
+  - The user's own area is the common area (`PartitionKey == ""`), so reads, write checks and delete checks work unchanged. Writes land in the one area.
+  - `IncludeCommon = false` has no effect there.
+  - The "scope registered but PartitionKeys is empty" validation failure is removed.
+- **Full-access ingest** *(owner's decision in spec 2.1)*: a document whose metadata sets **every** partition key with a non-empty value goes to that tenant's area. One that sets **none** goes to the common area. Anything in between throws `ArgumentException`. Full access skips permission and visibility checks.
 - **Permission failures throw `RagAccessDeniedException`,** including on delete. A delete of a document that exists but isn't visible returns `false`, and so does a delete of a document that doesn't exist.
 - **Stored "visibility" uses an in-memory evaluator:** `RagFilterEvaluator` checks the scope filter against the manifest's stored metadata. A null field never matches `Eq`, `In`, `Contains` or `ContainsAny`.
 - **Reindex marker layout:** the marker is a manifest-shaped record with the reserved key `|reindex`. No escaped DocumentId can start with `|`. Its fields:
@@ -72,6 +79,14 @@ These five inputs are the ones a person using the library is most likely to hit 
   - `TimeSpan.Zero` means check on every call; negative values fail validation.
   - The guard caches the observed state, whatever the outcome, for the interval. `Reset()` clears it.
   - The content-mode check stays cached forever once it passes.
+- **Reads during reindex** *(owner's decision in spec 2.1)*:
+  - No exception: the store filter gains `EmbeddingModelId == configured`, so only re-embedded data is searched.
+  - One warning per process per marker (keyed on the marker's owner id, re-armed once no marker is seen).
+  - The `rag.retrieve` span gets the tag `rag.reindex.in_progress = true`.
+- **Null-safe filters:**
+  - An omitted `string[]` value is stored as an empty array (`[]`). `Contains`/`ContainsAny` then never see null, and the query keeps the shape stores already translate.
+  - Value-type fields (`int`, `long`, `bool`, `DateTimeOffset`) are compared through their nullable type: `(T?)r["meta_x"] == (T?)value`.
+  - Stage 8 checks that every supported store accepts the nullable form.
 - **Time source:** `RagEngine.Time` is a `TimeProvider`. The builder sets it with an internal `UseTimeProvider`; DI uses `sp.GetService<TimeProvider>() ?? TimeProvider.System`.
 - **`ForScope`:**
   - It validates the scope immediately and throws `ArgumentException` for an invalid scope.
@@ -83,10 +98,6 @@ These five inputs are the ones a person using the library is most likely to hit 
   - Oversized chunks are split with `TokenCounter.SplitByTokens` and keep the original's heading path and pages.
   - A chunker that returns `null`, or a list with a `null` element, fails with `InvalidOperationException` naming the chunker.
 - **App chunkers are singletons:** they are resolved from the root provider by the options validator.
-- **JSON shape:**
-  - `RagFilter` uses `{"op":"eq|in|contains|containsAny|and|or", ...}`.
-  - `RagPermissions` is written as its flag names (`"Read, Write"`).
-  - `AccessScope` serializes with System.Text.Json defaults plus those two converters.
 
 ## File map
 
@@ -95,29 +106,28 @@ These five inputs are the ones a person using the library is most likely to hit 
 | `src/RagDotNet.Core/Storage/RecordDefinitions.cs` | chunk `Partition`; manifest declares every metadata field | 1 |
 | `src/RagDotNet.Core/Storage/ManifestRecord.cs` | `Metadata` dictionary; common-area records | 1 |
 | `src/RagDotNet.Core/Storage/ManifestStore.cs` | `FromDynamic` gets the schema; marker get/upsert/delete | 1, 7 |
-| `src/RagDotNet.Core/Ingestion/Ingestor.cs` | write `Partition`/manifest metadata; full-access and scoped rules; permission and visibility checks; chunker registry; output guard | 1, 2, 4, 9 |
-| `src/RagDotNet.Core/Retrieval/Retriever.cs` | key from `Partition`; read filter; `IncludeCommon`; Read permission; read guard | 1, 3, 7 |
+| `src/RagDotNet.Core/Ingestion/Ingestor.cs` | write `Partition`/manifest metadata; full-access tenant routing and scoped rules; permission and visibility checks; `[]` for omitted arrays; chunker registry; output guard | 1, 2, 4, 6, 9 |
+| `src/RagDotNet.Core/Retrieval/Retriever.cs` | key from `Partition`; read filter; `IncludeCommon`; Read permission; read guard and model clause during reindex | 1, 3, 7 |
 | `src/RagDotNet.Core/Retrieval/RetrievalOptions.cs` | `IncludeCommon` | 3 |
 | `src/RagDotNet.Core/Access/RagPermissions.cs` | new | 2 |
 | `src/RagDotNet.Core/Access/RagAccessDeniedException.cs` | new | 2 |
 | `src/RagDotNet.Core/Access/AccessScope.cs`, `IAccessScope.cs` | `Permissions`; nullable return | 2 |
 | `src/RagDotNet.Core/Access/ScopeResolver.cs` | full access, validation, `ValidateExplicit` for ForScope | 2, 5 |
 | `src/RagDotNet.Core/Access/UnscopedDataException.cs` | delete | 2 |
-| `src/RagDotNet.Core/Access/ReadFilters.cs` | new: partition + scope + caller read expression | 3 |
+| `src/RagDotNet.Core/Access/ReadFilters.cs` | new: partition + scope + caller read expression; optional model clause | 3, 7 |
 | `src/RagDotNet.Core/Filtering/RagFilterEvaluator.cs` | new: in-memory evaluation | 4 |
-| `src/RagDotNet.Core/Filtering/RagFilterJsonConverter.cs` | new | 6 |
+| `src/RagDotNet.Core/Filtering/RagFilterTranslator.cs` | nullable comparison for value-type fields | 6 |
 | `src/RagDotNet.Core/Configuration/RagOptionsValidator.cs` | drop "partitions need a scope"; `ModelCheckInterval`; chunker checks | 2, 7, 9 |
 | `src/RagDotNet.Core/Configuration/RagOptions.cs` | `ModelCheckInterval` | 7 |
 | `src/RagDotNet.Core/Configuration/RagPipelineBuilder.cs`, `RagServiceCollectionExtensions.cs`, `IRagBuilder.cs`, `RagEngineFactory.cs` | chat to admin; time provider; `AddChunker` | 5, 7, 9 |
 | `src/RagDotNet.Core/Pipeline/IRagAdmin.cs`, `RagAdmin.cs` | `ForScope`; common-area delete; reindex coordination | 5, 8 |
 | `src/RagDotNet.Core/Pipeline/RagEngine.cs` | `Time`, `InstanceId`, `ReindexGate`, `Chunkers`, `OutputGuard` | 7, 8, 9 |
-| `src/RagDotNet.Core/Pipeline/ReindexInProgressException.cs` | new | 7 |
 | `src/RagDotNet.Core/Embedding/EmbeddingModelGuard.cs` | interval cache; marker; read/write modes | 7 |
 | `src/RagDotNet.Core/Chunking/*` | `IChunker` Name/Version, `Chunkers`, `ChunkingOptions.Chunker`, delete `ChunkingStrategy`, `ChunkerRegistry`, `ChunkOutputGuard` | 9 |
 | `src/RagDotNet.Core/Storage/Hashing.cs` | chunking hash includes chunker name and version | 9 |
 | `tests/RagDotNet.Core.Tests/Fakes/TestScopes.cs` | new shared `MutableScope`, `Tenant(...)` | 2 |
 | `tests/RagDotNet.Core.Tests/Fakes/ManualTimeProvider.cs` | new | 7 |
-| `README.md` | access model, reindex guidance, custom chunkers | 5, 8, 9 |
+| `README.md` | access model, caching note, reindex guidance, custom chunkers | 5, 8, 9 |
 
 ---
 
@@ -225,7 +235,20 @@ git commit -m "feat(core): chunk Partition field and declared metadata on manife
   - `internal sealed record ResolvedScope(IReadOnlyDictionary<string,string> Partition, string PartitionKey, RagFilter? UserFilter, RagPermissions Permissions, bool IsFullAccess)`
   - `static ResolvedScope FullAccess` has an empty partition, `""` as key, a null filter, `All` permissions and `IsFullAccess = true`.
   - `UserFilter` is the scope's own `Filter` only; partition equality is no longer folded in, because Task 3 builds the partition condition.
-- Removed: `UnscopedDataException`, the unscoped-data check in `ScopeResolver`, the `requireScopeForPartitions` parameter, and the "Partition keys … require an access scope" validation failure.
+- Produces (public): `public static AccessScope Unpartitioned(RagFilter? filter = null, RagPermissions permissions = RagPermissions.All)` on `AccessScope`. It returns a scope with an empty `Partition`, for single-tenant apps.
+- Removed:
+  - `UnscopedDataException` and the unscoped-data check in `ScopeResolver`;
+  - the `requireScopeForPartitions` parameter;
+  - the "Partition keys … require an access scope" validation failure;
+  - the "An access scope is registered but PartitionKeys is empty" validation failure.
+- `ScopeResolver` validation:
+  - With `PartitionKeys` configured, the existing rules apply (every key set, non-empty).
+  - With none configured, a non-empty `Partition` throws `InvalidOperationException("The access scope sets partition values, but no PartitionKeys are configured. Use AccessScope.Unpartitioned for a single-tenant app.")`. An empty one resolves to `PartitionKey = ""` with `IsFullAccess = false`.
+- Full-access target area: `Ingestor` gets `private ResolvedScope TargetFor(DocumentSource s, ResolvedScope scope)`.
+  - Scoped calls return `scope` unchanged.
+  - With full access, every partition key set to a non-empty string gives that partition. The result keeps `IsFullAccess = true`, so no permission or visibility checks apply.
+  - With full access and no partition key set, the result is `FullAccess` (the common area). Anything else throws `ArgumentException`.
+  - The lock, keys, manifest and stamped metadata all use the target.
 
 - [ ] **Step 1: Add shared test helpers** in `Fakes/TestScopes.cs`
 
@@ -271,13 +294,20 @@ public async Task Null_scope_means_full_access_and_sees_every_partition()
 }
 
 [Fact]
-public async Task Full_access_ingest_with_partition_metadata_throws()
+public async Task Full_access_ingest_naming_a_tenant_goes_to_that_tenant()
 {
     var (rag, scope) = CreateScoped();
     scope.Current = null;
-    var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-        rag.IngestAsync(Md("c1", "x", new Dictionary<string, object?> { ["tenant"] = "a" }), cancellationToken: Ct));
-    Assert.Contains("tenant", ex.Message);
+    await rag.IngestAsync(Md("t1", "alpha beta", new Dictionary<string, object?> { ["tenant"] = "a" }), cancellationToken: Ct);
+    var hits = await rag.RetrieveAsync("alpha beta", cancellationToken: Ct);
+    Assert.Equal("tenant=a|t1:0", Assert.Single(hits).ChunkKey);
+}
+
+[Fact]
+public async Task Full_access_ingest_with_partial_or_empty_partition_values_throws()
+{
+    // Two partition keys (tenant, region): metadata with only tenant → ArgumentException naming "region";
+    // tenant = "" → ArgumentException. Nothing is stored in either case.
 }
 
 [Fact]
@@ -285,7 +315,30 @@ public void Access_scope_defaults_to_all_permissions() =>
     Assert.Equal(RagPermissions.All, new AccessScope(new Dictionary<string, string> { ["tenant"] = "a" }).Permissions);
 ```
 
-Keep `Empty_partition_throws`, `Partition_keys_not_matching_options_throw` and `Invalid_partition_values_throw`; they still apply to a non-null scope.
+Keep `Empty_partition_throws`, `Partition_keys_not_matching_options_throw` and `Invalid_partition_values_throw`; they still apply to a non-null scope in a multi-tenant app.
+
+Single-tenant tests:
+
+```csharp
+[Fact]
+public async Task Single_tenant_scope_applies_permissions_without_a_partition()
+{
+    var scope = new MutableScope { Current = AccessScope.Unpartitioned(permissions: RagPermissions.Read) };
+    var (rag, _, _, _, _) = Create(builder: b => b.UseAccessScope(scope)); // no PartitionKeys
+    await Assert.ThrowsAsync<RagAccessDeniedException>(() => rag.IngestAsync(Md("d1", "alpha"), cancellationToken: Ct));
+    scope.Current = AccessScope.Unpartitioned();
+    await rag.IngestAsync(Md("d1", "alpha"), cancellationToken: Ct);
+    Assert.Equal("d1:0", Assert.Single(await rag.RetrieveAsync("alpha", cancellationToken: Ct)).ChunkKey);
+}
+
+[Fact]
+public async Task Single_tenant_scope_with_partition_values_throws()
+{
+    // no PartitionKeys; scope returns Tenant("a") → InvalidOperationException mentioning "Unpartitioned".
+}
+```
+
+In `DependencyInjectionTests`, the two tests asserting the "PartitionKeys" message for a scope without partition keys become `Scope_without_partition_keys_is_allowed_for_single_tenant_apps`, which expects no exception at startup or build.
 
 - [ ] **Step 3: Run them and confirm they fail**
 
@@ -296,8 +349,8 @@ Expected: they fail to compile (new types are missing) until Step 4.
   - `ScopeResolver.ResolveAsync`: a null provider or a null result returns `ResolvedScope.FullAccess`. Otherwise run the existing partition validation and return the scoped record with `UserFilter = s.Filter` and `Permissions = s.Permissions`.
   - `ScopeResolver` no longer needs `ManifestStore`.
   - Existing code that read `scope.Filter` or `HasScopeFilter` moves to `UserFilter`. Until Task 3, `Retriever` builds its filter as partition-equality AND `UserFilter`, so the suite stays green.
-  - `Ingestor.BuildMetadata`: when `scope.IsFullAccess` and any `RagOptions.PartitionKeys` key has a non-null value in `s.Metadata`, throw `ArgumentException($"Metadata key '{key}' is a partition key. Documents ingested with full access go to the common area and cannot carry partition values; use IRagAdmin.ForScope to write into a tenant partition.")`.
-  - Remove the "partitions need a scope" rule from the validator and the builder.
+  - `Ingestor.TargetFor` (see Interfaces). For partial values throw `ArgumentException($"Full-access ingest must set all partition keys [{keys}] or none; '{missing}' is missing.")`. For an empty value throw `ArgumentException($"Partition value for '{key}' must not be empty.")`.
+  - Remove the "partitions need a scope" and "scope needs PartitionKeys" rules from the validator and the builder.
 
 - [ ] **Step 5: Run the full suite and confirm it passes**
 
@@ -373,7 +426,8 @@ public async Task Existing_unscoped_data_becomes_the_common_area_when_a_scope_is
 [Fact]
 public async Task Full_access_without_common_sees_only_tenant_partitions()
 {
-    // c1 common, a1 tenant a; scope null; IncludeCommon = false → only a1.
+    // c1 common, a1 written by full access with metadata tenant = "a"; scope null; IncludeCommon = false → only a1;
+    // tenant a (scoped) also sees a1.
 }
 
 [Fact]
@@ -502,6 +556,13 @@ public async Task Scoped_ingest_of_a_common_document_id_creates_a_separate_tenan
 }
 
 [Fact]
+public async Task Single_tenant_user_can_change_what_they_can_read_and_not_what_they_cannot()
+{
+    // no PartitionKeys; full-access ingest "hr" {groups:["hr"]}; scope Unpartitioned(ContainsAny(groups,["eng"])):
+    // ingest "e" {groups:["eng"]} → Created; delete "e" → true; ingest "hr" → RagAccessDeniedException; delete "hr" → false.
+}
+
+[Fact]
 public async Task Tenant_cannot_delete_a_common_document()
 {
     // full-access ingest "c"; tenant a (All permissions) DeleteDocumentAsync("c") → false; full-access retrieve still finds "c".
@@ -581,12 +642,15 @@ Update `Admin_delete_targets_named_partition`. A `null` partition with partition
 - [ ] **Step 3: Implement** as described in Interfaces.
 
 - [ ] **Step 4: Update `README.md`** with an "Access control" section that replaces the stage 1 text. It covers:
-  - no scope or a `null` scope means full access and writes go to the common area;
+  - no scope or a `null` scope means full access; writes go to the tenant the document's metadata names, or else to the common area;
+  - single-tenant vs multi-tenant: no `PartitionKeys` means single-tenant, with no tenant to name; `AccessScope.Unpartitioned` gives read filters and permissions without a partition;
   - `AccessScope` partition, filter and permissions, with a read-only example;
   - tenants see their own documents plus common ones, and `IncludeCommon`;
   - the common area is read-only to tenants;
-  - `IRagAdmin.ForScope` for background jobs;
+  - `IRagAdmin.ForScope` for writes that must apply a tenant user's read filter and permissions;
   - the accepted existence leak on refused writes, and how to avoid it with per-group id prefixes.
+
+  Also add a short "Caching" section. It explains how to wrap the app's `IChatClient` and `IEmbeddingGenerator` with Microsoft.Extensions.AI's caching wrappers (`UseDistributedCache`). It explains why that is safe: the prompt contains the retrieved documents, so new documents or different access miss the cache. It says semantic caching is not provided.
 
 - [ ] **Step 5: Run the full suite and confirm it passes.** Expected: all tests pass.
 
@@ -599,64 +663,85 @@ git commit -m "feat(core): IRagAdmin.ForScope; admin delete of common documents;
 
 ---
 
-### Task 6: JSON support for `AccessScope`, `RagFilter`, `RagPermissions`
+### Task 6: Null-safe filters on missing metadata values
+
+Stage 1 crashes when a filter touches a field a document has no value for:
+- `NullReferenceException` for `int`, `long`, `bool` and `DateTimeOffset`;
+- `ArgumentNullException` for `string[]`.
+
+This was measured on 2026-10-31 with the InMemory store. Scope filters such as `ContainsAny("groups", user.Groups)` over documents without groups crash the same way.
 
 **Files:**
-- Create: `src/RagDotNet.Core/Filtering/RagFilterJsonConverter.cs`
-- Modify: `src/RagDotNet.Core/Filtering/RagFilter.cs` (attribute), `src/RagDotNet.Core/Access/RagPermissions.cs` (attribute), `PublicAPI.Unshipped.txt`
-- Test: `tests/RagDotNet.Core.Tests/JsonSerializationTests.cs` (new)
+- Modify: `src/RagDotNet.Core/Filtering/RagFilterTranslator.cs`, `src/RagDotNet.Core/Ingestion/Ingestor.cs` (`BuildMetadata`), `src/RagDotNet.Core/Retrieval/RetrievedChunk.cs` (XML doc on `Metadata`: omitted arrays come back empty)
+- Test: `tests/RagDotNet.Core.Tests/RagFilterTests.cs`, `tests/RagDotNet.Core.Tests/AccessScopeTests.cs`
 
 **Interfaces:**
 - Produces:
-  - `public sealed class RagFilterJsonConverter : JsonConverter<RagFilter>`, applied with `[JsonConverter(typeof(RagFilterJsonConverter))]` on `RagFilter`.
-  - `RagPermissions` carries `[JsonConverter(typeof(JsonStringEnumConverter<RagPermissions>))]`.
-  - `AccessScope` needs no converter of its own.
-- Wire format (exact property names):
-  - `{"op":"eq","field":F,"value":V}`
-  - `{"op":"in","field":F,"values":[V…]}`
-  - `{"op":"contains","field":F,"value":"s"}`
-  - `{"op":"containsAny","field":F,"values":["s"…]}`
-  - `{"op":"and","filters":[…]}`
-  - `{"op":"or","filters":[…]}`
-- Writing values: string, bool and integer types are written natively. `float`, `double` and `decimal` are written as numbers. `DateTimeOffset` and `DateTime` are written as ISO-8601 `"O"` strings. Any other type throws `JsonException`.
-- Reading values: a JSON string gives `string`, `true`/`false` gives `bool`, and a number gives `long` when `TryGetInt64` succeeds, otherwise `double`.
-- Errors: an unknown `op`, a missing property or `null` throws `JsonException`.
+  - `BuildMetadata` stores `Array.Empty<string>()` for an omitted or null `string[]` field. The metadata hash is computed after this, so null and `[]` count as the same document.
+  - `RagFilterTranslator.BuildEq`: for value-type fields it compares `Expression.Convert(indexer, typeof(Nullable<T>))` with `Expression.Constant(converted, typeof(Nullable<T>))`. String comparisons don't change.
+  - `BuildContains` doesn't change, because arrays are never null after the write change.
 
-- [ ] **Step 1: Write the failing tests**
+- [ ] **Step 1: Write the failing tests** in `RagFilterTests.cs`
+
+```csharp
+[Theory]
+[InlineData("level")]
+[InlineData("big")]
+[InlineData("flag")]
+[InlineData("when")]
+[InlineData("groups")]
+[InlineData("kind")]
+public async Task Filter_on_a_missing_value_does_not_match_and_does_not_throw(string field)
+{
+    var (rag, _, _, _, _) = Create(o =>
+    {
+        o.Metadata.Add<int>("level"); o.Metadata.Add<long>("big"); o.Metadata.Add<bool>("flag");
+        o.Metadata.Add<DateTimeOffset>("when"); o.Metadata.Add<string[]>("groups"); o.Metadata.Add<string>("kind");
+    });
+    await rag.IngestAsync(Md("d1", "alpha beta"), cancellationToken: Ct); // every field omitted
+    RagFilter f = field switch
+    {
+        "level" => RagFilter.Eq("level", 3),
+        "big" => RagFilter.Eq("big", 3L),
+        "flag" => RagFilter.Eq("flag", true),
+        "when" => RagFilter.Eq("when", DateTimeOffset.UnixEpoch),
+        "groups" => RagFilter.ContainsAny("groups", ["hr"]),
+        _ => RagFilter.Eq("kind", "memo"),
+    };
+    Assert.Empty(await rag.RetrieveAsync("alpha", new() { Filter = f }, Ct));
+}
+
+[Fact]
+public async Task Present_values_still_match_after_the_nullable_comparison()
+{
+    // d1 {level: 3, flag: true, when: UnixEpoch, groups: ["hr"]} and d2 with nothing set;
+    // Eq(level,3), Eq(flag,true), Eq(when,UnixEpoch), Contains(groups,"hr"), In(level,[1,3]) each return exactly d1.
+}
+
+[Fact]
+public async Task Omitted_array_metadata_is_returned_as_empty()
+{
+    // ingest without groups → RetrievedChunk.Metadata["groups"] is an empty string[] (not null).
+}
+```
+
+In `AccessScopeTests.cs`:
 
 ```csharp
 [Fact]
-public void Access_scope_round_trips()
+public async Task Scope_filter_on_groups_hides_documents_without_groups_instead_of_crashing()
 {
-    var scope = new AccessScope(new Dictionary<string, string> { ["tenant"] = "a" },
-        RagFilter.ContainsAny("groups", ["eng", "hr"]) & RagFilter.Eq("level", 3), RagPermissions.Read | RagPermissions.Write);
-    var json = JsonSerializer.Serialize(scope);
-    Assert.Contains("\"Read, Write\"", json);
-    var back = JsonSerializer.Deserialize<AccessScope>(json)!;
-    Assert.Equal("a", back.Partition["tenant"]);
-    Assert.Equal(scope.Permissions, back.Permissions);
-    Assert.Equal(JsonSerializer.Serialize(scope.Filter), JsonSerializer.Serialize(back.Filter));
+    // full-access ingest c1 (no groups) and c2 {groups:["eng"]}; tenant a with Filter ContainsAny(groups,["eng"])
+    // retrieves only c2.
 }
-
-[Fact]
-public async Task Deserialized_filter_with_datetimeoffset_still_matches()
-{
-    // Review: value written as ISO string, read back as string, converted exactly by the translator for a DateTimeOffset field.
-    // Declare Metadata.Add<DateTimeOffset>("published"); ingest doc with published = 2026-01-02T03:04:05+00:00;
-    // RetrieveAsync with Filter = round-tripped RagFilter.Eq("published", thatValue) returns the doc.
-}
-
-[Theory]
-[InlineData("{\"op\":\"nope\",\"field\":\"x\",\"value\":1}")]
-[InlineData("{\"op\":\"eq\",\"field\":\"x\"}")]
-[InlineData("{\"op\":\"and\"}")]
-public void Malformed_filter_json_throws(string json) =>
-    Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<RagFilter>(json));
 ```
 
-- [ ] **Step 2: Run them and confirm they fail.** Expected: the converter is missing, so serialization fails or the round trip differs.
+- [ ] **Step 2: Run them and confirm they fail**
 
-- [ ] **Step 3: Implement** the converter and attributes.
+Run: `dotnet test --project tests/RagDotNet.Core.Tests -- --filter-class *RagFilterTests`
+Expected: the missing-value theory fails for `level`, `big`, `flag`, `when` and `groups` with `NullReferenceException` or `ArgumentNullException`. `kind` passes.
+
+- [ ] **Step 3: Implement** the two changes described in Interfaces.
 
 - [ ] **Step 4: Run the full suite and confirm it passes.**
 
@@ -664,22 +749,21 @@ public void Malformed_filter_json_throws(string json) =>
 
 ```bash
 git add -A src/RagDotNet.Core tests/RagDotNet.Core.Tests
-git commit -m "feat(core): System.Text.Json support for AccessScope, RagFilter and RagPermissions"
+git commit -m "fix(core): filters on missing metadata values no longer throw"
 ```
 
 ---
 
-### Task 7: Model guard — `ModelCheckInterval`, reindex marker, `ReindexInProgressException`
+### Task 7: Model guard — `ModelCheckInterval`, reindex marker, reads limited to re-embedded data
 
 **Files:**
-- Create: `src/RagDotNet.Core/Pipeline/ReindexInProgressException.cs`, `tests/RagDotNet.Core.Tests/Fakes/ManualTimeProvider.cs`
-- Modify: `src/RagDotNet.Core/Embedding/EmbeddingModelGuard.cs`, `src/RagDotNet.Core/Storage/ManifestStore.cs`, `src/RagDotNet.Core/Storage/ChunkKeys.cs` (internal const), `src/RagDotNet.Core/Configuration/RagOptions.cs`, `RagOptionsValidator.cs`, `RagEngineFactory.cs`, `RagPipelineBuilder.cs`, `RagServiceCollectionExtensions.cs`, `src/RagDotNet.Core/Pipeline/RagEngine.cs`, `src/RagDotNet.Core/Ingestion/Ingestor.cs`, `src/RagDotNet.Core/Retrieval/Retriever.cs`, `PublicAPI.Unshipped.txt`
+- Create: `tests/RagDotNet.Core.Tests/Fakes/ManualTimeProvider.cs`
+- Modify: `src/RagDotNet.Core/Embedding/EmbeddingModelGuard.cs`, `src/RagDotNet.Core/Storage/ManifestStore.cs`, `src/RagDotNet.Core/Storage/ChunkKeys.cs` (internal const), `src/RagDotNet.Core/Configuration/RagOptions.cs`, `RagOptionsValidator.cs`, `RagEngineFactory.cs`, `RagPipelineBuilder.cs`, `RagServiceCollectionExtensions.cs`, `src/RagDotNet.Core/Pipeline/RagEngine.cs`, `src/RagDotNet.Core/Ingestion/Ingestor.cs`, `src/RagDotNet.Core/Retrieval/Retriever.cs`, `src/RagDotNet.Core/Access/ReadFilters.cs`, `PublicAPI.Unshipped.txt`
 - Test: `tests/RagDotNet.Core.Tests/ReindexCoordinationTests.cs` (new)
 
 **Interfaces:**
 - Produces (public):
   - `RagOptions.ModelCheckInterval` (`TimeSpan`, default `TimeSpan.FromSeconds(5)`). A negative value fails validation with "ModelCheckInterval must not be negative."
-  - `public sealed class ReindexInProgressException : Exception`, with `string TargetModelId`. Its message: `"A reindex to embedding model '{target}' is in progress; retrieval is unavailable until it completes. Run IRagAdmin.ReindexAsync() to resume it if it was interrupted."`. It also has the standard constructors.
 - Produces (internal):
   - `ChunkKeys.ReindexMarkerKey = "|reindex"`.
   - `internal sealed record ReindexMarker(string TargetModelId, string OwnerId, long HeartbeatUnixMs)`.
@@ -687,14 +771,19 @@ git commit -m "feat(core): System.Text.Json support for AccessScope, RagFilter a
   - `FindOtherModelAsync` adds `&& (int)m["ChunkCount"]! >= 0`, so it never reports the marker.
   - `RagEngine.Time` (`TimeProvider`). `RagEngineFactory.Create(..., TimeProvider? time = null)`.
   - Internal `RagPipelineBuilder.UseTimeProvider(TimeProvider)`, which respects freezing.
-  - `enum GuardMode { Read, Write }` and `EmbeddingModelGuard.EnsureAsync(GuardMode mode, CancellationToken ct)`, which replaces `EnsureCompatibleAsync`. Callers: `Retriever` uses `Read`; `Ingestor.IngestCoreAsync` and `Ingestor.DeleteAsync` use `Write`.
+  - `enum GuardMode { Read, Write }` and `EmbeddingModelGuard.EnsureAsync(GuardMode mode, CancellationToken ct) → ValueTask<bool>`, which replaces `EnsureCompatibleAsync`. It returns `true` while a reindex to the configured model is in progress.
+  - `Ingestor.IngestCoreAsync` and `Ingestor.DeleteAsync` call it with `Write`.
+  - `Retriever` calls it with `Read`. When the result is `true`, the retriever does three things:
+    - passes `requireModelId: engine.EmbeddingModelId` to `ReadFilters.Build`. That new optional parameter, `string? requireModelId = null`, ANDs `(string)r["EmbeddingModelId"] == requireModelId` into the expression;
+    - logs the once-per-marker warning `"A reindex to embedding model {ModelId} is in progress; answers include only documents already re-embedded."`;
+    - tags the span.
   - Guard state is `(ReindexMarker? Marker, string? OtherModelId, DateTimeOffset FetchedAt)`. It is re-fetched when `Time.GetUtcNow() - FetchedAt >= ModelCheckInterval` or after `Reset()`.
 
 Guard decision rules (C = configured model, T = marker target):
 
 | State | Read | Write |
 |---|---|---|
-| Marker, T == C | `ReindexInProgressException(T)` | allowed |
+| Marker, T == C | allowed, limited to chunks on C (returns `true`) | allowed |
 | Marker, T != C | `EmbeddingModelMismatchException(T, C)` | `EmbeddingModelMismatchException(T, C)` |
 | No marker, other model found | `EmbeddingModelMismatchException(stored, C)` | same |
 | No marker, none found | allowed | allowed |
@@ -705,13 +794,21 @@ Guard decision rules (C = configured model, T = marker target):
 
 ```csharp
 [Fact]
-public async Task Marker_for_the_configured_model_blocks_reads_but_allows_writes()
+public async Task Marker_for_the_configured_model_limits_reads_to_reembedded_data_and_allows_writes()
 {
-    // seed d1 with m1; engine m2; Engine.Manifests.UpsertMarkerAsync(new("m2", "other-owner", now))
-    await Assert.ThrowsAsync<ReindexInProgressException>(() => rag.RetrieveAsync("alpha", cancellationToken: Ct));
-    var r = await rag.IngestAsync(Md("d2", "new doc"), cancellationToken: Ct);
+    // seed d1 ("alpha one") with m1; engine m2; Engine.Manifests.UpsertMarkerAsync(new("m2", "other-owner", now))
+    var r = await rag.IngestAsync(Md("d2", "alpha two"), cancellationToken: Ct);
     Assert.Equal(IngestStatus.Created, r.Status);
+    var hits = await rag.RetrieveAsync("alpha", new() { TopK = 10 }, Ct);
+    Assert.Equal(["d2"], hits.Select(h => h.DocumentId)); // d1 is still on m1: skipped, never compared
     Assert.True(await rag.DeleteDocumentAsync("d2", Ct));
+}
+
+[Fact]
+public async Task Reads_during_reindex_log_one_warning()
+{
+    // FakeLogger (Microsoft.Extensions.Diagnostics.Testing) via UseLoggerFactory; marker present; two retrieves →
+    // exactly one warning containing "re-embedded".
 }
 
 [Fact]
@@ -729,15 +826,15 @@ public async Task Marker_is_not_counted_as_a_document()
 [Fact]
 public async Task Cached_state_expires_after_ModelCheckInterval()
 {
-    // Review Focus 4: two engines over one store, both "m2", both with the same ManualTimeProvider, interval 5 s.
-    // Engine B retrieves while A's marker (target m2) exists → ReindexInProgressException (state cached).
-    // Delete the marker directly. B retrieves again at +1 s → still ReindexInProgressException; at +6 s → succeeds.
+    // Review Focus 4: seed d1 with m1; engine B ("m2", ManualTimeProvider, interval 5 s) retrieves →
+    // EmbeddingModelMismatchException (state cached). Upsert a marker (target m2) directly.
+    // B retrieves at +1 s → still EmbeddingModelMismatchException; at +6 s → succeeds (empty: nothing on m2 yet).
 }
 
 [Fact]
 public async Task Zero_interval_checks_every_call()
 {
-    // interval Zero: delete marker → the very next retrieve succeeds.
+    // interval Zero: seed with m1, engine m2 → mismatch; upsert marker → the very next retrieve succeeds.
 }
 
 [Fact]
@@ -755,7 +852,7 @@ public void Negative_interval_fails_validation() =>
 
 ```bash
 git add -A src/RagDotNet.Core tests/RagDotNet.Core.Tests
-git commit -m "feat(core): timed model check, reindex marker and ReindexInProgressException"
+git commit -m "feat(core): timed model check and reindex marker; reads during reindex use re-embedded data"
 ```
 
 ---
@@ -796,10 +893,10 @@ On an exception or cancellation in steps 6 and 7, the marker stays (it is not de
 
 ```csharp
 [Fact]
-public async Task Reads_fail_during_reindex_and_work_after()
+public async Task Reads_during_reindex_return_reembedded_documents_then_all()
 {
-    // GatedEmbeddingGenerator pauses on d2's batch; start admin.ReindexAsync(); await gate.Reached;
-    // rag.RetrieveAsync → ReindexInProgressException; release gate; await reindex; retrieve succeeds; marker gone.
+    // GatedEmbeddingGenerator pauses on d2's batch (d1 already done); start admin.ReindexAsync(); await gate.Reached;
+    // rag.RetrieveAsync (TopK 10) returns d1 only; release gate; await reindex; retrieve returns d1 and d2; marker gone.
 }
 
 [Fact]
@@ -820,8 +917,8 @@ public async Task Write_from_another_process_during_reindex_is_not_overwritten()
 [Fact]
 public async Task Cancelled_reindex_resumes_immediately_in_the_same_process()
 {
-    // Review Focus 3: FlakyEmbedder fails mid-way → ReindexAsync throws; retrieve → ReindexInProgressException;
-    // second ReindexAsync on the same admin succeeds without waiting; retrieve works.
+    // Review Focus 3: FlakyEmbedder fails mid-way → ReindexAsync throws; retrieve returns only re-embedded documents;
+    // second ReindexAsync on the same admin succeeds without waiting; retrieve returns every document.
 }
 
 [Fact]
@@ -844,7 +941,7 @@ public async Task Dimension_mismatch_throws_before_the_marker_is_written()
 }
 ```
 
-Update `AdminAndModelSafetyTests.Interrupted_reindex_resumes`: after the failed run, retrieval now throws `ReindexInProgressException`, not `EmbeddingModelMismatchException`. `FlakyEmbedder.FailOnCall` counts still start with the probe.
+Update `AdminAndModelSafetyTests.Interrupted_reindex_resumes`: after the failed run, retrieval no longer throws. It returns only the re-embedded document (d1). `FlakyEmbedder.FailOnCall` counts still start with the probe.
 
 - [ ] **Step 2: Run them and confirm they fail.** Expected: new tests fail (no marker written, no locking).
 
@@ -852,7 +949,7 @@ Update `AdminAndModelSafetyTests.Interrupted_reindex_resumes`: after the failed 
 
 - [ ] **Step 4: Update `README.md`** "Switching embedding models" to cover:
   - the reindex marker;
-  - reads fail during reindex while writes keep going;
+  - questions keep working during reindex, but only over documents already re-embedded (so run it off-peak), and writes keep going;
   - resuming after an interruption;
   - the 5-minute takeover;
   - multi-instance guidance: pause other writers during reindex, restart every instance after switching models, and change detection within `ModelCheckInterval`.
@@ -985,15 +1082,16 @@ git commit -m "feat(core)!: named custom chunkers with AddChunker; chunker name 
 
   | Spec item | Task |
   |---|---|
-  | Optional scope and common area | 2 |
+  | Optional scope, common area, full-access tenant routing | 2 |
   | `RagPermissions` and write checks | 2, 4 |
   | `ForScope` | 5 |
   | `IncludeCommon` | 3 |
   | Manifest metadata | 1 |
   | `ModelCheckInterval` | 7 |
-  | JSON | 6 |
-  | Marker, reindex locks, `ReindexInProgressException` | 7, 8 |
+  | Null-safe filters | 6 |
+  | Marker, reindex locks, reads limited during reindex | 7, 8 |
   | Custom chunkers | 9 |
+  | Caching note | 5 (README) |
 
   Every replaced stage 1 behaviour is removed or changed in a named task:
 
@@ -1005,5 +1103,5 @@ git commit -m "feat(core)!: named custom chunkers with AddChunker; chunker name 
   | Admin empty-partition rejection | 5 |
   | Reindex without locks | 8 |
   | Process-lifetime model cache | 7 |
-- **Out of scope here,** each in its own stage: §5.12 `IngestionJob`, pause/resume (stage 9); `Chunkers.FixedSize`/`Semantic` (stage 4); keyword-index scope filters (stage 7).
-- **Noticed, not in scope:** `RagFilterTranslator` unboxes value-type fields directly (`Convert(object → int)`). An `Eq` on an `int`, `long`, `bool` or `DateTimeOffset` field could therefore throw inside the InMemory store when a stored chunk has null for that field. This is worth checking in a later stage. The new `RagFilterEvaluator` (Task 4) handles nulls explicitly.
+  | Filters crashing on missing values | 6 |
+- **Out of scope here,** each in its own stage: §5.12 `IngestionJob`, pause/resume and optional JSON for scopes (stage 9); `Chunkers.FixedSize`/`Semantic` (stage 4); keyword-index scope filters (stage 7); the nullable filter shape on real stores (stage 8).
