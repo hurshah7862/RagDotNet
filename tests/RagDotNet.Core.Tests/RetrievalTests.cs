@@ -205,7 +205,7 @@ public class RetrievalTests
     private static ResolvedScope Scope(RagFilter? filter) => new(new Dictionary<string, string>(), "", filter, RagPermissions.All, false);
 
     private static Task<IReadOnlyList<RetrievedChunk>> Retrieve(RagPipeline p, ResolvedScope scope, RetrievalOptions? o = null) =>
-        p.Engine.Retriever.RetrieveAsync("alpha beta gamma", scope, o ?? new RetrievalOptions(), Ct);
+        p.Engine.Retriever.RetrieveAsync(["alpha beta gamma"], scope, o ?? new RetrievalOptions(), Ct);
 
     [Fact]
     public async Task Scope_filter_alone_restricts_results()
@@ -302,5 +302,119 @@ public class RetrievalTests
         var ex = await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
             () => pipeline.RetrieveAsync("alpha", new RetrievalOptions { TopK = 0 }, Ct));
         Assert.Equal("TopK", ex.ParamName);
+    }
+
+    private sealed class CountingContentStore : RagDotNet.Content.IChunkContentStore
+    {
+        private readonly RagDotNet.Content.InMemoryChunkContentStore _inner = new();
+        public List<IReadOnlyList<string>> GetCalls { get; } = [];
+        public Task UpsertAsync(IReadOnlyList<RagDotNet.Content.ChunkContent> chunks, CancellationToken ct) => _inner.UpsertAsync(chunks, ct);
+        public Task<IReadOnlyDictionary<string, string>> GetAsync(IReadOnlyList<string> chunkKeys, CancellationToken ct)
+        {
+            GetCalls.Add(chunkKeys.ToList());
+            return _inner.GetAsync(chunkKeys, ct);
+        }
+        public Task DeleteAsync(IReadOnlyList<string> chunkKeys, CancellationToken ct) => _inner.DeleteAsync(chunkKeys, ct);
+    }
+
+    private static RetrievedChunk Chunk(string doc, double score = 0) =>
+        new($"{doc}:0", doc, 0, "", score, ScoreKind.Similarity, null, null, [], "", new Dictionary<string, object?>());
+
+    private static Retriever RetrieverOf(IRagPipeline p) => ((RagPipeline)p).Engine.Retriever;
+
+    [Fact]
+    public async Task Two_queries_find_documents_each_query_alone_would_miss()
+    {
+        var (pipeline, _, _, _, _) = Create();
+        await pipeline.IngestAsync(Md("d1", "alpha beta gamma"), cancellationToken: Ct);
+        await pipeline.IngestAsync(Md("d2", "zulu yankee xray"), cancellationToken: Ct);
+
+        var hits = await RetrieverOf(pipeline).RetrieveAsync(["alpha beta gamma", "zulu yankee xray"], ResolvedScope.FullAccess, new() { TopK = 2 }, Ct);
+
+        Assert.Equal(["d1", "d2"], hits.Select(h => h.DocumentId).Order());
+        Assert.All(hits, h => Assert.Equal(ScoreKind.Fused, h.ScoreKind));
+    }
+
+    [Fact]
+    public async Task Chunk_found_by_several_queries_appears_once_and_ranks_first()
+    {
+        var (pipeline, _, _, _, _) = Create();
+        await pipeline.IngestAsync(Md("d1", "alpha beta"), cancellationToken: Ct);
+        await pipeline.IngestAsync(Md("d2", "alpha zulu"), cancellationToken: Ct);
+        await pipeline.IngestAsync(Md("d3", "zulu yankee"), cancellationToken: Ct);
+
+        var hits = await RetrieverOf(pipeline).RetrieveAsync(["alpha beta", "alpha", "beta alpha"], ResolvedScope.FullAccess, new() { TopK = 3 }, Ct);
+
+        Assert.Equal("d1", hits[0].DocumentId);
+        Assert.Single(hits, h => h.DocumentId == "d1");
+        Assert.Equal(hits.Count, hits.Select(h => h.ChunkKey).Distinct().Count());
+    }
+
+    [Fact]
+    public void Reciprocal_rank_fusion_scores_and_orders_exactly()
+    {
+        var a = Chunk("a"); var b = Chunk("b"); var c = Chunk("c");
+        var fused = RankFusion.Reciprocal([[a, b], [b, c]], 3);
+
+        Assert.Equal(["b", "a", "c"], fused.Select(h => h.DocumentId));
+        Assert.Equal(1.0 / 62 + 1.0 / 61, fused[0].Score, 12);
+        Assert.Equal(1.0 / 61, fused[1].Score, 12);
+        Assert.Equal(1.0 / 62, fused[2].Score, 12);
+        Assert.All(fused, h => Assert.Equal(ScoreKind.Fused, h.ScoreKind));
+        Assert.Equal(["b", "a"], RankFusion.Reciprocal([[a, b], [b, c]], 2).Select(h => h.DocumentId));
+    }
+
+    [Fact]
+    public async Task Single_query_keeps_similarity_scores()
+    {
+        var (pipeline, _, _, _, _) = Create();
+        await pipeline.IngestAsync(Md("d1", "alpha beta gamma"), cancellationToken: Ct);
+        await pipeline.IngestAsync(Md("d2", "zulu yankee xray"), cancellationToken: Ct);
+
+        var multi = await RetrieverOf(pipeline).RetrieveAsync(["alpha beta gamma"], ResolvedScope.FullAccess, new(), Ct);
+        var single = await pipeline.RetrieveAsync("alpha beta gamma", cancellationToken: Ct);
+
+        Assert.All(multi, h => Assert.Equal(ScoreKind.Similarity, h.ScoreKind));
+        Assert.Equal(single.Select(h => (h.ChunkKey, h.Score)), multi.Select(h => (h.ChunkKey, h.Score)));
+    }
+
+    [Fact]
+    public async Task Every_query_is_access_filtered()
+    {
+        var (p, _, _) = ScopedRag();
+        await p.IngestAsync(Md("a-doc", "alpha", Meta("a", "doc")), cancellationToken: Ct);
+        await p.IngestAsync(Md("b-doc", "zulu", Meta("b", "doc")), cancellationToken: Ct);
+
+        var hits = await p.Engine.Retriever.RetrieveAsync(["alpha", "zulu"], Scope(RagFilter.Eq("tenant", "a")), new() { TopK = 5 }, Ct);
+
+        Assert.Equal(["a-doc"], hits.Select(h => h.DocumentId));
+    }
+
+    [Fact]
+    public async Task Queries_must_be_non_empty_without_blank_entries()
+    {
+        var (pipeline, _, _, _, _) = Create();
+        var r = RetrieverOf(pipeline);
+        await Assert.ThrowsAsync<ArgumentException>(() => r.RetrieveAsync([], ResolvedScope.FullAccess, new(), Ct));
+        await Assert.ThrowsAsync<ArgumentException>(() => r.RetrieveAsync(["alpha", " "], ResolvedScope.FullAccess, new(), Ct));
+    }
+
+    [Fact]
+    public async Task External_content_is_fetched_once_for_the_final_results()
+    {
+        var content = new CountingContentStore();
+        var rag = new RagPipelineBuilder()
+            .UseEmbeddingGenerator(new FakeEmbeddingGenerator(64)).UseChatClient(new FakeChatClient())
+            .UseVectorStore(new InMemoryVectorStore(), "test", 64).UseContentStore(content)
+            .Configure(o => { o.EmbeddingModelId = "fake-embed"; o.ContentStorage = RagDotNet.Content.ContentStorageMode.External; }).Build();
+        await rag.IngestAsync(Md("d1", "alpha"), cancellationToken: Ct);
+        await rag.IngestAsync(Md("d2", "zulu"), cancellationToken: Ct);
+        await rag.IngestAsync(Md("d3", "yankee"), cancellationToken: Ct);
+
+        var hits = await RetrieverOf(rag).RetrieveAsync(["alpha", "zulu", "yankee"], ResolvedScope.FullAccess, new() { TopK = 2 }, Ct);
+
+        Assert.Equal(2, hits.Count);
+        Assert.All(hits, h => Assert.False(string.IsNullOrWhiteSpace(h.Text)));
+        Assert.Equal(2, Assert.Single(content.GetCalls).Count);
     }
 }

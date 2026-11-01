@@ -14,15 +14,17 @@ namespace RagDotNet.Retrieval;
 
 internal sealed class Retriever(RagEngine engine)
 {
-    public async Task<IReadOnlyList<RetrievedChunk>> RetrieveAsync(string query, ResolvedScope scope, RetrievalOptions o, CancellationToken ct)
+    public async Task<IReadOnlyList<RetrievedChunk>> RetrieveAsync(IReadOnlyList<string> queries, ResolvedScope scope, RetrievalOptions o, CancellationToken ct)
     {
+        ArgumentNullException.ThrowIfNull(queries);
         using var activity = RagTelemetry.ActivitySource.StartActivity("rag.retrieve");
         var started = Stopwatch.GetTimestamp();
         activity?.SetTag("rag.top_k", o?.TopK);
-        if (activity is not null && engine.Options.EnableSensitiveData) activity.SetTag("rag.query", query);
+        activity?.SetTag("rag.query.count", queries.Count);
+        if (activity is not null && engine.Options.EnableSensitiveData) activity.SetTag("rag.query", string.Join("\n", queries));
         try
         {
-            var results = await RetrieveCoreAsync(query, scope, o!, activity, ct).ConfigureAwait(false);
+            var results = await RetrieveCoreAsync(queries, scope, o!, activity, ct).ConfigureAwait(false);
             activity?.SetTag("rag.result.count", results.Count);
             RagTelemetry.RetrieveCount.Record(results.Count);
             return results;
@@ -38,9 +40,11 @@ internal sealed class Retriever(RagEngine engine)
         }
     }
 
-    private async Task<IReadOnlyList<RetrievedChunk>> RetrieveCoreAsync(string query, ResolvedScope scope, RetrievalOptions o, Activity? activity, CancellationToken ct)
+    private async Task<IReadOnlyList<RetrievedChunk>> RetrieveCoreAsync(IReadOnlyList<string> queries, ResolvedScope scope, RetrievalOptions o, Activity? activity, CancellationToken ct)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(query);
+        ArgumentNullException.ThrowIfNull(queries);
+        if (queries.Count == 0) throw new ArgumentException("At least one query is required.", nameof(queries));
+        if (queries.Any(string.IsNullOrWhiteSpace)) throw new ArgumentException("Queries must not be null, empty or whitespace.", nameof(queries));
         ArgumentNullException.ThrowIfNull(o);
         if (o.TopK is < 1 or > 100)
             throw new ArgumentOutOfRangeException("TopK", o.TopK, "TopK must be between 1 and 100.");
@@ -63,21 +67,32 @@ internal sealed class Retriever(RagEngine engine)
                     "A reindex to embedding model {ModelId} is in progress; answers include only documents already re-embedded.", engine.EmbeddingModelId);
             activity?.SetTag("rag.reindex.in_progress", true);
         }
-        var embeddings = await engine.Embedder.GenerateAsync([query], cancellationToken: ct).ConfigureAwait(false);
-        if (embeddings.Count != 1)
-            throw new InvalidOperationException("The embedding generator did not return exactly one embedding for the query.");
-        var vector = embeddings[0].Vector;
-        if (vector.Length != options.EmbeddingDimensions)
-            throw new InvalidOperationException($"The embedding generator returned {vector.Length} dimensions, but {options.EmbeddingDimensions} are configured.");
+        var embeddings = await engine.Embedder.GenerateAsync(queries, cancellationToken: ct).ConfigureAwait(false);
+        if (embeddings.Count != queries.Count)
+            throw new InvalidOperationException($"The embedding generator returned {embeddings.Count} embeddings for {queries.Count} queries.");
 
-        var results = new List<RetrievedChunk>();
-        await foreach (var hit in engine.Chunks.SearchAsync(vector, o.TopK, filter, ct).ConfigureAwait(false))
+        var rankings = new List<IReadOnlyList<RetrievedChunk>>(queries.Count);
+        foreach (var embedding in embeddings)
         {
-            var score = hit.Score ?? throw new InvalidOperationException("The vector store returned a result without a score.");
-            if (options.DistanceFunction == DistanceFunction.CosineDistance) score = 1 - score;
-            if (o.MinScore is { } min && score < min) continue;
-            results.Add(Map(hit.Record, score));
+            var vector = embedding.Vector;
+            if (vector.Length != options.EmbeddingDimensions)
+                throw new InvalidOperationException($"The embedding generator returned {vector.Length} dimensions, but {options.EmbeddingDimensions} are configured.");
+
+            var ranking = new List<RetrievedChunk>();
+            await foreach (var hit in engine.Chunks.SearchAsync(vector, o.TopK, filter, ct).ConfigureAwait(false))
+            {
+                var score = hit.Score ?? throw new InvalidOperationException("The vector store returned a result without a score.");
+                if (options.DistanceFunction == DistanceFunction.CosineDistance) score = 1 - score;
+                if (o.MinScore is { } min && score < min) continue;
+                ranking.Add(Map(hit.Record, score));
+            }
+
+            ranking.Sort(RankFusion.Compare);
+            rankings.Add(ranking);
         }
+
+        // Text is fetched once, below, for the final results only.
+        var results = queries.Count == 1 ? rankings[0].ToList() : RankFusion.Reciprocal(rankings, o.TopK).ToList();
 
         if (engine.ContentStore is { } contentStore && results.Count > 0)
         {
@@ -98,13 +113,7 @@ internal sealed class Retriever(RagEngine engine)
             results = kept;
         }
 
-        results.Sort((a, b) =>
-        {
-            var c = b.Score.CompareTo(a.Score);
-            if (c != 0) return c;
-            c = string.CompareOrdinal(a.DocumentId, b.DocumentId);
-            return c != 0 ? c : a.ChunkIndex.CompareTo(b.ChunkIndex);
-        });
+        results.Sort(RankFusion.Compare);
         return results;
     }
 
