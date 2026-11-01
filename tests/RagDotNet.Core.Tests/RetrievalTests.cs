@@ -137,7 +137,7 @@ public class RetrievalTests
 
         await Assert.ThrowsAsync<ArgumentException>(() => pipeline.RetrieveAsync("", cancellationToken: Ct));
         await Assert.ThrowsAsync<ArgumentException>(() => pipeline.RetrieveAsync("   ", cancellationToken: Ct));
-        await Assert.ThrowsAsync<ArgumentNullException>(() => pipeline.RetrieveAsync(null!, cancellationToken: Ct));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => pipeline.RetrieveAsync((string)null!, cancellationToken: Ct));
         Assert.Equal(0, embedder.CallCount);
     }
 

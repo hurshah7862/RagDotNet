@@ -51,19 +51,43 @@ internal sealed class RagPipeline(RagEngine engine, IAccessScope? accessScope = 
         return await engine.Ingestor.DeleteAsync(documentId, scope, cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task<IReadOnlyList<RetrievedChunk>> RetrieveAsync(string query, RetrievalOptions? options = null, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<RetrievedChunk>> RetrieveAsync(string query, RetrievalOptions? options = null, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query);
+        return RetrieveCoreAsync(query, [], options, cancellationToken);
+    }
+
+    public Task<IReadOnlyList<RetrievedChunk>> RetrieveAsync(IList<ChatMessage> conversation, RetrievalOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        var (question, history) = SplitConversation(conversation);
+        if (history.Count > 0) RequireChatForHistory();
+        return RetrieveCoreAsync(question, history, options, cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<RetrievedChunk>> RetrieveCoreAsync(string query, IReadOnlyList<ChatMessage> history, RetrievalOptions? options, CancellationToken cancellationToken)
+    {
         var scope = await engine.ResolveScopeAsync(accessScope, cancellationToken).ConfigureAwait(false);
         options ??= new RetrievalOptions();
-        var queries = await engine.QueryPlanner.PlanAsync(query, [], options, chatClient, cancellationToken).ConfigureAwait(false);
+        var queries = await engine.QueryPlanner.PlanAsync(query, history, options, chatClient, cancellationToken).ConfigureAwait(false);
         return await engine.Retriever.RetrieveAsync(queries, scope, options, cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task<RagAnswer> AskAsync(string question, AskOptions? options = null, CancellationToken cancellationToken = default)
+    public Task<RagAnswer> AskAsync(string question, AskOptions? options = null, CancellationToken cancellationToken = default)
     {
         var chat = RequireChat(question, options);
-        var (prompt, context, retrieved) = await PrepareAsync(question, options, cancellationToken).ConfigureAwait(false);
+        return AskCoreAsync(chat, question, [], options, cancellationToken);
+    }
+
+    public Task<RagAnswer> AskAsync(IList<ChatMessage> conversation, AskOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        var (question, history) = SplitConversation(conversation);
+        var chat = RequireChat(question, options);
+        return AskCoreAsync(chat, question, history, options, cancellationToken);
+    }
+
+    private async Task<RagAnswer> AskCoreAsync(IChatClient chat, string question, IReadOnlyList<ChatMessage> history, AskOptions? options, CancellationToken cancellationToken)
+    {
+        var (prompt, context, retrieved) = await PrepareAsync(question, history, options, cancellationToken).ConfigureAwait(false);
         if (prompt is null) return NotAnswered(retrieved);
 
         using var activity = StartGenerate(context);
@@ -82,12 +106,19 @@ internal sealed class RagPipeline(RagEngine engine, IAccessScope? accessScope = 
     public IAsyncEnumerable<RagAnswerUpdate> AskStreamingAsync(string question, AskOptions? options = null, CancellationToken cancellationToken = default)
     {
         var chat = RequireChat(question, options);
-        return StreamAsync(chat, question, options, cancellationToken);
+        return StreamAsync(chat, question, [], options, cancellationToken);
     }
 
-    private async IAsyncEnumerable<RagAnswerUpdate> StreamAsync(IChatClient chat, string question, AskOptions? options, [EnumeratorCancellation] CancellationToken cancellationToken)
+    public IAsyncEnumerable<RagAnswerUpdate> AskStreamingAsync(IList<ChatMessage> conversation, AskOptions? options = null, CancellationToken cancellationToken = default)
     {
-        var (prompt, context, retrieved) = await PrepareAsync(question, options, cancellationToken).ConfigureAwait(false);
+        var (question, history) = SplitConversation(conversation);
+        var chat = RequireChat(question, options);
+        return StreamAsync(chat, question, history, options, cancellationToken);
+    }
+
+    private async IAsyncEnumerable<RagAnswerUpdate> StreamAsync(IChatClient chat, string question, IReadOnlyList<ChatMessage> history, AskOptions? options, [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        var (prompt, context, retrieved) = await PrepareAsync(question, history, options, cancellationToken).ConfigureAwait(false);
         if (prompt is null)
         {
             yield return new RagAnswerUpdate(null, NotAnswered(retrieved));
@@ -127,6 +158,30 @@ internal sealed class RagPipeline(RagEngine engine, IAccessScope? accessScope = 
         yield return new RagAnswerUpdate(null, answer);
     }
 
+    private (string Question, IReadOnlyList<ChatMessage> History) SplitConversation(IList<ChatMessage> conversation)
+    {
+        if (conversation is null || conversation.Count == 0 || conversation[^1] is not { } last
+            || last.Role != ChatRole.User || string.IsNullOrWhiteSpace(last.Text))
+            throw new ArgumentException("The conversation must end with a user message that has text.", nameof(conversation));
+
+        var history = new List<ChatMessage>();
+        for (var i = conversation.Count - 2; i >= 0 && history.Count < engine.Options.MaxHistoryMessages; i--)
+        {
+            var m = conversation[i];
+            if (m is null || (m.Role != ChatRole.User && m.Role != ChatRole.Assistant) || string.IsNullOrEmpty(m.Text)) continue;
+            history.Add(new ChatMessage(m.Role, m.Text));
+        }
+
+        history.Reverse();
+        return (last.Text, history);
+    }
+
+    private void RequireChatForHistory()
+    {
+        if (chatClient is null)
+            throw new InvalidOperationException("A conversation with history needs a chat client to condense the question. Call UseChatClient().");
+    }
+
     private IChatClient RequireChat(string question, AskOptions? options)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(question);
@@ -135,18 +190,18 @@ internal sealed class RagPipeline(RagEngine engine, IAccessScope? accessScope = 
         return chatClient ?? throw new InvalidOperationException("No chat client configured. Call UseChatClient() with an IChatClient to use AskAsync.");
     }
 
-    private async Task<(IList<ChatMessage>? Prompt, IReadOnlyList<RetrievedChunk> Context, IReadOnlyList<RetrievedChunk> Retrieved)> PrepareAsync(string question, AskOptions? options, CancellationToken ct)
+    private async Task<(IList<ChatMessage>? Prompt, IReadOnlyList<RetrievedChunk> Context, IReadOnlyList<RetrievedChunk> Retrieved)> PrepareAsync(string question, IReadOnlyList<ChatMessage> history, AskOptions? options, CancellationToken ct)
     {
         var scope = await engine.ResolveScopeAsync(accessScope, ct).ConfigureAwait(false);
         var retrieval = options?.Retrieval ?? new RetrievalOptions();
-        var queries = await engine.QueryPlanner.PlanAsync(question, [], retrieval, chatClient, ct).ConfigureAwait(false);
+        var queries = await engine.QueryPlanner.PlanAsync(question, history, retrieval, chatClient, ct).ConfigureAwait(false);
         var retrieved = await engine.Retriever.RetrieveAsync(queries, scope, retrieval, ct).ConfigureAwait(false);
         if (retrieved.Count == 0) return (null, [], retrieved);
 
         var budget = options?.MaxContextTokens ?? engine.Options.MaxContextTokens;
         var context = ContextBudget.Select(retrieved, budget, engine.Tokens);
         var builder = engine.Options.Prompt ?? new DefaultRagPromptBuilder();
-        return (builder.Build(new RagPromptContext(question, context)), context, retrieved);
+        return (builder.Build(new RagPromptContext(question, context) { History = history }), context, retrieved);
     }
 
     private static RagAnswer NotAnswered(IReadOnlyList<RetrievedChunk> retrieved)

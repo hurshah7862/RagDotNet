@@ -27,6 +27,24 @@ public class GenerationTests
     }
 
     [Fact]
+    public void Default_prompt_puts_history_between_the_system_message_and_the_documents()
+    {
+        var history = new List<ChatMessage>
+        {
+            new(ChatRole.User, "first") { AuthorName = "bob" },
+            new(ChatRole.Assistant, "reply"),
+        };
+
+        var prompt = new DefaultRagPromptBuilder().Build(new RagPromptContext("q?", []) { History = history });
+
+        Assert.Equal([ChatRole.System, ChatRole.User, ChatRole.Assistant, ChatRole.User], prompt.Select(m => m.Role));
+        Assert.Equal(["first", "reply"], prompt.Skip(1).Take(2).Select(m => m.Text));
+        Assert.Null(prompt[1].AuthorName);
+        Assert.Contains("Question: q?", prompt[3].Text);
+        Assert.Empty(new RagPromptContext("q?", []).History);
+    }
+
+    [Fact]
     public async Task Ask_returns_answer_with_citations_mapped_to_chunks()
     {
         var (pipeline, _, _, chat, _) = Create();

@@ -1,3 +1,6 @@
+// The conversation overloads differ from the string overloads in the type of their first argument, so a call is never ambiguous.
+#pragma warning disable RS0026 // Do not add multiple overloads with optional parameters
+using Microsoft.Extensions.AI;
 using RagDotNet.Access;
 using RagDotNet.Documents;
 using RagDotNet.Embedding;
@@ -67,6 +70,21 @@ public interface IRagPipeline
     /// <exception cref="EmbeddingModelMismatchException">The store holds data from another embedding model, or a reindex to another model is in progress. Run <see cref="IRagAdmin.ReindexAsync"/>.</exception>
     Task<IReadOnlyList<RetrievedChunk>> RetrieveAsync(string query, RetrievalOptions? options = null, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Finds the chunks most similar to the last question of a conversation. When the conversation has history (limited to
+    /// <see cref="Configuration.RagOptions.MaxHistoryMessages"/>), the question is first rewritten as a standalone question with the chat client.
+    /// </summary>
+    /// <param name="conversation">The conversation; the last message must be a user message with text.</param>
+    /// <param name="options">Per-call options.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Chunks ordered by descending score.</returns>
+    /// <exception cref="ArgumentException">The conversation is null, empty, or does not end with a user message that has text; or the filter is invalid.</exception>
+    /// <exception cref="InvalidOperationException">The conversation has history and no chat client is configured. Call <c>UseChatClient</c>.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><see cref="RetrievalOptions.TopK"/> is outside 1 to 100.</exception>
+    /// <exception cref="RagAccessDeniedException">The access scope does not grant <see cref="RagPermissions.Read"/>.</exception>
+    /// <exception cref="EmbeddingModelMismatchException">The store holds data from another embedding model, or a reindex to another model is in progress. Run <see cref="IRagAdmin.ReindexAsync"/>.</exception>
+    Task<IReadOnlyList<RetrievedChunk>> RetrieveAsync(IList<ChatMessage> conversation, RetrievalOptions? options = null, CancellationToken cancellationToken = default);
+
     /// <summary>Answers a question from the ingested documents.</summary>
     /// <param name="question">The question.</param>
     /// <param name="options">Per-call options.</param>
@@ -77,6 +95,20 @@ public interface IRagPipeline
     /// <exception cref="EmbeddingModelMismatchException">The store holds data from another embedding model, or a reindex to another model is in progress. Run <see cref="IRagAdmin.ReindexAsync"/>.</exception>
     Task<RagAnswer> AskAsync(string question, AskOptions? options = null, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Answers the last question of a conversation. History (limited to <see cref="Configuration.RagOptions.MaxHistoryMessages"/>)
+    /// is used to rewrite the question for retrieval and is sent to the model before the documents; it does not count against the context token budget.
+    /// </summary>
+    /// <param name="conversation">The conversation; the last message must be a user message with text.</param>
+    /// <param name="options">Per-call options.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The answer; <see cref="RagAnswer.IsAnswered"/> is false, without an answer call, when nothing was retrieved.</returns>
+    /// <exception cref="ArgumentException">The conversation is null, empty, or does not end with a user message that has text.</exception>
+    /// <exception cref="InvalidOperationException">No chat client is configured. Call <c>UseChatClient</c>.</exception>
+    /// <exception cref="RagAccessDeniedException">The access scope does not grant <see cref="RagPermissions.Read"/>.</exception>
+    /// <exception cref="EmbeddingModelMismatchException">The store holds data from another embedding model, or a reindex to another model is in progress. Run <see cref="IRagAdmin.ReindexAsync"/>.</exception>
+    Task<RagAnswer> AskAsync(IList<ChatMessage> conversation, AskOptions? options = null, CancellationToken cancellationToken = default);
+
     /// <summary>Answers a question and streams the answer. Yields one update per non-empty text delta, then a final update with the complete answer. When nothing is retrieved, yields only the final update.</summary>
     /// <param name="question">The question.</param>
     /// <param name="options">Per-call options.</param>
@@ -86,4 +118,15 @@ public interface IRagPipeline
     /// <exception cref="RagAccessDeniedException">The access scope does not grant <see cref="RagPermissions.Read"/>.</exception>
     /// <exception cref="EmbeddingModelMismatchException">The store holds data from another embedding model, or a reindex to another model is in progress. Run <see cref="IRagAdmin.ReindexAsync"/>.</exception>
     IAsyncEnumerable<RagAnswerUpdate> AskStreamingAsync(string question, AskOptions? options = null, CancellationToken cancellationToken = default);
+
+    /// <summary>Answers the last question of a conversation and streams the answer. See <see cref="AskAsync(IList{ChatMessage}, AskOptions?, CancellationToken)"/>.</summary>
+    /// <param name="conversation">The conversation; the last message must be a user message with text.</param>
+    /// <param name="options">Per-call options.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The updates.</returns>
+    /// <exception cref="ArgumentException">The conversation is null, empty, or does not end with a user message that has text.</exception>
+    /// <exception cref="InvalidOperationException">No chat client is configured. Call <c>UseChatClient</c>.</exception>
+    /// <exception cref="RagAccessDeniedException">The access scope does not grant <see cref="RagPermissions.Read"/>.</exception>
+    /// <exception cref="EmbeddingModelMismatchException">The store holds data from another embedding model, or a reindex to another model is in progress. Run <see cref="IRagAdmin.ReindexAsync"/>.</exception>
+    IAsyncEnumerable<RagAnswerUpdate> AskStreamingAsync(IList<ChatMessage> conversation, AskOptions? options = null, CancellationToken cancellationToken = default);
 }

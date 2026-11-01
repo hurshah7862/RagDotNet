@@ -12,7 +12,12 @@ internal sealed class QueryPlanner(RagOptions ragOptions)
     public async Task<IReadOnlyList<string>> PlanAsync(string question, IReadOnlyList<ChatMessage> history, RetrievalOptions options, IChatClient? chat, CancellationToken ct)
     {
         IReadOnlyList<string> queries = Normalize([question], [question]);
-        var transformers = options?.QueryTransformers ?? ragOptions.QueryTransformers.ToList();
+        if (history.Count > 0)
+        {
+            queries = await RunAsync(new CondenseQueryTransformer(), new QueryContext(question, history, queries, chat), queries, ct).ConfigureAwait(false);
+        }
+
+        var transformers =options?.QueryTransformers ?? ragOptions.QueryTransformers.ToList();
         foreach (var transformer in transformers)
         {
             queries = await RunAsync(transformer, new QueryContext(question, history, queries, chat), queries, ct).ConfigureAwait(false);

@@ -99,6 +99,20 @@ new AccessScope(
 
 **Known leak.** Because of the "can't change what you can't read" rule, a scoped write refused over a hidden document reveals that the id exists. To avoid this, give each group its own document id prefix so users never write ids outside their own group.
 
+## Conversations and query rewriting
+
+**Passing a conversation.** `AskAsync`, `AskStreamingAsync` and `RetrieveAsync` each have an overload that takes the whole conversation as an `IList<ChatMessage>`, for example `rag.AskAsync(messages)`. The last message must be a user message with text, and it is the question; otherwise the call throws `ArgumentException`. The string overloads are unchanged and behave as a conversation with no history.
+
+**Condense.** When the conversation has history, the question is first rewritten into a standalone question with one chat call, because a follow-up such as "How do I install it on Linux?" cannot be searched on its own. Condense runs automatically, before any configured query transformer, and the search uses its result. If the model returns nothing, the original question is searched; surrounding quotes are removed. Because it needs a chat client, `RetrieveAsync` with history throws `InvalidOperationException` when none is configured. A single-message conversation never needs one for retrieval.
+
+**What the model sees.** The answer prompt contains the system message, then the history messages, then the documents with the original question (not the rewritten one) and the citation reminder.
+
+**History window.** `RagOptions.MaxHistoryMessages` (default 10, must not be negative) keeps the last N earlier messages that are from the user or the assistant and have text; other roles and contents are dropped. Condense and the answer prompt use the same window. `0` ignores history and skips Condense. The history does **not** count against `MaxContextTokens`, which budgets only the retrieved documents, so keep the window small enough for your model's context size.
+
+**More query rewriting.** Two transformers are available and off by default. Each adds chat calls to every question. `MultiQueryTransformer(count)` asks for alternative phrasings of the question and searches them all, merging the results with reciprocal rank fusion. `HydeQueryTransformer` searches with a generated passage that would answer the question, one chat call per query. Add them to `o.QueryTransformers` for all calls, or set `RetrievalOptions.QueryTransformers` per call (`null` uses the default, an empty list runs none). The per-call list never switches Condense off. Transformers run in order, each one working on the previous one's queries; at most 10 queries are searched, and each `rag.transform` span reports the transformer and the number of queries.
+
+**Custom transformers.** Implement `IQueryTransformer.TransformAsync(QueryContext, CancellationToken)`. `QueryContext` has the `Question`, the windowed `History`, the current `Queries` (the previous step's output) and the `ChatClient`, which is null when none is configured. Return the new list of queries; empty and duplicate entries are dropped, and an empty result keeps the previous queries.
+
 ## Chunking
 
 The default chunker is `structure-aware` (`Chunkers.StructureAware`). It splits along headings, paragraphs, sentences and lines, never across headings, and merges small blocks. Its settings are `ChunkingOptions.MaxTokens` (default 512, at least 16) and `OverlapRatio` (default 0.10, in [0, 0.5)).

@@ -43,7 +43,10 @@ public sealed class DefaultRagPromptBuilder : IRagPromptBuilder
         }
 
         sb.Append("\nQuestion: ").Append(context.Question).Append("\n\n").Append(CitationReminder);
-        return [new ChatMessage(ChatRole.System, SystemPrompt), new ChatMessage(ChatRole.User, sb.ToString())];
+        var messages = new List<ChatMessage> { new(ChatRole.System, SystemPrompt) };
+        foreach (var h in context.History) messages.Add(new ChatMessage(h.Role, h.Text));
+        messages.Add(new ChatMessage(ChatRole.User, sb.ToString()));
+        return messages;
     }
 
     /// <inheritdoc />

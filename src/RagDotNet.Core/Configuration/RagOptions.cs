@@ -54,6 +54,12 @@ public sealed class RagOptions
     /// <summary>Token budget for the context passed to the model.</summary>
     public int MaxContextTokens { get; set; } = 3000;
 
+    /// <summary>
+    /// How many earlier user and assistant messages of a conversation are used to condense the question and are sent to the model.
+    /// The history does not count against <see cref="MaxContextTokens"/>. 0 ignores the history. Default 10.
+    /// </summary>
+    public int MaxHistoryMessages { get; set; } = 10;
+
     /// <summary>Tokenizer used for counting tokens; a default is used when null.</summary>
     public Tokenizer? Tokenizer { get; set; }
 

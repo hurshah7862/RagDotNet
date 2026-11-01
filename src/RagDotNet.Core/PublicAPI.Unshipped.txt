@@ -695,3 +695,10 @@ override RagDotNet.Retrieval.QueryContext.ToString() -> string!
 static RagDotNet.Retrieval.QueryContext.operator !=(RagDotNet.Retrieval.QueryContext? left, RagDotNet.Retrieval.QueryContext? right) -> bool
 static RagDotNet.Retrieval.QueryContext.operator ==(RagDotNet.Retrieval.QueryContext? left, RagDotNet.Retrieval.QueryContext? right) -> bool
 RagDotNet.Retrieval.QueryContext.<Clone>$() -> RagDotNet.Retrieval.QueryContext!
+RagDotNet.Configuration.RagOptions.MaxHistoryMessages.get -> int
+RagDotNet.Configuration.RagOptions.MaxHistoryMessages.set -> void
+RagDotNet.Generation.RagPromptContext.History.get -> System.Collections.Generic.IReadOnlyList<Microsoft.Extensions.AI.ChatMessage!>!
+RagDotNet.Generation.RagPromptContext.History.init -> void
+RagDotNet.Pipeline.IRagPipeline.RetrieveAsync(System.Collections.Generic.IList<Microsoft.Extensions.AI.ChatMessage!>! conversation, RagDotNet.Retrieval.RetrievalOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<RagDotNet.Retrieval.RetrievedChunk!>!>!
+RagDotNet.Pipeline.IRagPipeline.AskAsync(System.Collections.Generic.IList<Microsoft.Extensions.AI.ChatMessage!>! conversation, RagDotNet.Generation.AskOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<RagDotNet.Generation.RagAnswer!>!
+RagDotNet.Pipeline.IRagPipeline.AskStreamingAsync(System.Collections.Generic.IList<Microsoft.Extensions.AI.ChatMessage!>! conversation, RagDotNet.Generation.AskOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Collections.Generic.IAsyncEnumerable<RagDotNet.Generation.RagAnswerUpdate!>!
