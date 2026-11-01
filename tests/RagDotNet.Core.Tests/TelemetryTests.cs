@@ -4,6 +4,7 @@ using Microsoft.Extensions.AI;
 using RagDotNet.Configuration;
 using RagDotNet.Content;
 using RagDotNet.Diagnostics;
+using RagDotNet.Pipeline;
 using static RagDotNet.Core.Tests.Fakes.TestRag;
 
 namespace RagDotNet.Core.Tests;
@@ -214,5 +215,53 @@ public class TelemetryTests
         var ingest = capture.Span("rag.ingest");
         Assert.Equal(ActivityStatusCode.Error, ingest.Status);
         Assert.EndsWith("Exception", ingest.StatusDescription);
+    }
+
+    [Fact]
+    public async Task Successful_retrieve_emits_exactly_one_retrieve_span()
+    {
+        var (pipeline, _, _, _, _) = Create();
+        await pipeline.IngestAsync(Md("r-doc", "alpha beta"), cancellationToken: Ct);
+        using var capture = new Capture();
+
+        await pipeline.RetrieveAsync("alpha", cancellationToken: Ct);
+
+        Assert.Equal(ActivityStatusCode.Unset, capture.Span("rag.retrieve").Status);
+        Assert.Equal(1, capture.Count("rag.retrieve.duration"));
+    }
+
+    [Fact]
+    public async Task Read_denied_retrieve_is_recorded_as_a_failed_retrieve_span()
+    {
+        var scope = new Fakes.MutableScope { Current = Fakes.TestScopes.Tenant("a", permissions: Access.RagPermissions.Write) };
+        var (pipeline, _, _, _, _) = Create(
+            o => { o.Metadata.Add<string>("tenant"); o.PartitionKeys.Add("tenant"); },
+            b => b.UseAccessScope(scope));
+        using var capture = new Capture();
+
+        await Assert.ThrowsAsync<Access.RagAccessDeniedException>(() => pipeline.RetrieveAsync("alpha", cancellationToken: Ct));
+
+        var span = capture.Span("rag.retrieve");
+        Assert.Equal(ActivityStatusCode.Error, span.Status);
+        Assert.Equal(1, capture.Count("rag.retrieve.duration"));
+    }
+
+    [Fact]
+    public async Task Model_mismatch_retrieve_is_recorded_as_a_failed_retrieve_span()
+    {
+        var store = new CommunityToolkit.VectorData.InMemory.InMemoryVectorStore();
+        RagPipelineBuilder Make(string model) => new RagPipelineBuilder()
+            .UseEmbeddingGenerator(new Fakes.FakeEmbeddingGenerator(64))
+            .UseChatClient(new Fakes.FakeChatClient())
+            .UseVectorStore(store, "test", 64)
+            .Configure(o => o.EmbeddingModelId = model);
+        await Make("m1").Build().IngestAsync(Md("mm-doc", "alpha beta"), cancellationToken: Ct);
+        var other = Make("m2").Build();
+        using var capture = new Capture();
+
+        await Assert.ThrowsAsync<Embedding.EmbeddingModelMismatchException>(() => other.RetrieveAsync("alpha", cancellationToken: Ct));
+
+        Assert.Equal(ActivityStatusCode.Error, capture.Span("rag.retrieve").Status);
+        Assert.Equal(1, capture.Count("rag.retrieve.duration"));
     }
 }

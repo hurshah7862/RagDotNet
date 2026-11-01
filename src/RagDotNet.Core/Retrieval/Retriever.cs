@@ -5,6 +5,7 @@ using Microsoft.Extensions.VectorData;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 using RagDotNet.Access;
+using RagDotNet.Configuration;
 using RagDotNet.Diagnostics;
 using RagDotNet.Embedding;
 using RagDotNet.Filtering;
@@ -18,15 +19,20 @@ internal sealed class Retriever(RagEngine engine)
     /// <summary>The checked state a search needs: the final store filter, or that the scope and filter match nothing.</summary>
     internal sealed class Prepared
     {
-        internal Prepared(RetrievalOptions options, Expression<Func<Dictionary<string, object?>, bool>>? filter, bool matchesNothing, bool reindexInProgress)
+        internal Prepared(int topK, double? minScore, Expression<Func<Dictionary<string, object?>, bool>>? filter, bool matchesNothing, bool reindexInProgress)
         {
-            Options = options;
+            TopK = topK;
+            MinScore = minScore;
             Filter = filter;
             MatchesNothing = matchesNothing;
             ReindexInProgress = reindexInProgress;
         }
 
-        public RetrievalOptions Options { get; }
+        /// <summary>The validated TopK, captured once so a search never re-reads the caller's options after the chat calls.</summary>
+        public int TopK { get; }
+
+        /// <summary>The MinScore captured at prepare time.</summary>
+        public double? MinScore { get; }
 
         public Expression<Func<Dictionary<string, object?>, bool>>? Filter { get; }
 
@@ -50,6 +56,26 @@ internal sealed class Retriever(RagEngine engine)
     /// </summary>
     public async Task<Prepared> PrepareAsync(ResolvedScope scope, RetrievalOptions o, CancellationToken ct)
     {
+        var started = Stopwatch.GetTimestamp();
+        try
+        {
+            return await PrepareCoreAsync(scope, o, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            // The search span has not started (it must not enclose the chat calls), so a failed check gets its own short
+            // rag.retrieve span and duration measurement; a successful prepare records neither.
+            var elapsed = Stopwatch.GetElapsedTime(started);
+            using var activity = RagTelemetry.ActivitySource.StartActivity("rag.retrieve");
+            activity?.SetStartTime(DateTime.UtcNow - elapsed);
+            RagTelemetry.Fail(activity, ex);
+            RagTelemetry.RetrieveDuration.Record(elapsed.TotalSeconds);
+            throw;
+        }
+    }
+
+    private async Task<Prepared> PrepareCoreAsync(ResolvedScope scope, RetrievalOptions o, CancellationToken ct)
+    {
         ArgumentNullException.ThrowIfNull(o);
         if (o.TopK is < 1 or > 100)
             throw new ArgumentOutOfRangeException("TopK", o.TopK, "TopK must be between 1 and 100.");
@@ -60,7 +86,7 @@ internal sealed class Retriever(RagEngine engine)
         var options = engine.Options;
         var partitioned = options.PartitionKeys.Count > 0;
         var filter = ReadFilters.Build(scope, o.IncludeCommon, partitioned, o.Filter, options.Metadata, out var matchesNothing);
-        if (matchesNothing) return new Prepared(o, null, matchesNothing: true, reindexInProgress: false);
+        if (matchesNothing) return new Prepared(o.TopK, o.MinScore, null, matchesNothing: true, reindexInProgress: false);
 
         await engine.EnsureReadyAsync(ct).ConfigureAwait(false);
         var reindexing = await engine.ModelGuard.EnsureAsync(GuardMode.Read, ct).ConfigureAwait(false);
@@ -73,7 +99,7 @@ internal sealed class Retriever(RagEngine engine)
                     "A reindex to embedding model {ModelId} is in progress; answers include only documents already re-embedded.", engine.EmbeddingModelId);
         }
 
-        return new Prepared(o, filter, matchesNothing: false, reindexInProgress: reindexing);
+        return new Prepared(o.TopK, o.MinScore, filter, matchesNothing: false, reindexInProgress: reindexing);
     }
 
     /// <summary>Searches the store with already-planned queries and the state returned by <see cref="PrepareAsync"/>.</summary>
@@ -81,10 +107,9 @@ internal sealed class Retriever(RagEngine engine)
     {
         ValidateQueries(queries);
         ArgumentNullException.ThrowIfNull(prepared);
-        var o = prepared.Options;
         using var activity = RagTelemetry.ActivitySource.StartActivity("rag.retrieve");
         var started = Stopwatch.GetTimestamp();
-        activity?.SetTag("rag.top_k", o.TopK);
+        activity?.SetTag("rag.top_k", prepared.TopK);
         activity?.SetTag("rag.query.count", queries.Count);
         if (activity is not null && engine.Options.EnableSensitiveData) activity.SetTag("rag.query", string.Join("\n", queries));
         if (prepared.ReindexInProgress) activity?.SetTag("rag.reindex.in_progress", true);
@@ -116,25 +141,18 @@ internal sealed class Retriever(RagEngine engine)
     private async Task<List<RetrievedChunk>> SearchCoreAsync(IReadOnlyList<string> queries, Prepared prepared, CancellationToken ct)
     {
         var options = engine.Options;
-        var o = prepared.Options;
         var filter = prepared.Filter;
-        var embeddings = await engine.Embedder.GenerateAsync(queries, cancellationToken: ct).ConfigureAwait(false);
-        if (embeddings.Count != queries.Count)
-            throw new InvalidOperationException($"The embedding generator returned {embeddings.Count} embeddings for {queries.Count} queries.");
+        var vectors = await EmbedQueriesAsync(queries, ct).ConfigureAwait(false);
 
         var rankings = new List<IReadOnlyList<RetrievedChunk>>(queries.Count);
-        foreach (var embedding in embeddings)
+        foreach (var vector in vectors)
         {
-            var vector = embedding.Vector;
-            if (vector.Length != options.EmbeddingDimensions)
-                throw new InvalidOperationException($"The embedding generator returned {vector.Length} dimensions, but {options.EmbeddingDimensions} are configured.");
-
             var ranking = new List<RetrievedChunk>();
-            await foreach (var hit in engine.Chunks.SearchAsync(vector, o.TopK, filter, ct).ConfigureAwait(false))
+            await foreach (var hit in engine.Chunks.SearchAsync(vector, prepared.TopK, filter, ct).ConfigureAwait(false))
             {
                 var score = hit.Score ?? throw new InvalidOperationException("The vector store returned a result without a score.");
                 if (options.DistanceFunction == DistanceFunction.CosineDistance) score = 1 - score;
-                if (o.MinScore is { } min && score < min) continue;
+                if (prepared.MinScore is { } min && score < min) continue;
                 ranking.Add(Map(hit.Record, score));
             }
 
@@ -143,7 +161,7 @@ internal sealed class Retriever(RagEngine engine)
         }
 
         // Text is fetched once, below, for the final results only.
-        var results = queries.Count == 1 ? rankings[0].ToList() : RankFusion.Reciprocal(rankings, o.TopK).ToList();
+        var results = queries.Count == 1 ? rankings[0].ToList() : RankFusion.Reciprocal(rankings, prepared.TopK).ToList();
 
         if (engine.ContentStore is { } contentStore && results.Count > 0)
         {
@@ -166,6 +184,29 @@ internal sealed class Retriever(RagEngine engine)
 
         results.Sort(RankFusion.Compare);
         return results;
+    }
+
+    /// <summary>Embeds the queries in batches of <see cref="RagOptions.EmbeddingBatchSize"/>, as ingestion does, keeping their order.</summary>
+    private async Task<List<ReadOnlyMemory<float>>> EmbedQueriesAsync(IReadOnlyList<string> queries, CancellationToken ct)
+    {
+        var batchSize = Math.Max(1, engine.Options.EmbeddingBatchSize);
+        var dims = engine.Options.EmbeddingDimensions;
+        var vectors = new List<ReadOnlyMemory<float>>(queries.Count);
+        for (var start = 0; start < queries.Count; start += batchSize)
+        {
+            var batch = queries.Skip(start).Take(batchSize).ToList();
+            var embeddings = await engine.Embedder.GenerateAsync(batch, cancellationToken: ct).ConfigureAwait(false);
+            if (embeddings.Count != batch.Count)
+                throw new InvalidOperationException($"The embedding generator returned {embeddings.Count} embeddings for {batch.Count} queries.");
+            foreach (var embedding in embeddings)
+            {
+                if (embedding.Vector.Length != dims)
+                    throw new InvalidOperationException($"The embedding generator returned {embedding.Vector.Length} dimensions, but {dims} are configured.");
+                vectors.Add(embedding.Vector);
+            }
+        }
+
+        return vectors;
     }
 
     private RetrievedChunk Map(Dictionary<string, object?> r, double score)

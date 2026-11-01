@@ -12,14 +12,19 @@ public sealed class FakeEmbeddingGenerator(int dimensions = 64, string modelId =
 
     public List<string> Inputs { get; } = [];
 
+    /// <summary>The number of values in each GenerateAsync call, in call order.</summary>
+    public List<int> BatchSizes { get; } = [];
+
     public Task<GeneratedEmbeddings<Embedding<float>>> GenerateAsync(
         IEnumerable<string> values,
         EmbeddingGenerationOptions? options = null,
         CancellationToken cancellationToken = default)
     {
         CallCount++;
+        var list = values.ToList();
+        BatchSizes.Add(list.Count);
         var result = new GeneratedEmbeddings<Embedding<float>>();
-        foreach (var value in values)
+        foreach (var value in list)
         {
             Inputs.Add(value);
             result.Add(new Embedding<float>(Embed(value)));

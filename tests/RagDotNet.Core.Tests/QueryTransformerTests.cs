@@ -185,4 +185,36 @@ public class QueryTransformerTests
         var ex = Assert.Throws<OptionsValidationException>(() => Create(o => o.QueryTransformers = null!));
         Assert.Contains("QueryTransformers must not be null.", ex.Message);
     }
+
+    [Fact]
+    public async Task Query_embeddings_respect_EmbeddingBatchSize_and_still_fuse()
+    {
+        var (pipeline, _, embedder, _, _) = Create(o =>
+        {
+            o.EmbeddingBatchSize = 2;
+            o.QueryTransformers.Add(new Fixed("alpha beta", "alpha", "beta", "zulu yankee xray", "yankee"));
+        });
+        await pipeline.IngestAsync(Md("d1", "alpha beta"), cancellationToken: Ct);
+        await pipeline.IngestAsync(Md("d2", "zulu yankee xray"), cancellationToken: Ct);
+        embedder.BatchSizes.Clear();
+
+        var results = await pipeline.RetrieveAsync("alpha beta", new RetrievalOptions { TopK = 2 }, Ct);
+
+        Assert.Equal([2, 2, 1], embedder.BatchSizes);
+        Assert.Equal(["d1", "d2"], results.Select(r => r.DocumentId).Order());
+        Assert.All(results, r => Assert.Equal(ScoreKind.Fused, r.ScoreKind));
+    }
+
+    [Fact]
+    public async Task Prepared_captures_the_validated_options()
+    {
+        var (pipeline, _, _, _, _) = Create();
+        var engine = ((RagPipeline)pipeline).Engine;
+        var scope = await engine.ResolveScopeAsync(null, Ct);
+
+        var prepared = await engine.Retriever.PrepareAsync(scope, new RetrievalOptions { TopK = 7, MinScore = 0.25 }, Ct);
+
+        Assert.Equal(7, prepared.TopK);
+        Assert.Equal(0.25, prepared.MinScore);
+    }
 }
