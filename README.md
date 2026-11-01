@@ -66,11 +66,19 @@ new AccessScope(
     RagPermissions.Read);
 ```
 
-**Common documents.** Tenants see their own documents plus the common ones. `RetrievalOptions.IncludeCommon = false` limits a tenant to its own documents (it has no effect without `PartitionKeys`). The common area is read-only to tenants: a scoped write or delete never changes a common document. Ingesting an id that exists only in the common area creates a separate tenant document.
+**Common documents.** Tenants see their own documents plus the common ones. `RetrievalOptions.IncludeCommon = false` limits a tenant to its own documents (it has no effect without `PartitionKeys`). In a multi-tenant app the common area is read-only to tenants: a scoped write or delete never changes a common document, and ingesting an id that exists only in the common area creates a separate tenant document. In a single-tenant app the one area is the common area, so scoped users (including `AccessScope.Unpartitioned`) read, write and delete there according to their permissions and filter.
+
+**Write rules for scoped users.**
+
+- Ingest needs `RagPermissions.Write` and delete needs `RagPermissions.Delete` (the example above grants only `Read`).
+- You can't change what you can't read: ingesting over an existing document that the scope filter hides throws `RagAccessDeniedException`, and deleting a hidden document returns `false`.
+- A new document's own metadata must satisfy `scope.Filter`.
+- A full-access pipeline's `DeleteDocumentAsync` acts on the common area. To delete a tenant's document with full access, use `IRagAdmin.DeleteDocumentAsync(id, partition)` or `IRagAdmin.ForScope`.
+- A full-access ingest that sets only some partition keys, or an empty value, throws `ArgumentException`.
 
 **Writes with a tenant user's rights.** `IRagAdmin.ForScope(scope)` returns a pipeline bound to an explicit scope, ignoring any registered one, so a back-office job can write on behalf of a tenant user and still have the user's read filter and permissions applied. An invalid scope throws `ArgumentException` immediately. Everything else on `IRagAdmin` bypasses scopes; keep it away from end users. `DeleteDocumentAsync(id, null)` deletes from the common area.
 
-**Known leak.** A scoped write that is refused because the user cannot see an existing document reveals that the id exists. To avoid this, give each group its own document id prefix so users never write ids outside their own group.
+**Known leak.** Because of the "can't change what you can't read" rule, a scoped write refused over a hidden document reveals that the id exists. To avoid this, give each group its own document id prefix so users never write ids outside their own group.
 
 ## Caching
 
