@@ -379,6 +379,6 @@ public class IngestionTests
         await foreach (var m in manifests.ListAsync(r => (string)r["DocumentId"]! != "none", Ct)) listed.Add(m.DocumentId);
         Assert.Equal(120, listed.Count);
         Assert.Equal(listed.OrderBy(x => x, StringComparer.Ordinal), listed);
-        Assert.Equal("d005", (await manifests.FindFirstAsync(r => (string)r["DocumentId"]! == "d005", Ct))!.DocumentId);
+        Assert.Equal("d005", (await manifests.GetAsync("", "d005", Ct))!.DocumentId);
     }
 }

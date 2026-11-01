@@ -18,6 +18,7 @@ services.AddRag(o =>
     o.CollectionName = "docs";
     o.EmbeddingDimensions = 768;
     o.Metadata.Add<string>("tenant");
+    o.PartitionKeys.Add("tenant"); // each tenant gets its own partition
 })
 .AddReader<MyReader>()
 .AddAccessScope<TenantAccessScope>();
@@ -44,35 +45,35 @@ foreach (var c in answer.Citations) Console.WriteLine($"[{c.Number}] {c.Chunk.So
 
 `IRagPipeline` exposes `IngestAsync`, `IngestManyAsync`, `DeleteDocumentAsync`, `RetrieveAsync`, `AskAsync` and `AskStreamingAsync`. Text and Markdown readers are built in.
 
-The first `Build()` or `BuildAdmin()` freezes the builder: later `Use*`, `Configure` or `AddReader` calls throw `InvalidOperationException`, so configure everything first (or create a new builder). Repeated `Build()`/`BuildAdmin()` calls share one engine.
+The first `Build()` or `BuildAdmin()` freezes the builder: later `Use*`, `Configure`, `AddReader` or `AddChunker` calls throw `InvalidOperationException`, so configure everything first (or create a new builder). Repeated `Build()`/`BuildAdmin()` calls share one engine.
 
 ## Concurrency
 
-Ingest and delete of the same document (same partition and document id) are serialized within a process, across every pipeline and admin built from one builder or one DI container. Writers in different processes must not ingest or delete the same document concurrently: nothing coordinates them, and interleaved writes can leave chunks the document's manifest does not cover.
+Ingest, delete and reindex of the same document (same partition and document id) are serialized within a process, across every pipeline and admin built from one builder or one DI container. Writers in different processes must not ingest or delete the same document concurrently: nothing coordinates them, and interleaved writes can leave chunks the document's manifest does not cover.
 
 ## Switching embedding models
 
 Each document records the embedding model it was embedded with. Once you configure a different `EmbeddingModelId` (or a generator that reports a different model), ingest, delete and questions throw `EmbeddingModelMismatchException` until you call `IRagAdmin.ReindexAsync()`. It re-embeds every document not yet on the configured model, across all partitions. The embedding dimensions can't change: it probes the generator first and throws `InvalidOperationException` before writing anything if they differ.
 
-**The reindex marker.** Reindex writes a marker record to the documents collection. It names the target model and the instance running the reindex, and carries a heartbeat refreshed at least once a minute. The marker is deleted when the reindex finishes.
+**The reindex marker.** Reindex writes a marker record to the documents collection. It names the target model and the instance running the reindex, and carries a heartbeat. The heartbeat is refreshed once 60 seconds have passed since the last refresh, checked after the initial wait, between embedding batches and after each document, so a single slow embedding call delays it. The marker is deleted when the reindex finishes.
 
 **During a reindex.** Questions keep working, but they search only documents already re-embedded, so answers are incomplete until it finishes; run it off-peak. Each process logs a warning once per reindex. Ingest and delete keep working too: a document being re-embedded waits for its reindex to finish (within a process), and a document that changes during reindex is not overwritten. Instances configured with any other model keep throwing `EmbeddingModelMismatchException`.
 
 **Resuming after an interruption.** If reindex fails or is cancelled, the marker stays and questions keep using the re-embedded documents. Call `ReindexAsync()` again: in the same process it resumes at once and re-embeds only what is left. Only one reindex runs per process; a second concurrent call throws `InvalidOperationException`.
 
-**Takeover after 5 minutes.** A reindex started from another process (or another engine) while a marker with a fresh heartbeat exists throws `InvalidOperationException`. A marker whose heartbeat is more than 5 minutes old is considered abandoned, and the next `ReindexAsync()` takes it over.
+**Takeover after 5 minutes.** A reindex started from another process (or another engine) while a marker with a fresh heartbeat exists throws `InvalidOperationException`. A marker whose heartbeat is more than 5 minutes old is considered abandoned, and the next `ReindexAsync()` takes it over. A heartbeat in the future (clock skew between machines) counts as fresh, so the marker is treated as live.
 
 **Running several instances.**
 
 - Pause other writers during reindex. If a document changes in another process during reindex, that document is skipped; if it ends up on a model other than the configured one, reindex keeps the marker and throws `InvalidOperationException` asking you to run it again.
 - Restart every instance after switching models, so they all run with the new model. Instances still configured with the old model keep writing old-model data until they restart.
-- Each instance notices a marker, or the end of a reindex, within `RagOptions.ModelCheckInterval` (default 5 seconds; `TimeSpan.Zero` checks on every call). An instance already configured with the new model starts answering from re-embedded data within that interval, without a restart. Reindex waits one `ModelCheckInterval` after writing the marker before it writes any new vector, so instances that cached "no reindex" start filtering first.
+- Each instance notices a marker, or the end of a reindex, within `RagOptions.ModelCheckInterval` (default 5 seconds, at most 1 minute; `TimeSpan.Zero` checks on every call). An instance already configured with the new model starts answering from re-embedded data within that interval, without a restart. Reindex waits one `ModelCheckInterval` after writing the marker before it writes any new vector, so instances that cached "no reindex" start filtering first.
 
 ## Access control
 
 **Full access.** With no `IAccessScope`, or a scope that returns `null`, the caller has full access. A write goes to the tenant named by the document's metadata (every partition key set), or to the common area when it names none.
 
-**Single-tenant and multi-tenant.** Without `PartitionKeys` the app is single-tenant: there is no tenant to name, and the one area is the common area. `AccessScope.Unpartitioned(filter, permissions)` gives read filters and permissions without a partition. With `PartitionKeys` (declared as string fields in `o.Metadata`) each tenant gets its own partition, stamped on every chunk and part of the chunk key.
+**Single-tenant and multi-tenant.** Without `PartitionKeys` the app is single-tenant: there is no tenant to name, and the one area is the common area. `AccessScope.Unpartitioned(filter, permissions)` gives read filters and permissions without a partition; a single-tenant scope's partition must be empty, and a scope that sets partition values without `PartitionKeys` configured throws. With `PartitionKeys` (declared as string fields in `o.Metadata`) each tenant gets its own partition, stamped on every chunk and part of the chunk key.
 
 **`AccessScope`.** A scope carries a partition, an optional filter (ANDed with the caller's filter inside every query) and `RagPermissions`:
 
@@ -89,7 +90,7 @@ new AccessScope(
 **Write rules for scoped users.**
 
 - Ingest needs `RagPermissions.Write` and delete needs `RagPermissions.Delete` (the example above grants only `Read`).
-- You can't change what you can't read: ingesting over an existing document that the scope filter hides throws `RagAccessDeniedException`, and deleting a hidden document returns `false`.
+- You can't change what you can't read: ingesting over an existing document in your own partition that the scope filter hides throws `RagAccessDeniedException`, and deleting a hidden document returns `false`.
 - A new document's own metadata must satisfy `scope.Filter`.
 - A full-access pipeline's `DeleteDocumentAsync` acts on the common area. To delete a tenant's document with full access, use `IRagAdmin.DeleteDocumentAsync(id, partition)` or `IRagAdmin.ForScope`.
 - A full-access ingest that sets only some partition keys, or an empty value, throws `ArgumentException`.

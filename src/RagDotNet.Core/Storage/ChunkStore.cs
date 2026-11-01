@@ -30,14 +30,6 @@ internal sealed class ChunkStore(VectorStore store, RagOptions options)
         return result;
     }
 
-    /// <summary>Whether any chunk matches the filter; reads no vectors.</summary>
-    public async Task<bool> AnyAsync(Expression<Func<Dictionary<string, object?>, bool>> filter, CancellationToken ct)
-    {
-        await foreach (var _ in _collection.GetAsync(filter, 1, new FilteredRecordRetrievalOptions<Dictionary<string, object?>> { IncludeVectors = false }, ct).ConfigureAwait(false))
-            return true;
-        return false;
-    }
-
     public IAsyncEnumerable<VectorSearchResult<Dictionary<string, object?>>> SearchAsync(
         ReadOnlyMemory<float> vector, int top, Expression<Func<Dictionary<string, object?>, bool>>? filter, CancellationToken ct) =>
         _collection.SearchAsync(vector, top, new VectorSearchOptions<Dictionary<string, object?>> { Filter = filter }, ct);

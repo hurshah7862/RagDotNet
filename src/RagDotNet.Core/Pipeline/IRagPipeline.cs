@@ -1,5 +1,6 @@
 using RagDotNet.Access;
 using RagDotNet.Documents;
+using RagDotNet.Embedding;
 using RagDotNet.Generation;
 using RagDotNet.Ingestion;
 using RagDotNet.Retrieval;
@@ -20,17 +21,25 @@ public interface IRagPipeline
     /// <param name="options">Per-call options.</param>
     /// <param name="progress">Progress receiver.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <exception cref="ArgumentException">Metadata is undeclared or has the wrong type.</exception>
+    /// <exception cref="ArgumentException">
+    /// Metadata is undeclared or has the wrong type; the chunker named in <paramref name="options"/> is not registered (thrown
+    /// before anything is written); or, with full access, the document's metadata sets only some partition keys, or an empty
+    /// or non-string partition value.
+    /// </exception>
     /// <exception cref="UnsupportedDocumentException">No reader supports the document.</exception>
     /// <exception cref="RagAccessDeniedException">The access scope does not grant Write, the document's metadata is outside the scope's read filter, or a document with this id exists and is not visible to the caller.</exception>
+    /// <exception cref="EmbeddingModelMismatchException">The store holds data from another embedding model, or a reindex to another model is in progress. Run <see cref="IRagAdmin.ReindexAsync"/>.</exception>
     Task<IngestResult> IngestAsync(DocumentSource source, IngestOptions? options = null, IProgress<IngestProgress>? progress = null, CancellationToken cancellationToken = default);
 
-    /// <summary>Ingests several documents with bounded parallelism. Results are in input order.</summary>
+    /// <summary>
+    /// Ingests several documents with bounded parallelism. Results are in input order. The batch is not atomic: when one
+    /// document fails, documents already ingested stay written.
+    /// </summary>
     /// <param name="sources">The documents; ids must be unique.</param>
     /// <param name="options">Per-call options.</param>
     /// <param name="progress">Progress receiver.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <exception cref="ArgumentException">Two sources share a document id.</exception>
+    /// <exception cref="ArgumentException">Two sources share a document id, or one document fails a check of <see cref="IngestAsync"/>.</exception>
     /// <exception cref="RagAccessDeniedException">The access scope refuses one of the documents; see <see cref="IngestAsync"/>.</exception>
     Task<IReadOnlyList<IngestResult>> IngestManyAsync(IEnumerable<DocumentSource> sources, IngestOptions? options = null, IProgress<IngestProgress>? progress = null, CancellationToken cancellationToken = default);
 
@@ -44,6 +53,7 @@ public interface IRagPipeline
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>True when the document existed and was visible to the caller; false when it is missing or not visible.</returns>
     /// <exception cref="RagAccessDeniedException">The access scope does not grant Delete.</exception>
+    /// <exception cref="EmbeddingModelMismatchException">The store holds data from another embedding model, or a reindex to another model is in progress. Run <see cref="IRagAdmin.ReindexAsync"/>.</exception>
     Task<bool> DeleteDocumentAsync(string documentId, CancellationToken cancellationToken = default);
 
     /// <summary>Finds the chunks most similar to a query.</summary>
@@ -53,6 +63,8 @@ public interface IRagPipeline
     /// <returns>Chunks ordered by descending score.</returns>
     /// <exception cref="ArgumentException">The query is empty or whitespace, or the filter is invalid.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><see cref="RetrievalOptions.TopK"/> is outside 1 to 100.</exception>
+    /// <exception cref="RagAccessDeniedException">The access scope does not grant <see cref="RagPermissions.Read"/>.</exception>
+    /// <exception cref="EmbeddingModelMismatchException">The store holds data from another embedding model, or a reindex to another model is in progress. Run <see cref="IRagAdmin.ReindexAsync"/>.</exception>
     Task<IReadOnlyList<RetrievedChunk>> RetrieveAsync(string query, RetrievalOptions? options = null, CancellationToken cancellationToken = default);
 
     /// <summary>Answers a question from the ingested documents.</summary>
@@ -61,6 +73,8 @@ public interface IRagPipeline
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The answer; <see cref="RagAnswer.IsAnswered"/> is false, without a model call, when nothing was retrieved.</returns>
     /// <exception cref="InvalidOperationException">No chat client is configured. Call <c>UseChatClient</c>.</exception>
+    /// <exception cref="RagAccessDeniedException">The access scope does not grant <see cref="RagPermissions.Read"/>.</exception>
+    /// <exception cref="EmbeddingModelMismatchException">The store holds data from another embedding model, or a reindex to another model is in progress. Run <see cref="IRagAdmin.ReindexAsync"/>.</exception>
     Task<RagAnswer> AskAsync(string question, AskOptions? options = null, CancellationToken cancellationToken = default);
 
     /// <summary>Answers a question and streams the answer. Yields one update per non-empty text delta, then a final update with the complete answer. When nothing is retrieved, yields only the final update.</summary>
@@ -69,5 +83,7 @@ public interface IRagPipeline
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The updates.</returns>
     /// <exception cref="InvalidOperationException">No chat client is configured. Call <c>UseChatClient</c>.</exception>
+    /// <exception cref="RagAccessDeniedException">The access scope does not grant <see cref="RagPermissions.Read"/>.</exception>
+    /// <exception cref="EmbeddingModelMismatchException">The store holds data from another embedding model, or a reindex to another model is in progress. Run <see cref="IRagAdmin.ReindexAsync"/>.</exception>
     IAsyncEnumerable<RagAnswerUpdate> AskStreamingAsync(string question, AskOptions? options = null, CancellationToken cancellationToken = default);
 }

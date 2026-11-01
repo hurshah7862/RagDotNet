@@ -9,9 +9,10 @@ public interface IRagAdmin
     /// <remarks>
     /// <para>
     /// The embedding dimensions are probed first, before anything is written. Reindex then writes a reindex marker naming the
-    /// configured model and this engine, with a heartbeat refreshed at least once a minute, and waits one
-    /// <see cref="Configuration.RagOptions.ModelCheckInterval"/> before writing any new vector, so other instances see the
-    /// marker first. The marker is deleted when every document is on the configured model.
+    /// configured model and this engine, and waits one <see cref="Configuration.RagOptions.ModelCheckInterval"/> (at most
+    /// 1 minute) before writing any new vector, so other instances see the marker first. The heartbeat is refreshed once 60
+    /// seconds have passed since the last refresh, checked after that wait, between embedding batches and after each
+    /// document, so one slow embedding call delays it. The marker is deleted when every document is on the configured model.
     /// </para>
     /// <para>
     /// While the marker exists, retrieval and questions on pipelines configured with the same model keep working over the
@@ -47,7 +48,7 @@ public interface IRagAdmin
     /// <param name="partition">The partition values, one per configured partition key; null or empty targets the common area.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>True when the document existed.</returns>
-    /// <exception cref="ArgumentException">A non-empty partition does not match the configured partition keys.</exception>
+    /// <exception cref="ArgumentException">A non-empty partition does not match the configured partition keys, or a partition value is empty.</exception>
     Task<bool> DeleteDocumentAsync(string documentId, IReadOnlyDictionary<string, string>? partition, CancellationToken cancellationToken = default);
 
     /// <summary>Reports document and chunk counts per partition and the embedding model ids in the store.</summary>

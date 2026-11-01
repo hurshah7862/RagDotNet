@@ -50,25 +50,10 @@ internal sealed class ManifestStore(VectorStore store, RagOptions options)
         }
     }
 
-    public async Task<ManifestRecord?> FindFirstAsync(Expression<Func<Dictionary<string, object?>, bool>> filter, CancellationToken ct)
-    {
-        await foreach (var r in _collection.GetAsync(filter, 1, new FilteredRecordRetrievalOptions<Dictionary<string, object?>> { IncludeVectors = false }, ct).ConfigureAwait(false))
-            return ManifestRecord.FromDynamic(r, options);
-        return null;
-    }
-
-    /// <summary>Whether any manifest matches; does not materialize the record, so it works on records written under a different partition schema.</summary>
-    public async Task<bool> AnyAsync(Expression<Func<Dictionary<string, object?>, bool>> filter, CancellationToken ct)
-    {
-        await foreach (var _ in _collection.GetAsync(filter, 1, new FilteredRecordRetrievalOptions<Dictionary<string, object?>> { IncludeVectors = false }, ct).ConfigureAwait(false))
-            return true;
-        return false;
-    }
-
     /// <summary>Whether any manifest is not on <paramref name="configured"/> (a null stored id counts), with that id (null coerced to empty). Reads the raw field, so it works under any partition schema.</summary>
     public async Task<(bool Found, string StoredId)> FindOtherModelAsync(string configured, CancellationToken ct)
     {
-        await foreach (var r in _collection.GetAsync(m => (string)m["EmbeddingModelId"]! != configured && (int)m["ChunkCount"]! >= 0, 1,new FilteredRecordRetrievalOptions<Dictionary<string, object?>> { IncludeVectors = false }, ct).ConfigureAwait(false))
+        await foreach (var r in _collection.GetAsync(m => (string)m["EmbeddingModelId"]! != configured && (int)m["ChunkCount"]! >= 0, 1, new FilteredRecordRetrievalOptions<Dictionary<string, object?>> { IncludeVectors = false }, ct).ConfigureAwait(false))
             return (true, r.TryGetValue("EmbeddingModelId", out var id) ? id as string ?? "" : "");
         return (false, "");
     }
