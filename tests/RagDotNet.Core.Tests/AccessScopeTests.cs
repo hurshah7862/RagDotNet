@@ -329,4 +329,90 @@ public class AccessScopeTests
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => rag.RetrieveAsync("alpha", cancellationToken: Ct));
         Assert.Contains("Unpartitioned", ex.Message);
     }
+
+    [Fact]
+    public async Task Tenant_sees_own_and_common_but_not_other_tenants()
+    {
+        var (rag, scope) = CreateScoped();
+        scope.Current = null;                     await rag.IngestAsync(Md("c1", "alpha common"), cancellationToken: Ct);
+        scope.Current = TestScopes.Tenant("a");   await rag.IngestAsync(Md("a1", "alpha tenant a"), cancellationToken: Ct);
+        scope.Current = TestScopes.Tenant("b");   await rag.IngestAsync(Md("b1", "alpha tenant b"), cancellationToken: Ct);
+
+        scope.Current = TestScopes.Tenant("a");
+        var hits = await rag.RetrieveAsync("alpha", new() { TopK = 10 }, Ct);
+        Assert.Equal(["a1", "c1"], hits.Select(h => h.DocumentId).Order());
+
+        var own = await rag.RetrieveAsync("alpha", new() { TopK = 10, IncludeCommon = false }, Ct);
+        Assert.Equal(["a1"], own.Select(h => h.DocumentId));
+    }
+
+    [Fact]
+    public async Task Scope_filter_applies_to_the_common_area_too()
+    {
+        var (rag, scope) = CreateScoped(o => o.Metadata.Add<string[]>("groups"));
+        scope.Current = null;
+        await rag.IngestAsync(Md("c1", "alpha hr", Groups("hr")), cancellationToken: Ct);
+        await rag.IngestAsync(Md("c2", "alpha eng", Groups("eng")), cancellationToken: Ct);
+
+        scope.Current = TestScopes.Tenant("a", RagFilter.ContainsAny("groups", ["eng"]));
+        var hits = await rag.RetrieveAsync("alpha", new() { TopK = 10 }, Ct);
+        Assert.Equal(["c2"], hits.Select(h => h.DocumentId));
+    }
+
+    [Fact]
+    public async Task Same_document_id_in_tenant_and_common_both_appear()
+    {
+        var (rag, scope) = CreateScoped();
+        scope.Current = null;
+        await rag.IngestAsync(Md("d", "alpha common"), cancellationToken: Ct);
+        scope.Current = TestScopes.Tenant("a");
+        await rag.IngestAsync(Md("d", "alpha tenant"), cancellationToken: Ct);
+
+        var hits = await rag.RetrieveAsync("alpha", new() { TopK = 10 }, Ct);
+        Assert.Equal(2, hits.Count);
+        Assert.All(hits, h => Assert.Equal("d", h.DocumentId));
+        Assert.Equal(["d:0", "tenant=a|d:0"], hits.Select(h => h.ChunkKey).Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public async Task Existing_unscoped_data_becomes_the_common_area_when_a_scope_is_turned_on()
+    {
+        var embedder = new FakeEmbeddingGenerator(64);
+        var store = new InMemoryVectorStore();
+        var plain = new RagPipelineBuilder().UseEmbeddingGenerator(embedder).UseChatClient(new FakeChatClient()).UseVectorStore(store, "test", 64)
+            .Configure(o => { o.Metadata.Add<string>("tenant"); o.PartitionKeys.Add("tenant"); }).Build();
+        await plain.IngestAsync(Md("old", "alpha old"), cancellationToken: Ct);
+
+        var scope = new MutableScope { Current = Tenant("a") };
+        var scoped = new RagPipelineBuilder().UseEmbeddingGenerator(embedder).UseChatClient(new FakeChatClient()).UseVectorStore(store, "test", 64)
+            .Configure(o => { o.Metadata.Add<string>("tenant"); o.PartitionKeys.Add("tenant"); }).UseAccessScope(scope).Build();
+        Assert.Equal(["old"], (await scoped.RetrieveAsync("alpha", cancellationToken: Ct)).Select(h => h.DocumentId));
+        Assert.False(await scoped.DeleteDocumentAsync("old", Ct));
+    }
+
+    [Fact]
+    public async Task Full_access_without_common_sees_only_tenant_partitions()
+    {
+        var (rag, scope) = CreateScoped();
+        scope.Current = null;
+        await rag.IngestAsync(Md("c1", "alpha common"), cancellationToken: Ct);
+        await rag.IngestAsync(Md("a1", "alpha tenant", new Dictionary<string, object?> { ["tenant"] = "a" }), cancellationToken: Ct);
+
+        var hits = await rag.RetrieveAsync("alpha", new() { TopK = 10, IncludeCommon = false }, Ct);
+        Assert.Equal(["a1"], hits.Select(h => h.DocumentId));
+
+        scope.Current = TestScopes.Tenant("a");
+        var tenantHits = await rag.RetrieveAsync("alpha", new() { TopK = 10 }, Ct);
+        Assert.Contains("a1", tenantHits.Select(h => h.DocumentId));
+    }
+
+    [Fact]
+    public async Task Reads_require_the_read_permission()
+    {
+        var (rag, scope) = CreateScoped();
+        scope.Current = TestScopes.Tenant("a", permissions: RagPermissions.Write);
+        var ex = await Assert.ThrowsAsync<RagAccessDeniedException>(() => rag.RetrieveAsync("alpha", cancellationToken: Ct));
+        Assert.Equal(RagPermissions.Read, ex.MissingPermission);
+        await Assert.ThrowsAsync<RagAccessDeniedException>(() => rag.AskAsync("alpha", cancellationToken: Ct));
+    }
 }

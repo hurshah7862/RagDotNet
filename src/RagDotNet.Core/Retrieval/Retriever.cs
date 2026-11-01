@@ -44,14 +44,11 @@ internal sealed class Retriever(RagEngine engine)
         if (o.TopK is < 1 or > 100)
             throw new ArgumentOutOfRangeException("TopK", o.TopK, "TopK must be between 1 and 100.");
 
+        if (!scope.Permissions.HasFlag(RagPermissions.Read))
+            throw new RagAccessDeniedException("retrieve", RagPermissions.Read, "The access scope does not grant Read.");
+
         var options = engine.Options;
-        RagFilter? effective = (scope.PartitionAndUserFilter(), o.Filter) switch
-        {
-            (null, var f) => f,
-            (var s, null) => s,
-            (var s, var f) => new RagFilter.AndFilter([s, f]),
-        };
-        var filter = RagFilterTranslator.Translate(effective, options.Metadata, out var matchesNothing);
+        var filter = ReadFilters.Build(scope, o.IncludeCommon, o.Filter, options.Metadata, out var matchesNothing);
         if (matchesNothing) return [];
 
         await engine.EnsureReadyAsync(ct).ConfigureAwait(false);

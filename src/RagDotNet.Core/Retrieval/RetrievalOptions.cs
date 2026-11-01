@@ -13,4 +13,10 @@ public sealed record RetrievalOptions
 
     /// <summary>Restricts results to chunks matching the filter.</summary>
     public RagFilter? Filter { get; init; }
+
+    /// <summary>
+    /// Whether the common area (documents not belonging to any partition) is searched together with the caller's own partition. Defaults to true.
+    /// With full access, false limits the search to tenant partitions. Has no effect when no partition keys are configured.
+    /// </summary>
+    public bool IncludeCommon { get; init; } = true;
 }

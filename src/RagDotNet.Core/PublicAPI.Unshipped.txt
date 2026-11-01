@@ -437,6 +437,8 @@ RagDotNet.Retrieval.RetrievalOptions.<Clone>$() -> RagDotNet.Retrieval.Retrieval
 RagDotNet.Retrieval.RetrievalOptions.Equals(RagDotNet.Retrieval.RetrievalOptions? other) -> bool
 RagDotNet.Retrieval.RetrievalOptions.Filter.get -> RagDotNet.Filtering.RagFilter?
 RagDotNet.Retrieval.RetrievalOptions.Filter.init -> void
+RagDotNet.Retrieval.RetrievalOptions.IncludeCommon.get -> bool
+RagDotNet.Retrieval.RetrievalOptions.IncludeCommon.init -> void
 RagDotNet.Retrieval.RetrievalOptions.MinScore.get -> double?
 RagDotNet.Retrieval.RetrievalOptions.MinScore.init -> void
 RagDotNet.Retrieval.RetrievalOptions.RetrievalOptions() -> void
