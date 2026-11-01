@@ -109,6 +109,7 @@ internal sealed class Ingestor(RagEngine engine)
             {
                 ["Key"] = options.KeyType == RagKeyType.Guid ? ChunkKeys.ToGuid(key) : key,
                 ["DocumentId"] = s.DocumentId,
+                ["Partition"] = scope.PartitionKey,
                 ["ChunkIndex"] = c.Index,
                 ["ContentHash"] = contentHash,
                 ["ChunkingHash"] = chunkingHash,
@@ -133,7 +134,7 @@ internal sealed class Ingestor(RagEngine engine)
         var pending = existing is not null
             ? existing with { ContentHash = "", ChunkHighWater = highWater } // dirty marker: never matches a real hash
             : new ManifestRecord(docKey, s.DocumentId, scope.PartitionKey, partitionValues, "", "", engine.EmbeddingModelId,
-                0, sourceName, now, options.ContentStorage, "", highWater);
+                0, sourceName, now, options.ContentStorage, "", highWater, metadata);
         await engine.Manifests.UpsertAsync(pending, ct).ConfigureAwait(false);
         if (engine.ContentStore is { } contentStore && total > 0)
         {
@@ -148,7 +149,7 @@ internal sealed class Ingestor(RagEngine engine)
         await engine.Chunks.UpsertAsync(records, ct).ConfigureAwait(false);
         var committed = new ManifestRecord(
             docKey, s.DocumentId, scope.PartitionKey, partitionValues, contentHash, chunkingHash, engine.EmbeddingModelId,
-            total, sourceName, now, options.ContentStorage, metadataHash, highWater);
+            total, sourceName, now, options.ContentStorage, metadataHash, highWater, metadata);
         await engine.Manifests.UpsertAsync(committed, ct).ConfigureAwait(false);
         await DeleteRangeAsync(scope, s.DocumentId, total, highWater, ct).ConfigureAwait(false);
         if (highWater > total)

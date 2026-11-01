@@ -14,6 +14,7 @@ internal static class RecordDefinitions
         {
             new VectorStoreKeyProperty("Key", KeyClrType(o.KeyType)),
             new VectorStoreDataProperty("DocumentId", typeof(string)) { IsIndexed = true },
+            new VectorStoreDataProperty("Partition", typeof(string)) { IsIndexed = true },
             new VectorStoreDataProperty("ChunkIndex", typeof(int)),
         };
         if (o.ContentStorage != ContentStorageMode.External)
@@ -42,8 +43,8 @@ internal static class RecordDefinitions
             new VectorStoreDataProperty("DocumentId", typeof(string)) { IsIndexed = true },
             new VectorStoreDataProperty("Partition", typeof(string)) { IsIndexed = true },
         };
-        foreach (var k in o.PartitionKeys)
-            props.Add(new VectorStoreDataProperty(MetaName(k), typeof(string)) { IsIndexed = true });
+        foreach (var (name, type) in o.Metadata.Fields)
+            props.Add(new VectorStoreDataProperty(MetaName(name), type) { IsIndexed = true });
         props.Add(new VectorStoreDataProperty("ContentHash", typeof(string)));
         props.Add(new VectorStoreDataProperty("ChunkingHash", typeof(string)));
         props.Add(new VectorStoreDataProperty("EmbeddingModelId", typeof(string)) { IsIndexed = true });

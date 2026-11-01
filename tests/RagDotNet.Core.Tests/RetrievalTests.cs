@@ -277,9 +277,10 @@ public class RetrievalTests
     {
         var (p, _, store) = ScopedRag(o => o.PartitionKeys.Add("tenant"));
         await Seed(p);
-        store.DropColumnOnSearch = "meta_tenant";
+        store.DropColumnOnSearch = "Partition";
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => Retrieve(p, ResolvedScope.None));
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => Retrieve(p, ResolvedScope.None));
+        Assert.Contains("no Partition field", ex.Message);
     }
 
     [Fact]

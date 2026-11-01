@@ -19,7 +19,7 @@ internal sealed class ManifestStore(VectorStore store, RagOptions options)
     {
         var key = ConvertKey(ChunkKeys.Document(partitionKey, documentId));
         var record = await _collection.GetAsync(key, new RecordRetrievalOptions { IncludeVectors = false }, ct).ConfigureAwait(false);
-        return record is null ? null : ManifestRecord.FromDynamic(record, options.PartitionKeys);
+        return record is null ? null : ManifestRecord.FromDynamic(record, options);
     }
 
     public Task UpsertAsync(ManifestRecord m, CancellationToken ct) =>
@@ -44,7 +44,7 @@ internal sealed class ManifestStore(VectorStore store, RagOptions options)
             await foreach (var r in _collection.GetAsync(filter, PageSize, query, ct).ConfigureAwait(false))
                 page.Add(r);
             foreach (var r in page)
-                yield return ManifestRecord.FromDynamic(r, options.PartitionKeys);
+                yield return ManifestRecord.FromDynamic(r, options);
             if (page.Count < PageSize) yield break;
             skip += PageSize;
         }
@@ -53,7 +53,7 @@ internal sealed class ManifestStore(VectorStore store, RagOptions options)
     public async Task<ManifestRecord?> FindFirstAsync(Expression<Func<Dictionary<string, object?>, bool>> filter, CancellationToken ct)
     {
         await foreach (var r in _collection.GetAsync(filter, 1, new FilteredRecordRetrievalOptions<Dictionary<string, object?>> { IncludeVectors = false }, ct).ConfigureAwait(false))
-            return ManifestRecord.FromDynamic(r, options.PartitionKeys);
+            return ManifestRecord.FromDynamic(r, options);
         return null;
     }
 

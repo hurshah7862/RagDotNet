@@ -258,7 +258,7 @@ public class AdminAndModelSafetyTests
         Assert.Equal(2, result.DocumentsReindexed);
         Assert.Equal(3, result.ChunksReindexed); // d1 chunk 0, leftover chunk 1, d2 chunk 0
         var after = (await manifests.GetAsync("", "d1", Ct))!;
-        Assert.Equal(dirty with { EmbeddingModelId = "other", PartitionValues = after.PartitionValues }, after);
+        Assert.Equal(dirty with { EmbeddingModelId = "other", PartitionValues = after.PartitionValues, Metadata = after.Metadata }, after);
         var rec = await chunks.GetAsync([ChunkKeys.Chunk("", "d1", 0), ChunkKeys.Chunk("", "d1", 1)], false, Ct);
         Assert.Equal(2, rec.Count);
         Assert.All(rec, r => Assert.Equal("other", r["EmbeddingModelId"]));

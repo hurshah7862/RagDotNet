@@ -107,14 +107,9 @@ internal sealed class Retriever(RagEngine engine)
         var documentId = (string)r["DocumentId"]!;
         var chunkIndex = Convert.ToInt32(r["ChunkIndex"], CultureInfo.InvariantCulture);
 
-        var partition = new Dictionary<string, string>();
-        foreach (var k in options.PartitionKeys)
-        {
-            if (!r.TryGetValue(RagFilterTranslator.MetaPrefix + k, out var pv) || pv is not string ps0)
-                throw new InvalidOperationException($"Retrieved record is missing partition value '{k}'; cannot build its chunk key.");
-            partition[k] = ps0;
-        }
-        var key = ChunkKeys.Chunk(ChunkKeys.Partition(partition), documentId, chunkIndex);
+        if (!r.TryGetValue("Partition", out var pv) || pv is not string partition)
+            throw new InvalidOperationException("Retrieved record has no Partition field; it was written by an older version. Re-ingest into a new collection.");
+        var key = ChunkKeys.Chunk(partition, documentId, chunkIndex);
 
         var metadata = new Dictionary<string, object?>();
         foreach (var name in options.Metadata.Fields.Keys)

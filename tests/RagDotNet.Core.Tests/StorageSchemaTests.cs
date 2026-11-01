@@ -17,6 +17,59 @@ public class StorageSchemaTests
     }
 
     [Fact]
+    public void Chunk_definition_has_indexed_partition_field()
+    {
+        var p = RecordDefinitions.Chunks(Options()).Properties.OfType<VectorStoreDataProperty>().Single(x => x.Name == "Partition");
+        Assert.Equal(typeof(string), p.Type);
+        Assert.True(p.IsIndexed);
+    }
+
+    [Fact]
+    public void Manifest_definition_declares_every_metadata_field()
+    {
+        var o = Options();
+        o.Metadata.Add<string[]>("groups");
+        var names = RecordDefinitions.Manifests(o).Properties.Select(x => x.Name).ToList();
+        Assert.Contains("meta_tenant", names);
+        Assert.Contains("meta_groups", names);
+    }
+
+    [Fact]
+    public async Task Ingested_chunks_and_manifest_carry_partition_and_metadata()
+    {
+        var (pipeline, _, _, _, store) = Fakes.TestRag.Create(x =>
+        {
+            x.Metadata.Add<string>("tenant");
+            x.Metadata.Add<string[]>("groups");
+        });
+        await pipeline.IngestAsync(Fakes.TestRag.Md("d1", "# T" + (char)10 + (char)10 + "alpha", new Dictionary<string, object?> { ["groups"] = new[] { "g1" } }), cancellationToken: TestContext.Current.CancellationToken);
+
+        var options = new RagOptions { EmbeddingDimensions = 64 };
+        options.Metadata.Add<string>("tenant");
+        options.Metadata.Add<string[]>("groups");
+        var chunks = store.GetDynamicCollection("test", RecordDefinitions.Chunks(options));
+        var manifests = store.GetDynamicCollection("test_documents", RecordDefinitions.Manifests(options));
+        var chunk = await chunks.GetAsync("d1:0", cancellationToken: TestContext.Current.CancellationToken);
+        var manifest = await manifests.GetAsync("d1", cancellationToken: TestContext.Current.CancellationToken);
+        Assert.NotNull(chunk);
+        Assert.NotNull(manifest);
+        Assert.Equal("", chunk["Partition"]);
+        Assert.Equal(new[] { "g1" }, (string[])manifest["meta_groups"]!);
+        Assert.Null(manifest["meta_tenant"]);
+    }
+
+    [Fact]
+    public void Common_area_manifest_round_trips_without_partition_values()
+    {
+        var o = Options();
+        var m = new ManifestRecord("d1", "d1", "", new Dictionary<string, string>(), "h", "c", "m", 1, "d1.md", 0,
+            ContentStorageMode.VectorStore, "mh", 1, new Dictionary<string, object?> { ["tenant"] = null });
+        var back = ManifestRecord.FromDynamic(m.ToDynamic(o.KeyType), o);
+        Assert.Empty(back.PartitionValues);
+        Assert.Null(back.Metadata["tenant"]);
+    }
+
+    [Fact]
     public void Chunk_keys_without_partition() => Assert.Equal("doc1:3", ChunkKeys.Chunk("", "doc1", 3));
 
     [Fact]
@@ -108,13 +161,13 @@ public class StorageSchemaTests
     public void Manifest_round_trips_through_dynamic_record()
     {
         var m = new ManifestRecord("tenant=a|doc%3A1", "doc:1", "tenant=a", new Dictionary<string, string> { ["tenant"] = "a" },
-            "ch", "kh", "model", 7, "file.md", 1234567890123L, ContentStorageMode.External);
+            "ch", "kh", "model", 7, "file.md", 1234567890123L, ContentStorageMode.External, "", 0, new Dictionary<string, object?> { ["tenant"] = "a" });
         foreach (var kt in new[] { RagKeyType.String, RagKeyType.Guid })
         {
             var d = m.ToDynamic(kt);
             Assert.Equal("a", d["meta_tenant"]);
             Assert.Equal(new[] { 1f }, ((ReadOnlyMemory<float>)d["Placeholder"]!).ToArray());
-            var back = ManifestRecord.FromDynamic(d, ["tenant"]);
+            var back = ManifestRecord.FromDynamic(d, Options());
             Assert.Equal(m.Key, back.Key);
             Assert.Equal(m.DocumentId, back.DocumentId);
             Assert.Equal(m.Partition, back.Partition);
@@ -158,14 +211,14 @@ public class StorageSchemaTests
     public void Manifest_rejects_missing_partition_value_and_mismatched_partition()
     {
         var m = new ManifestRecord("tenant=a|d", "d", "tenant=a", new Dictionary<string, string> { ["tenant"] = "a" },
-            "c", "k", "m", 1, "s", 1, ContentStorageMode.VectorStore);
+            "c", "k", "m", 1, "s", 1, ContentStorageMode.VectorStore, "", 0, new Dictionary<string, object?> { ["tenant"] = "a" });
         var d = m.ToDynamic(RagKeyType.String);
         d.Remove("meta_tenant");
-        Assert.Throws<InvalidOperationException>(() => ManifestRecord.FromDynamic(d, ["tenant"]));
+        Assert.Throws<InvalidOperationException>(() => ManifestRecord.FromDynamic(d, Options()));
         d["meta_tenant"] = 5;
-        Assert.Throws<InvalidOperationException>(() => ManifestRecord.FromDynamic(d, ["tenant"]));
+        Assert.Throws<InvalidOperationException>(() => ManifestRecord.FromDynamic(d, Options()));
         d["meta_tenant"] = "b";
-        Assert.Throws<InvalidOperationException>(() => ManifestRecord.FromDynamic(d, ["tenant"]));
+        Assert.Throws<InvalidOperationException>(() => ManifestRecord.FromDynamic(d, Options()));
         var bad = m with { Partition = "tenant=zzz" };
         Assert.Throws<InvalidOperationException>(() => bad.ToDynamic(RagKeyType.String));
     }
