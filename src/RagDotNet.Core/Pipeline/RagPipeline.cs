@@ -66,10 +66,21 @@ internal sealed class RagPipeline(RagEngine engine, IAccessScope? accessScope = 
 
     private async Task<IReadOnlyList<RetrievedChunk>> RetrieveCoreAsync(string query, IReadOnlyList<ChatMessage> history, RetrievalOptions? options, CancellationToken cancellationToken)
     {
-        var scope = await engine.ResolveScopeAsync(accessScope, cancellationToken).ConfigureAwait(false);
-        options ??= new RetrievalOptions();
-        var queries = await engine.QueryPlanner.PlanAsync(query, history, options, chatClient, cancellationToken).ConfigureAwait(false);
-        return await engine.Retriever.RetrieveAsync(queries, scope, options, cancellationToken).ConfigureAwait(false);
+        return await RetrieveWithPlanAsync(query, history, options ?? new RetrievalOptions(), cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Checks first (options, Read, filter, readiness, model guard), then plans the queries, then searches: a denied,
+    /// invalid or matches-nothing call never spends chat calls or sends the question or history to the model.
+    /// </summary>
+    private async Task<IReadOnlyList<RetrievedChunk>> RetrieveWithPlanAsync(string question, IReadOnlyList<ChatMessage> history, RetrievalOptions options, CancellationToken ct)
+    {
+        var scope = await engine.ResolveScopeAsync(accessScope, ct).ConfigureAwait(false);
+        var prepared = await engine.Retriever.PrepareAsync(scope, options, ct).ConfigureAwait(false);
+        var queries = prepared.MatchesNothing
+            ? [question]
+            : await engine.QueryPlanner.PlanAsync(question, history, options, chatClient, ct).ConfigureAwait(false);
+        return await engine.Retriever.SearchAsync(queries, prepared, ct).ConfigureAwait(false);
     }
 
     public Task<RagAnswer> AskAsync(string question, AskOptions? options = null, CancellationToken cancellationToken = default)
@@ -192,10 +203,7 @@ internal sealed class RagPipeline(RagEngine engine, IAccessScope? accessScope = 
 
     private async Task<(IList<ChatMessage>? Prompt, IReadOnlyList<RetrievedChunk> Context, IReadOnlyList<RetrievedChunk> Retrieved)> PrepareAsync(string question, IReadOnlyList<ChatMessage> history, AskOptions? options, CancellationToken ct)
     {
-        var scope = await engine.ResolveScopeAsync(accessScope, ct).ConfigureAwait(false);
-        var retrieval = options?.Retrieval ?? new RetrievalOptions();
-        var queries = await engine.QueryPlanner.PlanAsync(question, history, retrieval, chatClient, ct).ConfigureAwait(false);
-        var retrieved = await engine.Retriever.RetrieveAsync(queries, scope, retrieval, ct).ConfigureAwait(false);
+        var retrieved = await RetrieveWithPlanAsync(question, history, options?.Retrieval ?? new RetrievalOptions(), ct).ConfigureAwait(false);
         if (retrieved.Count == 0) return (null, [], retrieved);
 
         var budget = options?.MaxContextTokens ?? engine.Options.MaxContextTokens;

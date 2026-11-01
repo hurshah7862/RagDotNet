@@ -1,8 +1,10 @@
 using CommunityToolkit.VectorData.InMemory;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Options;
+using RagDotNet.Access;
 using RagDotNet.Configuration;
 using RagDotNet.Core.Tests.Fakes;
+using RagDotNet.Filtering;
 using RagDotNet.Generation;
 using RagDotNet.Pipeline;
 using RagDotNet.Retrieval;
@@ -206,5 +208,68 @@ public class ConversationTests
     {
         var ex = Assert.Throws<OptionsValidationException>(() => Create(o => o.MaxHistoryMessages = -1));
         Assert.Contains("MaxHistoryMessages must not be negative.", ex.Message);
+    }
+
+    [Fact]
+    public async Task Denied_conversation_with_history_makes_no_chat_call()
+    {
+        var (pipeline, _, _, chat, _) = Create(builder: b => b.UseAccessScope(new MutableScope { Current = AccessScope.Unpartitioned(permissions: RagPermissions.Write) }));
+
+        await Assert.ThrowsAsync<RagAccessDeniedException>(() => pipeline.RetrieveAsync(Followup(), cancellationToken: Ct));
+        await Assert.ThrowsAsync<RagAccessDeniedException>(() => pipeline.AskAsync(Followup(), cancellationToken: Ct));
+        await Assert.ThrowsAsync<RagAccessDeniedException>(async () =>
+        {
+            await foreach (var _ in pipeline.AskStreamingAsync(Followup(), cancellationToken: Ct)) { }
+        });
+
+        Assert.Empty(chat.Requests);
+    }
+
+    [Fact]
+    public async Task Denied_string_call_with_MultiQuery_makes_no_chat_call()
+    {
+        var (pipeline, _, _, chat, _) = Create(
+            o => o.QueryTransformers.Add(new MultiQueryTransformer()),
+            b => b.UseAccessScope(new MutableScope { Current = AccessScope.Unpartitioned(permissions: RagPermissions.Write) }));
+
+        await Assert.ThrowsAsync<RagAccessDeniedException>(() => pipeline.RetrieveAsync("How do I install quill?", cancellationToken: Ct));
+        await Assert.ThrowsAsync<RagAccessDeniedException>(() => pipeline.AskAsync("How do I install quill?", cancellationToken: Ct));
+
+        Assert.Empty(chat.Requests);
+    }
+
+    [Fact]
+    public async Task Invalid_TopK_with_MultiQuery_makes_no_chat_call()
+    {
+        var (pipeline, chat) = await Seeded(o => o.QueryTransformers.Add(new MultiQueryTransformer()));
+        var options = new RetrievalOptions { TopK = 0 };
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => pipeline.RetrieveAsync("How do I install quill?", options, Ct));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => pipeline.RetrieveAsync(Followup(), options, Ct));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => pipeline.AskAsync(Followup(), new AskOptions { Retrieval = options }, Ct));
+
+        Assert.Empty(chat.Requests);
+    }
+
+    [Fact]
+    public async Task Scope_filter_that_matches_nothing_skips_condense_and_transformers()
+    {
+        var (pipeline, _, _, chat, _) = Create(
+            o =>
+            {
+                o.Metadata.Add<string>("kind");
+                o.QueryTransformers.Add(new MultiQueryTransformer());
+            },
+            b => b.UseAccessScope(new MutableScope { Current = AccessScope.Unpartitioned(RagFilter.In("kind", [])) }));
+
+        Assert.Empty(await pipeline.RetrieveAsync(Followup(), cancellationToken: Ct));
+        Assert.Empty(await pipeline.RetrieveAsync("How do I install quill?", cancellationToken: Ct));
+        var answer = await pipeline.AskAsync(Followup(), cancellationToken: Ct);
+        Assert.False(answer.IsAnswered);
+        var updates = new List<RagAnswerUpdate>();
+        await foreach (var u in pipeline.AskStreamingAsync(Followup(), cancellationToken: Ct)) updates.Add(u);
+        Assert.False(Assert.Single(updates).Final!.IsAnswered);
+
+        Assert.Empty(chat.Requests);
     }
 }

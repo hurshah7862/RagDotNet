@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Linq.Expressions;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.VectorData;
 using Microsoft.Extensions.Logging;
@@ -14,17 +15,82 @@ namespace RagDotNet.Retrieval;
 
 internal sealed class Retriever(RagEngine engine)
 {
+    /// <summary>The checked state a search needs: the final store filter, or that the scope and filter match nothing.</summary>
+    internal sealed class Prepared
+    {
+        internal Prepared(RetrievalOptions options, Expression<Func<Dictionary<string, object?>, bool>>? filter, bool matchesNothing, bool reindexInProgress)
+        {
+            Options = options;
+            Filter = filter;
+            MatchesNothing = matchesNothing;
+            ReindexInProgress = reindexInProgress;
+        }
+
+        public RetrievalOptions Options { get; }
+
+        public Expression<Func<Dictionary<string, object?>, bool>>? Filter { get; }
+
+        /// <summary>True when nothing can match: the search returns no results without touching the store or the model.</summary>
+        public bool MatchesNothing { get; }
+
+        public bool ReindexInProgress { get; }
+    }
+
+    /// <summary>Checks and prepares and then searches. Used when the queries are already known.</summary>
     public async Task<IReadOnlyList<RetrievedChunk>> RetrieveAsync(IReadOnlyList<string> queries, ResolvedScope scope, RetrievalOptions o, CancellationToken ct)
     {
-        ArgumentNullException.ThrowIfNull(queries);
+        ValidateQueries(queries);
+        var prepared = await PrepareAsync(scope, o, ct).ConfigureAwait(false);
+        return await SearchAsync(queries, prepared, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Runs every check that does not depend on the queries — options, the Read permission, the read filter, store
+    /// readiness and the embedding model guard — before any query planning spends chat calls.
+    /// </summary>
+    public async Task<Prepared> PrepareAsync(ResolvedScope scope, RetrievalOptions o, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(o);
+        if (o.TopK is < 1 or > 100)
+            throw new ArgumentOutOfRangeException("TopK", o.TopK, "TopK must be between 1 and 100.");
+
+        if (!scope.Permissions.HasFlag(RagPermissions.Read))
+            throw new RagAccessDeniedException("retrieve", RagPermissions.Read, "retrieve: The access scope does not grant Read.");
+
+        var options = engine.Options;
+        var partitioned = options.PartitionKeys.Count > 0;
+        var filter = ReadFilters.Build(scope, o.IncludeCommon, partitioned, o.Filter, options.Metadata, out var matchesNothing);
+        if (matchesNothing) return new Prepared(o, null, matchesNothing: true, reindexInProgress: false);
+
+        await engine.EnsureReadyAsync(ct).ConfigureAwait(false);
+        var reindexing = await engine.ModelGuard.EnsureAsync(GuardMode.Read, ct).ConfigureAwait(false);
+        if (reindexing)
+        {
+            // A reindex to the configured model is in progress: search only chunks already re-embedded.
+            filter = ReadFilters.Build(scope, o.IncludeCommon, partitioned, o.Filter, options.Metadata, out _, requireModelId: engine.EmbeddingModelId);
+            if (engine.ModelGuard.TakeReindexWarning())
+                engine.Logger.LogWarning(
+                    "A reindex to embedding model {ModelId} is in progress; answers include only documents already re-embedded.", engine.EmbeddingModelId);
+        }
+
+        return new Prepared(o, filter, matchesNothing: false, reindexInProgress: reindexing);
+    }
+
+    /// <summary>Searches the store with already-planned queries and the state returned by <see cref="PrepareAsync"/>.</summary>
+    public async Task<IReadOnlyList<RetrievedChunk>> SearchAsync(IReadOnlyList<string> queries, Prepared prepared, CancellationToken ct)
+    {
+        ValidateQueries(queries);
+        ArgumentNullException.ThrowIfNull(prepared);
+        var o = prepared.Options;
         using var activity = RagTelemetry.ActivitySource.StartActivity("rag.retrieve");
         var started = Stopwatch.GetTimestamp();
-        activity?.SetTag("rag.top_k", o?.TopK);
+        activity?.SetTag("rag.top_k", o.TopK);
         activity?.SetTag("rag.query.count", queries.Count);
         if (activity is not null && engine.Options.EnableSensitiveData) activity.SetTag("rag.query", string.Join("\n", queries));
+        if (prepared.ReindexInProgress) activity?.SetTag("rag.reindex.in_progress", true);
         try
         {
-            var results = await RetrieveCoreAsync(queries, scope, o!, activity, ct).ConfigureAwait(false);
+            IReadOnlyList<RetrievedChunk> results = prepared.MatchesNothing ? [] : await SearchCoreAsync(queries, prepared, ct).ConfigureAwait(false);
             activity?.SetTag("rag.result.count", results.Count);
             RagTelemetry.RetrieveCount.Record(results.Count);
             return results;
@@ -40,33 +106,18 @@ internal sealed class Retriever(RagEngine engine)
         }
     }
 
-    private async Task<IReadOnlyList<RetrievedChunk>> RetrieveCoreAsync(IReadOnlyList<string> queries, ResolvedScope scope, RetrievalOptions o, Activity? activity, CancellationToken ct)
+    private static void ValidateQueries(IReadOnlyList<string> queries)
     {
         ArgumentNullException.ThrowIfNull(queries);
         if (queries.Count == 0) throw new ArgumentException("At least one query is required.", nameof(queries));
         if (queries.Any(string.IsNullOrWhiteSpace)) throw new ArgumentException("Queries must not be null, empty or whitespace.", nameof(queries));
-        ArgumentNullException.ThrowIfNull(o);
-        if (o.TopK is < 1 or > 100)
-            throw new ArgumentOutOfRangeException("TopK", o.TopK, "TopK must be between 1 and 100.");
+    }
 
-        if (!scope.Permissions.HasFlag(RagPermissions.Read))
-            throw new RagAccessDeniedException("retrieve", RagPermissions.Read, "retrieve: The access scope does not grant Read.");
-
+    private async Task<List<RetrievedChunk>> SearchCoreAsync(IReadOnlyList<string> queries, Prepared prepared, CancellationToken ct)
+    {
         var options = engine.Options;
-        var partitioned = options.PartitionKeys.Count > 0;
-        var filter = ReadFilters.Build(scope, o.IncludeCommon, partitioned, o.Filter, options.Metadata, out var matchesNothing);
-        if (matchesNothing) return [];
-
-        await engine.EnsureReadyAsync(ct).ConfigureAwait(false);
-        if (await engine.ModelGuard.EnsureAsync(GuardMode.Read, ct).ConfigureAwait(false))
-        {
-            // A reindex to the configured model is in progress: search only chunks already re-embedded.
-            filter = ReadFilters.Build(scope, o.IncludeCommon, partitioned, o.Filter, options.Metadata, out _, requireModelId: engine.EmbeddingModelId);
-            if (engine.ModelGuard.TakeReindexWarning())
-                engine.Logger.LogWarning(
-                    "A reindex to embedding model {ModelId} is in progress; answers include only documents already re-embedded.", engine.EmbeddingModelId);
-            activity?.SetTag("rag.reindex.in_progress", true);
-        }
+        var o = prepared.Options;
+        var filter = prepared.Filter;
         var embeddings = await engine.Embedder.GenerateAsync(queries, cancellationToken: ct).ConfigureAwait(false);
         if (embeddings.Count != queries.Count)
             throw new InvalidOperationException($"The embedding generator returned {embeddings.Count} embeddings for {queries.Count} queries.");
