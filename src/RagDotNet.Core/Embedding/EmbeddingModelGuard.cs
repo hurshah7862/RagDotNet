@@ -78,8 +78,12 @@ internal sealed class EmbeddingModelGuard(RagEngine engine)
         _state = null;
     }
 
-    private bool IsExpired(State state) =>
-        engine.Time.GetUtcNow() - state.FetchedAt >= engine.Options.ModelCheckInterval;
+    // A clock that stepped backwards counts as expired, so a correction can never freeze the cached state.
+    private bool IsExpired(State state)
+    {
+        var elapsed = engine.Time.GetUtcNow() - state.FetchedAt;
+        return elapsed < TimeSpan.Zero || elapsed >= engine.Options.ModelCheckInterval;
+    }
 
     private async Task<State> RefreshAsync(CancellationToken ct)
     {
@@ -91,6 +95,9 @@ internal sealed class EmbeddingModelGuard(RagEngine engine)
 
             var generation = Interlocked.Read(ref _generation);
             await engine.EnsureReadyAsync(ct).ConfigureAwait(false);
+            // Stamped before the reads: the observation is at least this old, so the cache never outlives ModelCheckInterval
+            // measured from the moment the store was looked at.
+            var fetchedAt = engine.Time.GetUtcNow();
             var marker = await engine.Manifests.GetMarkerAsync(ct).ConfigureAwait(false);
             string? other = null;
             if (marker is null)
@@ -100,7 +107,7 @@ internal sealed class EmbeddingModelGuard(RagEngine engine)
                 Volatile.Write(ref _warnedOwner, null); // re-arm the warning for the next reindex
             }
 
-            var state = new State(marker, other, engine.Time.GetUtcNow());
+            var state = new State(marker, other, fetchedAt);
             // A Reset() during the fetch means the store changed under it; use this observation once but do not cache it.
             if (Interlocked.Read(ref _generation) == generation) _state = state;
             return state;

@@ -7,5 +7,6 @@ public sealed class ManualTimeProvider(DateTimeOffset start) : TimeProvider
 
     public override DateTimeOffset GetUtcNow() => new(Interlocked.Read(ref _ticks), TimeSpan.Zero);
 
+    /// <summary>Moves the clock by <paramref name="by"/>; a negative value steps it backwards (an NTP correction).</summary>
     public void Advance(TimeSpan by) => Interlocked.Add(ref _ticks, by.Ticks);
 }

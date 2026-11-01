@@ -187,6 +187,20 @@ public class ReindexCoordinationTests
     }
 
     [Fact]
+    public async Task Backward_clock_step_refreshes_the_cached_state()
+    {
+        var store = await SeedM1Async();
+        var time = new ManualTimeProvider(Start);
+        var rag = Builder(store, "m2", TimeSpan.FromSeconds(5), time).Build();
+        await Assert.ThrowsAsync<EmbeddingModelMismatchException>(() => rag.RetrieveAsync("alpha", cancellationToken: Ct));
+
+        await Manifests(rag).UpsertMarkerAsync(new ReindexMarker("m2", "other-owner", Start.ToUnixTimeMilliseconds()), Ct);
+
+        time.Advance(TimeSpan.FromHours(-1)); // elapsed is negative: must count as expired, not as "fresh for an hour"
+        Assert.Empty(await rag.RetrieveAsync("alpha", cancellationToken: Ct));
+    }
+
+    [Fact]
     public async Task Zero_interval_checks_every_call()
     {
         var store = await SeedM1Async();
