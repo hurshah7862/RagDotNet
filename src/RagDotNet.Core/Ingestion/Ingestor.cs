@@ -43,15 +43,17 @@ internal sealed class Ingestor(RagEngine engine)
         DocumentSource s, ResolvedScope scope, IngestOptions? o, IProgress<IngestProgress>? p, CancellationToken ct)
     {
         var options = engine.Options;
+        if (!scope.IsFullAccess && !scope.Permissions.HasFlag(RagPermissions.Write))
+            throw new RagAccessDeniedException("ingest", RagPermissions.Write, "ingest: The access scope does not grant Write.");
+
+        // An unknown per-call chunker throws ArgumentException here, after the permission check and before any write.
         var chunking = o?.Chunking ?? EffectiveChunkingFor(s.ContentType);
         var chunker = engine.Chunkers.Get(chunking.Chunker);
-        if (!scope.IsFullAccess && !scope.Permissions.HasFlag(RagPermissions.Write))
-            throw new RagAccessDeniedException("ingest", RagPermissions.Write, "The access scope does not grant Write.");
 
         scope = TargetFor(s, scope);
         var metadata = BuildMetadata(s, scope);
         if (!scope.IsFullAccess && !RagFilterEvaluator.Matches(scope.UserFilter, options.Metadata, s.DocumentId, metadata))
-            throw new RagAccessDeniedException("ingest", null, "The document's metadata is outside the caller's read filter.");
+            throw new RagAccessDeniedException("ingest", null, "ingest: The document's metadata is outside the caller's read filter.");
         await engine.EnsureReadyAsync(ct).ConfigureAwait(false);
         await engine.ModelGuard.EnsureAsync(GuardMode.Write, ct).ConfigureAwait(false);
 
@@ -67,7 +69,7 @@ internal sealed class Ingestor(RagEngine engine)
         using var documentLock = await engine.DocumentLocks.AcquireAsync(scope.PartitionKey, s.DocumentId, ct).ConfigureAwait(false);
         var existing = await engine.Manifests.GetAsync(scope.PartitionKey, s.DocumentId, ct).ConfigureAwait(false);
         if (existing is not null && !IsVisible(scope, existing))
-            throw new RagAccessDeniedException("ingest", null, "A document with this id exists and is not visible to the caller.");
+            throw new RagAccessDeniedException("ingest", null, "ingest: A document with this id exists and is not visible to the caller.");
 
         if (existing is not null && existing.ContentHash == contentHash && existing.ChunkingHash == chunkingHash
             && existing.MetadataHash == metadataHash)
@@ -140,7 +142,7 @@ internal sealed class Ingestor(RagEngine engine)
         // may write stays tracked; (b) chunks; (c) manifest with the new hashes; (d) stale chunks; (e) clear the mark.
         var partitionValues = new Dictionary<string, string>(scope.Partition);
         var docKey = ChunkKeys.Document(scope.PartitionKey, s.DocumentId);
-        var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var now = engine.Time.GetUtcNow().ToUnixTimeMilliseconds();
         var highWater = Math.Max(Math.Max(existing?.ChunkHighWater ?? 0, existing?.ChunkCount ?? 0), total);
         var pending = existing is not null
             ? existing with { ContentHash = "", ChunkHighWater = highWater } // dirty marker: never matches a real hash
@@ -168,13 +170,13 @@ internal sealed class Ingestor(RagEngine engine)
 
         p?.Report(new IngestProgress(s.DocumentId, IngestStage.Completed, total, total));
         engine.Logger.LogDebug("Ingested document {DocumentId}: {ChunkCount} chunks", s.DocumentId, total);
-        return new IngestResult(s.DocumentId, existing is null || (existing.ContentHash.Length == 0 && existing.ChunkCount == 0) ?IngestStatus.Created : IngestStatus.Updated, total, warnings);
+        return new IngestResult(s.DocumentId, existing is null || (existing.ContentHash.Length == 0 && existing.ChunkCount == 0) ? IngestStatus.Created : IngestStatus.Updated, total, warnings);
     }
 
     public async Task<bool> DeleteAsync(string documentId, ResolvedScope scope, CancellationToken ct)
     {
         if (!scope.IsFullAccess && !scope.Permissions.HasFlag(RagPermissions.Delete))
-            throw new RagAccessDeniedException("delete", RagPermissions.Delete, "The access scope does not grant Delete.");
+            throw new RagAccessDeniedException("delete", RagPermissions.Delete, "delete: The access scope does not grant Delete.");
 
         await engine.EnsureReadyAsync(ct).ConfigureAwait(false);
         await engine.ModelGuard.EnsureAsync(GuardMode.Write, ct).ConfigureAwait(false);

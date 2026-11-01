@@ -9,9 +9,10 @@ internal static class ChunkOutputGuard
             throw new InvalidOperationException($"Chunker '{chunker.Name}' returned a null chunk list or a null chunk.");
 
         var result = new List<Chunk>(output.Count);
-        foreach (var chunk in output)
+        foreach (var original in output)
         {
-            if (string.IsNullOrWhiteSpace(chunk.Text)) continue;
+            if (string.IsNullOrWhiteSpace(original.Text)) continue;
+            var chunk = original.HeadingPath is null ? original with { HeadingPath = [] } : original;
             if (tokens.Count(chunk.Text) <= options.MaxTokens)
             {
                 result.Add(chunk);

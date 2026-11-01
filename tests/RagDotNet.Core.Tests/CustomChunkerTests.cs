@@ -134,6 +134,16 @@ public class CustomChunkerTests
     }
 
     [Fact]
+    public async Task Null_heading_path_from_a_chunker_is_treated_as_empty()
+    {
+        var chunker = new ScriptedChunker("noheadings", () => [new Chunk(0, "alpha text", null!, null, null, 0)]);
+        var (rag, _, _, _, _) = Create(o => o.Chunking = new() { Chunker = "noheadings" }, b => b.AddChunker(chunker));
+        var r = await rag.IngestAsync(Md("d", "x"), cancellationToken: Ct);
+        Assert.Equal(1, r.ChunkCount);
+        Assert.Empty(Assert.Single(await rag.RetrieveAsync("alpha", cancellationToken: Ct)).HeadingPath);
+    }
+
+    [Fact]
     public async Task Chunker_returning_null_fails_naming_it()
     {
         var (rag, _, _, _, _) = Create(o => o.Chunking = new() { Chunker = "nulls" },

@@ -41,7 +41,7 @@ internal sealed class ScopeResolver(RagOptions options)
         {
             if (s.Partition is { Count: > 0 })
                 throw new InvalidOperationException(
-                    "The access scope sets partition values, but no PartitionKeys are configured. Use AccessScope.Unpartitioned for a single-tenant app.");
+                    "The access scope sets partition values, but no PartitionKeys are configured. Add the scope's partition keys to RagOptions.PartitionKeys (multi-tenant), or use AccessScope.Unpartitioned (single-tenant).");
             return new ResolvedScope(new Dictionary<string, string>(), "", s.Filter, s.Permissions, false);
         }
 

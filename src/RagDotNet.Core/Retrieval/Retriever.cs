@@ -46,7 +46,7 @@ internal sealed class Retriever(RagEngine engine)
             throw new ArgumentOutOfRangeException("TopK", o.TopK, "TopK must be between 1 and 100.");
 
         if (!scope.Permissions.HasFlag(RagPermissions.Read))
-            throw new RagAccessDeniedException("retrieve", RagPermissions.Read, "The access scope does not grant Read.");
+            throw new RagAccessDeniedException("retrieve", RagPermissions.Read, "retrieve: The access scope does not grant Read.");
 
         var options = engine.Options;
         var partitioned = options.PartitionKeys.Count > 0;

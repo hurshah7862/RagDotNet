@@ -3,6 +3,7 @@ using RagDotNet.Access;
 using RagDotNet.Configuration;
 using RagDotNet.Core.Tests.Fakes;
 using RagDotNet.Filtering;
+using RagDotNet.Ingestion;
 using RagDotNet.Pipeline;
 using static RagDotNet.Core.Tests.Fakes.TestRag;
 
@@ -312,7 +313,9 @@ public class AccessScopeTests
         var scope = new MutableScope { Current = Tenant("a") };
         var (rag, _, _, _, _) = Create(o => o.Metadata.Add<string>("tenant"), b => b.UseAccessScope(scope));
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => rag.RetrieveAsync("alpha", cancellationToken: Ct));
-        Assert.Contains("Unpartitioned", ex.Message);
+        Assert.Equal(
+            "The access scope sets partition values, but no PartitionKeys are configured. Add the scope's partition keys to RagOptions.PartitionKeys (multi-tenant), or use AccessScope.Unpartitioned (single-tenant).",
+            ex.Message);
     }
 
     [Fact]
@@ -398,6 +401,7 @@ public class AccessScopeTests
         scope.Current = TestScopes.Tenant("a", permissions: RagPermissions.Write);
         var ex = await Assert.ThrowsAsync<RagAccessDeniedException>(() => rag.RetrieveAsync("alpha", cancellationToken: Ct));
         Assert.Equal(RagPermissions.Read, ex.MissingPermission);
+        Assert.Equal("retrieve: The access scope does not grant Read.", ex.Message);
         await Assert.ThrowsAsync<RagAccessDeniedException>(() => rag.AskAsync("alpha", cancellationToken: Ct));
     }
 
@@ -409,9 +413,35 @@ public class AccessScopeTests
         var e1 = await Assert.ThrowsAsync<RagAccessDeniedException>(() => rag.IngestAsync(Md("d", "x"), cancellationToken: Ct));
         Assert.Equal(RagPermissions.Write, e1.MissingPermission);
         Assert.Equal("ingest", e1.Operation);
+        Assert.Equal("ingest: The access scope does not grant Write.", e1.Message);
         var e2 = await Assert.ThrowsAsync<RagAccessDeniedException>(() => rag.DeleteDocumentAsync("d", Ct));
         Assert.Equal(RagPermissions.Delete, e2.MissingPermission);
         Assert.Equal("delete", e2.Operation);
+        Assert.Equal("delete: The access scope does not grant Delete.", e2.Message);
+    }
+
+    [Fact]
+    public async Task Missing_write_permission_wins_over_an_unknown_chunker()
+    {
+        var (rag, scope) = CreateScoped();
+        scope.Current = TestScopes.Tenant("a", permissions: RagPermissions.Read);
+        var ex = await Assert.ThrowsAsync<RagAccessDeniedException>(() => rag.IngestAsync(Md("d", "x"),
+            new IngestOptions { Chunking = new() { Chunker = "nope" } }, cancellationToken: Ct));
+        Assert.Equal(RagPermissions.Write, ex.MissingPermission);
+    }
+
+    [Fact]
+    public async Task Hidden_and_out_of_filter_denials_name_the_operation()
+    {
+        var (rag, scope) = CreateScoped(o => o.Metadata.Add<string[]>("groups"));
+        scope.Current = Tenant("a");
+        await rag.IngestAsync(Md("hr", "secret", Groups("hr")), cancellationToken: Ct);
+        scope.Current = Tenant("a", RagFilter.ContainsAny("groups", ["eng"]));
+
+        var outside = await Assert.ThrowsAsync<RagAccessDeniedException>(() => rag.IngestAsync(Md("n", "x", Groups("hr")), cancellationToken: Ct));
+        Assert.StartsWith("ingest: ", outside.Message);
+        var hidden = await Assert.ThrowsAsync<RagAccessDeniedException>(() => rag.IngestAsync(Md("hr", "y", Groups("eng")), cancellationToken: Ct));
+        Assert.StartsWith("ingest: ", hidden.Message);
     }
 
     [Fact]
