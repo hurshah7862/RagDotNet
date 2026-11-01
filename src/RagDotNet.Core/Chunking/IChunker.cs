@@ -2,11 +2,17 @@ using RagDotNet.Documents;
 
 namespace RagDotNet.Chunking;
 
-/// <summary>Splits a parsed document into chunks.</summary>
+/// <summary>
+/// Splits a parsed document into chunks. The library renumbers chunk indexes, drops blank chunks, splits chunks over
+/// <see cref="ChunkingOptions.MaxTokens"/> and recomputes token counts, so a chunker need not get those right.
+/// </summary>
 public interface IChunker
 {
-    /// <summary>The strategy this chunker implements.</summary>
-    ChunkingStrategy Strategy { get; }
+    /// <summary>The unique name that <see cref="ChunkingOptions.Chunker"/> selects this chunker by. Matching is ordinal and case-sensitive.</summary>
+    string Name { get; }
+
+    /// <summary>The chunker's version. Changing it re-chunks documents on their next ingest.</summary>
+    string Version { get; }
 
     /// <summary>Chunks <paramref name="document"/>.</summary>
     /// <param name="document">The document to split.</param>

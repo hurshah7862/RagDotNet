@@ -32,10 +32,10 @@ internal static class Hashing
         _ => throw new ArgumentException($"Unsupported metadata value type '{v.GetType()}'."),
     };
 
-    public static string ChunkingHash(ChunkingOptions o, string tokenizerName)
+    public static string ChunkingHash(ChunkingOptions o, IChunker chunker, string tokenizerName)
     {
         var s = string.Create(CultureInfo.InvariantCulture,
-            $"{o.Strategy}|{o.MaxTokens}|{o.OverlapRatio:R}|{tokenizerName}|embed:{EmbeddingText.FormatVersion}");
+            $"{chunker.Name}|{chunker.Version}|{o.MaxTokens}|{o.OverlapRatio:R}|{tokenizerName}|embed:{EmbeddingText.FormatVersion}");
         return ContentHash(Encoding.UTF8.GetBytes(s));
     }
 }

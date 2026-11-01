@@ -20,6 +20,7 @@ public sealed class RagPipelineBuilder
 {
     private readonly RagOptions _options = new();
     private readonly List<IDocumentReader> _readers = [];
+    private readonly List<IChunker> _chunkers = [];
     private IChatClient? _chat;
     private IEmbeddingGenerator<string, Embedding<float>>? _embedder;
     private VectorStore? _store;
@@ -93,6 +94,18 @@ public sealed class RagPipelineBuilder
         return this;
     }
 
+    /// <summary>Registers a custom chunker, selected by its <see cref="IChunker.Name"/> in <see cref="ChunkingOptions.Chunker"/>.</summary>
+    /// <param name="chunker">The chunker.</param>
+    /// <returns>This builder.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="chunker"/> is null.</exception>
+    /// <exception cref="InvalidOperationException">The builder has already built a pipeline or admin interface.</exception>
+    public RagPipelineBuilder AddChunker(IChunker chunker)
+    {
+        ThrowIfFrozen();
+        _chunkers.Add(chunker ?? throw new ArgumentNullException(nameof(chunker)));
+        return this;
+    }
+
     /// <summary>Sets the logger factory.</summary>
     /// <param name="loggerFactory">The logger factory.</param>
     /// <returns>This builder.</returns>
@@ -158,7 +171,7 @@ public sealed class RagPipelineBuilder
     internal IChatClient? ChatClient => _chat;
 
     private RagEngine CreateEngine(IEmbeddingGenerator<string, Embedding<float>> embedder, VectorStore store) =>
-        RagEngineFactory.Create(_options, _readers, embedder, store, _loggerFactory, _contentStore, _time);
+        RagEngineFactory.Create(_options, _readers, _chunkers, embedder, store, _loggerFactory, _contentStore, _time);
 
     /// <summary>Sets the clock used for model check expiry and reindex heartbeats; tests use a manual clock.</summary>
     internal RagPipelineBuilder UseTimeProvider(TimeProvider time)
@@ -176,7 +189,7 @@ public sealed class RagPipelineBuilder
 
     private void Validate()
     {
-        var result = RagOptionsValidator.Validate(_options, _contentStore is not null);
+        var result = RagOptionsValidator.Validate(_options, _contentStore is not null, _chunkers);
         if (result.Failed) throw new OptionsValidationException(Options.DefaultName, typeof(RagOptions), result.Failures);
     }
 }

@@ -3,8 +3,8 @@ namespace RagDotNet.Chunking;
 /// <summary>Options controlling chunking.</summary>
 public sealed record ChunkingOptions
 {
-    /// <summary>The chunking strategy.</summary>
-    public ChunkingStrategy Strategy { get; init; } = ChunkingStrategy.StructureAware;
+    /// <summary>The name of the chunker to use: a built-in name from <see cref="Chunkers"/> or one registered with <c>AddChunker</c>.</summary>
+    public string Chunker { get; init; } = Chunkers.StructureAware;
 
     /// <summary>Maximum tokens per chunk; at least 16.</summary>
     public int MaxTokens { get; init; } = 512;

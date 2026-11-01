@@ -13,7 +13,10 @@ public sealed partial class StructureAwareChunker(Tokenizer tokenizer) : IChunke
     private readonly TokenCounter _counter = new(tokenizer);
 
     /// <inheritdoc />
-    public ChunkingStrategy Strategy => ChunkingStrategy.StructureAware;
+    public string Name => Chunkers.StructureAware;
+
+    /// <inheritdoc />
+    public string Version => "1";
 
     /// <inheritdoc />
     public Task<IReadOnlyList<Chunk>> ChunkAsync(ParsedDocument document, ChunkingOptions options, CancellationToken cancellationToken)
@@ -24,8 +27,6 @@ public sealed partial class StructureAwareChunker(Tokenizer tokenizer) : IChunke
             throw new ArgumentOutOfRangeException(nameof(options.MaxTokens), options.MaxTokens, "MaxTokens must be at least 16.");
         if (!(options.OverlapRatio >= 0 && options.OverlapRatio < 0.5))
             throw new ArgumentOutOfRangeException(nameof(options.OverlapRatio), options.OverlapRatio, "OverlapRatio must be in [0, 0.5).");
-        if (options.Strategy != ChunkingStrategy.StructureAware)
-            throw new ArgumentOutOfRangeException(nameof(options.Strategy), options.Strategy, "Unsupported chunking strategy.");
 
         var chunks = new List<Chunk>();
         var overlapBudget = (int)Math.Floor(options.MaxTokens * options.OverlapRatio);

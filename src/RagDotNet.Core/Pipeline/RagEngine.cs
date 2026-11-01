@@ -21,7 +21,7 @@ internal sealed class RagEngine
     public RagEngine(
         RagOptions options,
         ReaderSelector readers,
-        IChunker chunker,
+        ChunkerRegistry chunkers,
         TokenCounter tokens,
         string tokenizerName,
         IEmbeddingGenerator<string, Embedding<float>> embedder,
@@ -37,7 +37,7 @@ internal sealed class RagEngine
         ContentStore = options.ContentStorage == ContentStorageMode.External ? contentStore : null;
         Options = options;
         Readers = readers;
-        Chunker = chunker;
+        Chunkers = chunkers;
         Tokens = tokens;
         TokenizerName = tokenizerName;
         Embedder = embedder;
@@ -66,7 +66,7 @@ internal sealed class RagEngine
 
     public ReaderSelector Readers { get; }
 
-    public IChunker Chunker { get; }
+    public ChunkerRegistry Chunkers { get; }
 
     public TokenCounter Tokens { get; }
 

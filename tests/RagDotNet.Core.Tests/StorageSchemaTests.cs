@@ -119,10 +119,11 @@ public class StorageSchemaTests
     public void Chunking_hash_changes_with_max_tokens_and_tokenizer()
     {
         var o = new ChunkingOptions();
-        var h = Hashing.ChunkingHash(o, "cl100k");
-        Assert.Equal(h, Hashing.ChunkingHash(o, "cl100k"));
-        Assert.NotEqual(h, Hashing.ChunkingHash(o with { MaxTokens = 256 }, "cl100k"));
-        Assert.NotEqual(h, Hashing.ChunkingHash(o, "other"));
+        var c = new StructureAwareChunker(TokenCounter.CreateDefault());
+        var h = Hashing.ChunkingHash(o, c, "cl100k");
+        Assert.Equal(h, Hashing.ChunkingHash(o, c, "cl100k"));
+        Assert.NotEqual(h, Hashing.ChunkingHash(o with { MaxTokens = 256 }, c, "cl100k"));
+        Assert.NotEqual(h, Hashing.ChunkingHash(o, c, "other"));
         Assert.Equal("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", Hashing.ContentHash([]));
     }
 

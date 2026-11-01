@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.VectorData;
 using RagDotNet.Access;
+using RagDotNet.Chunking;
 using RagDotNet.Configuration;
 using RagDotNet.Content;
 using RagDotNet.Documents;
@@ -39,6 +40,7 @@ public static class RagServiceCollectionExtensions
         services.TryAddSingleton(sp => RagEngineFactory.Create(
             sp.GetRequiredService<IOptions<RagOptions>>().Value,
             sp.GetServices<IDocumentReader>(),
+            sp.GetServices<IChunker>(),
             sp.GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>(),
             sp.GetRequiredService<VectorStore>(),
             sp.GetService<ILoggerFactory>(),
@@ -57,6 +59,12 @@ public static class RagServiceCollectionExtensions
         public IRagBuilder AddReader<TReader>() where TReader : class, IDocumentReader
         {
             services.AddSingleton<IDocumentReader, TReader>();
+            return this;
+        }
+
+        public IRagBuilder AddChunker<TChunker>() where TChunker : class, IChunker
+        {
+            services.AddSingleton<IChunker, TChunker>();
             return this;
         }
 

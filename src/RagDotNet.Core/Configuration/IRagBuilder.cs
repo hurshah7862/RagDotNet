@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using RagDotNet.Access;
+using RagDotNet.Chunking;
 using RagDotNet.Content;
 using RagDotNet.Documents;
 
@@ -15,6 +16,11 @@ public interface IRagBuilder
     /// <typeparam name="TReader">The reader type.</typeparam>
     /// <returns>This builder.</returns>
     IRagBuilder AddReader<TReader>() where TReader : class, IDocumentReader;
+
+    /// <summary>Registers a custom chunker (singleton), selected by its <see cref="IChunker.Name"/> in <see cref="ChunkingOptions.Chunker"/>.</summary>
+    /// <typeparam name="TChunker">The chunker type.</typeparam>
+    /// <returns>This builder.</returns>
+    IRagBuilder AddChunker<TChunker>() where TChunker : class, IChunker;
 
     /// <summary>Registers the per-request access scope (scoped lifetime).</summary>
     /// <typeparam name="TScope">The scope provider type.</typeparam>

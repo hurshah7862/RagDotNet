@@ -98,6 +98,18 @@ new AccessScope(
 
 **Known leak.** Because of the "can't change what you can't read" rule, a scoped write refused over a hidden document reveals that the id exists. To avoid this, give each group its own document id prefix so users never write ids outside their own group.
 
+## Chunking
+
+The default chunker is `structure-aware` (`Chunkers.StructureAware`). It splits along headings, paragraphs, sentences and lines, never across headings, and merges small blocks. Its settings are `ChunkingOptions.MaxTokens` (default 512, at least 16) and `OverlapRatio` (default 0.10, in [0, 0.5)).
+
+**Choosing a chunker.** `ChunkingOptions.Chunker` names the chunker. Set it as the default with `o.Chunking = new() { Chunker = "my-chunker" }`, per content type with `o.ChunkingByContentType["text/markdown"] = new() { Chunker = "my-chunker" }`, or per call with `new IngestOptions { Chunking = new() { Chunker = "my-chunker" } }`. Names are matched ordinally and are case-sensitive. An unregistered name in the options fails at startup (or `Build`); an unregistered per-call name throws `ArgumentException` before anything is written.
+
+**Writing a chunker.** Implement `IChunker`: a unique `Name`, a `Version`, and `ChunkAsync`. The name and version go into each document's chunking hash, so **bump `Version` whenever the chunker's output changes** and every document is re-chunked on its next ingest. Changing `MaxTokens`, `OverlapRatio` or the tokenizer does the same.
+
+**What the library guarantees.** Whatever a chunker returns, the library drops chunks whose text is blank, splits chunks longer than `MaxTokens` (keeping the heading path and pages), renumbers `Index` from 0 with no gaps or duplicates, and recomputes `TokenCount` with its own tokenizer. A chunker that returns `null`, or a list containing `null`, fails the ingest with an `InvalidOperationException` naming the chunker.
+
+**Registration.** With dependency injection call `.AddChunker<MyChunker>()` (a singleton); without it call `builder.AddChunker(new MyChunker())`. Two chunkers with the same name, including `structure-aware`, fail validation.
+
 ## Caching
 
 Wrap the app's `IChatClient` and `IEmbeddingGenerator` with the Microsoft.Extensions.AI caching wrappers before handing them to RagDotNet, for example `new ChatClientBuilder(inner).UseDistributedCache(cache).Build()` and `new EmbeddingGeneratorBuilder<string, Embedding<float>>(inner).UseDistributedCache(cache).Build()`. This is safe with access control: the prompt contains the retrieved documents, so new documents or a different access scope produce a different prompt and miss the cache. Semantic caching is not provided.

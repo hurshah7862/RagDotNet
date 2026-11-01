@@ -17,6 +17,7 @@ internal static class RagEngineFactory
     public static RagEngine Create(
         RagOptions options,
         IEnumerable<IDocumentReader> appReaders,
+        IEnumerable<IChunker> appChunkers,
         IEmbeddingGenerator<string, Embedding<float>> embedder,
         VectorStore store,
         ILoggerFactory? loggerFactory,
@@ -28,7 +29,7 @@ internal static class RagEngineFactory
         var readers = new ReaderSelector(appReaders.Concat<IDocumentReader>([new MarkdownReader(), new PlainTextReader()]));
         var logger = (loggerFactory ?? NullLoggerFactory.Instance).CreateLogger("RagDotNet");
         return new RagEngine(
-            options, readers, new StructureAwareChunker(tokenizer), new TokenCounter(tokenizer), tokenizerName,
+            options, readers, new ChunkerRegistry(appChunkers, new StructureAwareChunker(tokenizer)), new TokenCounter(tokenizer), tokenizerName,
             embedder, new ChunkStore(store, options), new ManifestStore(store, options), logger, contentStore, time);
     }
 }

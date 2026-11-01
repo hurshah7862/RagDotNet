@@ -51,16 +51,10 @@ RagDotNet.Chunking.ChunkingOptions.MaxTokens.get -> int
 RagDotNet.Chunking.ChunkingOptions.MaxTokens.init -> void
 RagDotNet.Chunking.ChunkingOptions.OverlapRatio.get -> double
 RagDotNet.Chunking.ChunkingOptions.OverlapRatio.init -> void
-RagDotNet.Chunking.ChunkingOptions.Strategy.get -> RagDotNet.Chunking.ChunkingStrategy
-RagDotNet.Chunking.ChunkingOptions.Strategy.init -> void
-RagDotNet.Chunking.ChunkingStrategy
-RagDotNet.Chunking.ChunkingStrategy.StructureAware = 0 -> RagDotNet.Chunking.ChunkingStrategy
 RagDotNet.Chunking.IChunker
 RagDotNet.Chunking.IChunker.ChunkAsync(RagDotNet.Documents.ParsedDocument! document, RagDotNet.Chunking.ChunkingOptions! options, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<RagDotNet.Chunking.Chunk!>!>!
-RagDotNet.Chunking.IChunker.Strategy.get -> RagDotNet.Chunking.ChunkingStrategy
 RagDotNet.Chunking.StructureAwareChunker
 RagDotNet.Chunking.StructureAwareChunker.ChunkAsync(RagDotNet.Documents.ParsedDocument! document, RagDotNet.Chunking.ChunkingOptions! options, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<RagDotNet.Chunking.Chunk!>!>!
-RagDotNet.Chunking.StructureAwareChunker.Strategy.get -> RagDotNet.Chunking.ChunkingStrategy
 RagDotNet.Chunking.StructureAwareChunker.StructureAwareChunker(Microsoft.ML.Tokenizers.Tokenizer! tokenizer) -> void
 RagDotNet.Configuration.IRagBuilder
 RagDotNet.Configuration.IRagBuilder.AddAccessScope<TScope>() -> RagDotNet.Configuration.IRagBuilder!
@@ -661,3 +655,13 @@ static RagDotNet.Storage.ChunkKeys.ToGuid(string! key) -> System.Guid
 virtual RagDotNet.Filtering.RagFilter.EqualityContract.get -> System.Type!
 virtual RagDotNet.Filtering.RagFilter.Equals(RagDotNet.Filtering.RagFilter? other) -> bool
 virtual RagDotNet.Filtering.RagFilter.PrintMembers(System.Text.StringBuilder! builder) -> bool
+RagDotNet.Chunking.Chunkers
+const RagDotNet.Chunking.Chunkers.StructureAware = "structure-aware" -> string!
+RagDotNet.Chunking.ChunkingOptions.Chunker.get -> string!
+RagDotNet.Chunking.ChunkingOptions.Chunker.init -> void
+RagDotNet.Chunking.IChunker.Name.get -> string!
+RagDotNet.Chunking.IChunker.Version.get -> string!
+RagDotNet.Chunking.StructureAwareChunker.Name.get -> string!
+RagDotNet.Chunking.StructureAwareChunker.Version.get -> string!
+RagDotNet.Configuration.IRagBuilder.AddChunker<TChunker>() -> RagDotNet.Configuration.IRagBuilder!
+RagDotNet.Configuration.RagPipelineBuilder.AddChunker(RagDotNet.Chunking.IChunker! chunker) -> RagDotNet.Configuration.RagPipelineBuilder!

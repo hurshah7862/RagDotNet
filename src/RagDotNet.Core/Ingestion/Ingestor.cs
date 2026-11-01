@@ -43,6 +43,8 @@ internal sealed class Ingestor(RagEngine engine)
         DocumentSource s, ResolvedScope scope, IngestOptions? o, IProgress<IngestProgress>? p, CancellationToken ct)
     {
         var options = engine.Options;
+        var chunking = o?.Chunking ?? EffectiveChunkingFor(s.ContentType);
+        var chunker = engine.Chunkers.Get(chunking.Chunker);
         if (!scope.IsFullAccess && !scope.Permissions.HasFlag(RagPermissions.Write))
             throw new RagAccessDeniedException("ingest", RagPermissions.Write, "The access scope does not grant Write.");
 
@@ -56,8 +58,7 @@ internal sealed class Ingestor(RagEngine engine)
         p?.Report(new IngestProgress(s.DocumentId, IngestStage.Reading, 0, 0));
         var bytes = await ReadBytesAsync(s, ct).ConfigureAwait(false);
         var contentHash = Hashing.ContentHash(bytes);
-        var chunking = o?.Chunking ?? EffectiveChunkingFor(s.ContentType);
-        var chunkingHash = Hashing.ChunkingHash(chunking, engine.TokenizerName);
+        var chunkingHash = Hashing.ChunkingHash(chunking, chunker, engine.TokenizerName);
 
         var metadataHash = Hashing.MetadataHash(metadata);
 
@@ -94,7 +95,8 @@ internal sealed class Ingestor(RagEngine engine)
         p?.Report(new IngestProgress(s.DocumentId, IngestStage.Chunking, 0, 0));
         IReadOnlyList<Chunk> chunks;
         using (RagTelemetry.ActivitySource.StartActivity("rag.chunk"))
-            chunks = await engine.Chunker.ChunkAsync(parsed, chunking, ct).ConfigureAwait(false);
+            chunks = ChunkOutputGuard.Normalize(
+                chunker, await chunker.ChunkAsync(parsed, chunking, ct).ConfigureAwait(false), chunking, engine.Tokens);
         var total = chunks.Count;
 
         var warnings = new List<IngestWarning>(parsed.Warnings);
