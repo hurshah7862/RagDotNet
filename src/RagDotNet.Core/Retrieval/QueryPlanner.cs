@@ -17,7 +17,7 @@ internal sealed class QueryPlanner(RagOptions ragOptions)
             queries = await RunAsync(new CondenseQueryTransformer(), new QueryContext(question, history, queries, chat), queries, ct).ConfigureAwait(false);
         }
 
-        var transformers =options?.QueryTransformers ?? ragOptions.QueryTransformers.ToList();
+        var transformers = options.QueryTransformers ?? ragOptions.QueryTransformers.ToList();
         foreach (var transformer in transformers)
         {
             queries = await RunAsync(transformer, new QueryContext(question, history, queries, chat), queries, ct).ConfigureAwait(false);

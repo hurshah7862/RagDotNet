@@ -179,7 +179,7 @@ internal sealed class RagPipeline(RagEngine engine, IAccessScope? accessScope = 
         for (var i = conversation.Count - 2; i >= 0 && history.Count < engine.Options.MaxHistoryMessages; i--)
         {
             var m = conversation[i];
-            if (m is null || (m.Role != ChatRole.User && m.Role != ChatRole.Assistant) || string.IsNullOrEmpty(m.Text)) continue;
+            if (m is null || (m.Role != ChatRole.User && m.Role != ChatRole.Assistant) || string.IsNullOrWhiteSpace(m.Text)) continue;
             history.Add(new ChatMessage(m.Role, m.Text));
         }
 

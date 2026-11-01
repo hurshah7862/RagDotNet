@@ -28,6 +28,7 @@ internal sealed class RagOptionsValidator(
         if (options.IngestParallelism < 1) failures.Add("IngestParallelism must be at least 1.");
         if (options.MaxContextTokens < 100) failures.Add("MaxContextTokens must be at least 100.");
         if (options.MaxHistoryMessages < 0) failures.Add("MaxHistoryMessages must not be negative.");
+        if (options.QueryTransformers is null) failures.Add("QueryTransformers must not be null.");
         if (options.ModelCheckInterval < TimeSpan.Zero) failures.Add("ModelCheckInterval must not be negative.");
         // Reindex waits one interval while holding its marker; it must stay well inside the 5-minute takeover window.
         if (options.ModelCheckInterval > TimeSpan.FromMinutes(1)) failures.Add("ModelCheckInterval must not exceed 1 minute.");

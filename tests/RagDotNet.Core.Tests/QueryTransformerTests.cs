@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using CommunityToolkit.VectorData.InMemory;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Options;
 using RagDotNet.Configuration;
 using RagDotNet.Core.Tests.Fakes;
 using RagDotNet.Pipeline;
@@ -176,5 +177,12 @@ public class QueryTransformerTests
         Assert.Equal("MultiQueryTransformer", span.GetTagItem("rag.transformer"));
         Assert.Equal(2, span.GetTagItem("rag.query.count"));
         Assert.Null(span.GetTagItem("rag.queries"));
+    }
+
+    [Fact]
+    public void Null_QueryTransformers_fails_validation()
+    {
+        var ex = Assert.Throws<OptionsValidationException>(() => Create(o => o.QueryTransformers = null!));
+        Assert.Contains("QueryTransformers must not be null.", ex.Message);
     }
 }

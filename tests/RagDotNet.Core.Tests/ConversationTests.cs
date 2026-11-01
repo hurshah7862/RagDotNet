@@ -52,6 +52,7 @@ public class ConversationTests
 
         var prompt = chat.Requests[1];
         Assert.Equal(ChatRole.System, prompt[0].Role);
+        Assert.Contains("documents provided in the last user message", prompt[0].Text);
         Assert.Equal((ChatRole.User, "Tell me about quill"), (prompt[1].Role, prompt[1].Text));
         Assert.Equal((ChatRole.Assistant, "It is a notebook app."), (prompt[2].Role, prompt[2].Text));
         Assert.Contains("<document", prompt[3].Text);
@@ -157,6 +158,20 @@ public class ConversationTests
         Assert.DoesNotContain("u1", all);
         Assert.DoesNotContain("sys-text", all);
         Assert.DoesNotContain("tool-text", all);
+    }
+
+    [Fact]
+    public async Task Whitespace_only_history_messages_are_dropped()
+    {
+        var (pipeline, chat) = await Seeded();
+        chat.Replies.Enqueue("Use apt [1].");
+        var conversation = Chat((ChatRole.User, "   "), (ChatRole.Assistant, "\t\n"),(ChatRole.User, "How do I install quill on Linux?"));
+
+        var answer = await pipeline.AskAsync(conversation, cancellationToken: Ct);
+
+        Assert.True(answer.IsAnswered);
+        var prompt = Assert.Single(chat.Requests);
+        Assert.Equal(2, prompt.Count);
     }
 
     [Fact]
