@@ -4,6 +4,7 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Testing;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.VectorData;
 using RagDotNet.Configuration;
 using RagDotNet.Core.Tests.Fakes;
 using RagDotNet.Diagnostics;
@@ -37,7 +38,7 @@ public class ReindexCoordinationTests
     }
 
     private static RagPipelineBuilder Builder(
-        InMemoryVectorStore store, string model, TimeSpan? interval = null, TimeProvider? time = null, ILoggerFactory? loggers = null,
+        VectorStore store, string model, TimeSpan? interval = null, TimeProvider? time = null, ILoggerFactory? loggers = null,
         IEmbeddingGenerator<string, Embedding<float>>? embedder = null)
     {
         var b = new RagPipelineBuilder()
@@ -712,6 +713,38 @@ public class ReindexCoordinationTests
         Assert.Equal(1, Engine(rag).DocumentLocks.Count); // only the held lock: the reindex waiter is gone
         held.Dispose();
         Assert.Equal(0, Engine(rag).DocumentLocks.Count);
+        using var again = await WithinAsync(Engine(rag).DocumentLocks.AcquireAsync("", "d1", Ct).AsTask());
+    }
+
+    [Fact]
+    public async Task Takeover_seen_after_the_document_lock_is_granted_releases_it()
+    {
+        var store = new FailingVectorStore(await SeedM1Async());
+        var time = new TimerCaptureTimeProvider(Start);
+        var builder = Builder(store, "m2", TimeSpan.Zero, time);
+        var rag = builder.Build();
+        var held = await Engine(rag).DocumentLocks.AcquireAsync("", "d1", Ct);
+
+        var reindex = builder.BuildAdmin().ReindexAsync(cancellationToken: Ct);
+        var timer = await WithinAsync(time.TimerCreated); // the reindex is waiting for d1's lock
+        var refreshing = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var proceed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        store.BeforeNextManifestGet = () =>
+        {
+            refreshing.SetResult();
+            return proceed.Task;
+        }; // the heartbeat refresh's marker read blocks here
+        time.Advance(TimeSpan.FromSeconds(61));
+        timer.Fire();
+        await WithinAsync(refreshing.Task);
+
+        held.Dispose(); // grants the reindex's pending acquire while its refresh is in flight
+        await Manifests(rag).UpsertMarkerAsync(new ReindexMarker("m2", "foreign", Start.AddSeconds(61).ToUnixTimeMilliseconds()), Ct);
+        proceed.SetResult();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => WithinAsync(reindex));
+        Assert.StartsWith("Another reindex (to 'm2') holds the marker", ex.Message);
+        Assert.Equal(0, Engine(rag).DocumentLocks.Count); // the lock granted during the refresh was released
         using var again = await WithinAsync(Engine(rag).DocumentLocks.AcquireAsync("", "d1", Ct).AsTask());
     }
 

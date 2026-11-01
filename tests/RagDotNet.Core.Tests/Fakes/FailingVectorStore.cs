@@ -24,6 +24,9 @@ public sealed class FailingVectorStore(VectorStore inner) : VectorStore
     /// <summary>When set, awaited once (then cleared) before the next chunk delete runs.</summary>
     public Func<Task>? BeforeNextChunkDelete { get; set; }
 
+    /// <summary>When set, awaited once (then cleared) before the next single-key manifest read runs.</summary>
+    public Func<Task>? BeforeNextManifestGet { get; set; }
+
     public override VectorStoreCollection<TKey, TRecord> GetCollection<TKey, TRecord>(string name, VectorStoreCollectionDefinition? definition = null) =>
         inner.GetCollection<TKey, TRecord>(name, definition);
 
@@ -55,8 +58,16 @@ public sealed class FailingVectorStore(VectorStore inner) : VectorStore
 
         public override Task EnsureCollectionDeletedAsync(CancellationToken cancellationToken = default) => c.EnsureCollectionDeletedAsync(cancellationToken);
 
-        public override Task<Dictionary<string, object?>?> GetAsync(object key, RecordRetrievalOptions? options = null, CancellationToken cancellationToken = default) =>
-            c.GetAsync(key, options, cancellationToken);
+        public override async Task<Dictionary<string, object?>?> GetAsync(object key, RecordRetrievalOptions? options = null, CancellationToken cancellationToken = default)
+        {
+            if (isManifest && owner.BeforeNextManifestGet is { } gate)
+            {
+                owner.BeforeNextManifestGet = null;
+                await gate().ConfigureAwait(false);
+            }
+
+            return await c.GetAsync(key, options, cancellationToken).ConfigureAwait(false);
+        }
 
         public override IAsyncEnumerable<Dictionary<string, object?>> GetAsync(IEnumerable<object> keys, RecordRetrievalOptions? options = null, CancellationToken cancellationToken = default) =>
             c.GetAsync(keys, options, cancellationToken);
