@@ -71,7 +71,6 @@ public static class RagServiceCollectionExtensions
         public IRagBuilder AddAccessScope<TScope>() where TScope : class, IAccessScope
         {
             services.AddScoped<IAccessScope, TScope>();
-            registrations.HasAccessScope = true;
             return this;
         }
 

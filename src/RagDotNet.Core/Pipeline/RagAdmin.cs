@@ -25,8 +25,30 @@ internal sealed class RagAdmin(RagEngine engine, IChatClient? chat = null) : IRa
     /// <summary>A marker whose heartbeat is older than this is abandoned and may be taken over.</summary>
     private static readonly TimeSpan StaleAfter = TimeSpan.FromMinutes(5);
 
-    /// <summary>The owner refreshes its heartbeat after a document once this much time has passed since the last refresh.</summary>
+    /// <summary>
+    /// The owner refreshes its heartbeat once this much time has passed since the last refresh, checked after the pre-write
+    /// wait, between embedding batches and after each document.
+    /// </summary>
     private static readonly TimeSpan HeartbeatEvery = TimeSpan.FromSeconds(60);
+
+    /// <summary>The marker owner's heartbeat for one reindex run.</summary>
+    private sealed class Heartbeat(RagEngine engine, string configured, DateTimeOffset last)
+    {
+        /// <summary>Refreshes the heartbeat if at least 60 seconds have passed since the last refresh, or the clock stepped back.</summary>
+        /// <exception cref="InvalidOperationException">Another owner took the marker over after this run stalled.</exception>
+        public async Task RefreshIfDueAsync(CancellationToken ct)
+        {
+            var now = engine.Time.GetUtcNow();
+            var since = now - last;
+            if (since >= TimeSpan.Zero && since < HeartbeatEvery) return; // a backward clock step refreshes too
+
+            var current = await engine.Manifests.GetMarkerAsync(ct).ConfigureAwait(false);
+            if (current is not null && !string.Equals(current.OwnerId, engine.InstanceId, StringComparison.Ordinal))
+                throw MarkerHeld(current.TargetModelId); // taken over after this run stalled: stop writing
+            await engine.Manifests.UpsertMarkerAsync(new ReindexMarker(configured, engine.InstanceId, now.ToUnixTimeMilliseconds()), ct).ConfigureAwait(false);
+            last = now;
+        }
+    }
 
     public async Task<ReindexResult> ReindexAsync(IProgress<ReindexProgress>? progress = null, CancellationToken cancellationToken = default)
     {
@@ -62,9 +84,14 @@ internal sealed class RagAdmin(RagEngine engine, IChatClient? chat = null) : IRa
 
             // Other instances may hold a cached "no marker" state for up to one check interval. Wait it out before the first
             // vector on the configured model exists, so their reads already filter by model when it appears.
+            // Validation caps the interval at 1 minute, so the wait stays well inside the 5-minute takeover window.
+            var heartbeat = new Heartbeat(engine, configured, lastBeat);
             var interval = engine.Options.ModelCheckInterval;
             if (interval > TimeSpan.Zero && all.Exists(m => !string.Equals(m.EmbeddingModelId, configured, StringComparison.Ordinal)))
+            {
                 await Task.Delay(interval, engine.Time, ct).ConfigureAwait(false);
+                await heartbeat.RefreshIfDueAsync(ct).ConfigureAwait(false);
+            }
 
             // 7. Re-embed every listed document not on the configured model, under its document lock.
             var batchSize = Math.Max(1, engine.Options.EmbeddingBatchSize);
@@ -78,22 +105,13 @@ internal sealed class RagAdmin(RagEngine engine, IChatClient? chat = null) : IRa
                 else
                 {
                     using var documentLock = await engine.DocumentLocks.AcquireAsync(listed.Partition, listed.DocumentId, ct).ConfigureAwait(false);
-                    var (done, chunks) = await ReembedAsync(listed, batchSize, ct).ConfigureAwait(false);
+                    var (done, chunks) = await ReembedAsync(listed, batchSize, heartbeat, ct).ConfigureAwait(false);
                     chunkTotal += chunks;
                     if (done) reindexed++;
                     else skipped++;
                 }
 
-                var now = engine.Time.GetUtcNow();
-                var sinceBeat = now - lastBeat;
-                if (sinceBeat < TimeSpan.Zero || sinceBeat >= HeartbeatEvery) // a backward clock step refreshes too
-                {
-                    var current = await engine.Manifests.GetMarkerAsync(ct).ConfigureAwait(false);
-                    if (current is not null && !string.Equals(current.OwnerId, engine.InstanceId, StringComparison.Ordinal))
-                        throw MarkerHeld(current.TargetModelId); // taken over after this run stalled: stop writing
-                    await engine.Manifests.UpsertMarkerAsync(new ReindexMarker(configured, engine.InstanceId, now.ToUnixTimeMilliseconds()), ct).ConfigureAwait(false);
-                    lastBeat = now;
-                }
+                await heartbeat.RefreshIfDueAsync(ct).ConfigureAwait(false);
 
                 progress?.Report(new ReindexProgress(reindexed + skipped, listed.DocumentId));
             }
@@ -120,7 +138,7 @@ internal sealed class RagAdmin(RagEngine engine, IChatClient? chat = null) : IRa
     /// Re-embeds one document; the caller holds its document lock. Returns whether this run moved it to the configured model,
     /// and how many chunks it wrote. A document that changed under it is abandoned without further writes.
     /// </summary>
-    private async Task<(bool Reindexed, int Chunks)> ReembedAsync(ManifestRecord listed, int batchSize, CancellationToken ct)
+    private async Task<(bool Reindexed, int Chunks)> ReembedAsync(ManifestRecord listed, int batchSize, Heartbeat heartbeat, CancellationToken ct)
     {
         var fresh = await engine.Manifests.GetAsync(listed.Partition, listed.DocumentId, ct).ConfigureAwait(false);
         if (fresh is null || string.Equals(fresh.EmbeddingModelId, engine.EmbeddingModelId, StringComparison.Ordinal))
@@ -151,19 +169,36 @@ internal sealed class RagAdmin(RagEngine engine, IChatClient? chat = null) : IRa
             }
 
             // Another process may have rewritten the document since the re-read; its chunks must not be overwritten.
-            var check = await engine.Manifests.GetAsync(fresh.Partition, fresh.DocumentId, ct).ConfigureAwait(false);
-            if (check is null || check.ContentHash != fresh.ContentHash || check.UpdatedAtUnixMs != fresh.UpdatedAtUnixMs)
-            {
-                engine.Logger.LogWarning("Document {DocumentId} changed during reindex; skipped.", fresh.DocumentId);
-                return (false, written);
-            }
+            if (await ChangedSinceAsync(fresh, ct).ConfigureAwait(false)) return (false, written);
 
             await engine.Chunks.UpsertAsync(records, ct).ConfigureAwait(false);
             written += records.Count;
+            await heartbeat.RefreshIfDueAsync(ct).ConfigureAwait(false);
         }
 
+        // Re-read once more: the manifest write must not undo a change made after the last batch.
+        if (await ChangedSinceAsync(fresh, ct).ConfigureAwait(false)) return (false, written);
         await engine.Manifests.UpsertAsync(fresh with { EmbeddingModelId = engine.EmbeddingModelId }, ct).ConfigureAwait(false);
         return (true, written);
+    }
+
+    /// <summary>
+    /// Re-reads the manifest. True, with a warning, when it is gone or any field a write changes differs from
+    /// <paramref name="fresh"/>: the document was rewritten or deleted by another process and must not be overwritten.
+    /// </summary>
+    private async Task<bool> ChangedSinceAsync(ManifestRecord fresh, CancellationToken ct)
+    {
+        var check = await engine.Manifests.GetAsync(fresh.Partition, fresh.DocumentId, ct).ConfigureAwait(false);
+        if (check is not null
+            && check.ContentHash == fresh.ContentHash
+            && check.UpdatedAtUnixMs == fresh.UpdatedAtUnixMs
+            && check.MetadataHash == fresh.MetadataHash
+            && check.ChunkCount == fresh.ChunkCount
+            && check.ChunkHighWater == fresh.ChunkHighWater)
+            return false;
+
+        engine.Logger.LogWarning("Document {DocumentId} changed during reindex; skipped.", fresh.DocumentId);
+        return true;
     }
 
     /// <summary>True when another owner's heartbeat is at most 5 minutes old. A heartbeat in the future (a clock step) counts as fresh.</summary>
@@ -180,6 +215,10 @@ internal sealed class RagAdmin(RagEngine engine, IChatClient? chat = null) : IRa
         IReadOnlyDictionary<string, string> values = partition ?? new Dictionary<string, string>();
         if (values.Count > 0)
         {
+            foreach (var (key, value) in values)
+                if (string.IsNullOrEmpty(value))
+                    throw new ArgumentException($"Partition value for '{key}' must not be empty.", nameof(partition));
+
             var expected = new HashSet<string>(engine.Options.PartitionKeys, StringComparer.Ordinal);
             if (!expected.SetEquals(values.Keys))
                 throw new ArgumentException(

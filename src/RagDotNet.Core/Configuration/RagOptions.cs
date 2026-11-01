@@ -22,7 +22,7 @@ public sealed class RagOptions
     /// <summary>
     /// How long the embedding model check result is reused before the store is consulted again. The check looks for
     /// documents on another model and for a reindex in progress, so a running instance notices a reindex within this time.
-    /// <see cref="TimeSpan.Zero"/> checks on every call; negative values fail validation. Defaults to 5 seconds.
+    /// <see cref="TimeSpan.Zero"/> checks on every call; negative values and values over 1 minute fail validation. Defaults to 5 seconds.
     /// </summary>
     public TimeSpan ModelCheckInterval { get; set; } = TimeSpan.FromSeconds(5);
 

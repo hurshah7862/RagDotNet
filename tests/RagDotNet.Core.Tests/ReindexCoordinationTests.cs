@@ -226,6 +226,14 @@ public class ReindexCoordinationTests
     }
 
     [Fact]
+    public void Interval_over_one_minute_fails_validation()
+    {
+        var ex = Assert.Throws<OptionsValidationException>(() => Create(o => o.ModelCheckInterval = TimeSpan.FromMinutes(1).Add(TimeSpan.FromTicks(1))));
+        Assert.Contains("ModelCheckInterval must not exceed 1 minute.", ex.Failures);
+        Create(o => o.ModelCheckInterval = TimeSpan.FromMinutes(1)); // exactly one minute is allowed
+    }
+
+    [Fact]
     public void UseTimeProvider_respects_freezing()
     {
         var (_, builder, _, _, _) = Create();
@@ -285,12 +293,21 @@ public class ReindexCoordinationTests
         public void Dispose() { }
     }
 
-    /// <summary>System clock whose timers fire only when the test calls <see cref="CapturedTimer.Fire"/>.</summary>
-    private sealed class TimerCaptureTimeProvider : TimeProvider
+    /// <summary>
+    /// Clock whose timers fire only when the test calls <see cref="CapturedTimer.Fire"/>. The system clock by default;
+    /// with a start time, a manual clock moved by <see cref="Advance"/>.
+    /// </summary>
+    private sealed class TimerCaptureTimeProvider(DateTimeOffset? start = null) : TimeProvider
     {
         private readonly TaskCompletionSource<CapturedTimer> _created = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private long _ticks = start?.UtcTicks ?? 0;
 
         public Task<CapturedTimer> TimerCreated => _created.Task;
+
+        public override DateTimeOffset GetUtcNow() =>
+            start is null ? base.GetUtcNow() : new DateTimeOffset(Interlocked.Read(ref _ticks), TimeSpan.Zero);
+
+        public void Advance(TimeSpan by) => Interlocked.Add(ref _ticks, by.Ticks);
 
         public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
         {
@@ -393,7 +410,7 @@ public class ReindexCoordinationTests
         var adminA = a.BuildAdmin();
         var ragA = a.Build();
         // An old instance that has not restarted and whose cached "all on m1" state has not expired.
-        var old = Builder(store, "m1", TimeSpan.FromHours(1)).Build();
+        var old = Builder(store, "m1", TimeSpan.FromMinutes(1)).Build();
         await old.RetrieveAsync("alpha", cancellationToken: Ct);
 
         var reindex = adminA.ReindexAsync(cancellationToken: Ct);
@@ -547,5 +564,74 @@ public class ReindexCoordinationTests
         timer.Fire();
         Assert.Equal(1, (await WithinAsync(reindex)).DocumentsReindexed);
         Assert.Equal(["m2"], await ChunkModelsAsync(store));
+    }
+
+    [Fact]
+    public async Task Heartbeat_is_refreshed_after_the_pre_write_wait_when_60_seconds_passed()
+    {
+        var store = await SeedM1Async();
+        var time = new TimerCaptureTimeProvider(Start);
+        var gate = new GatedEmbeddingGenerator(new FakeEmbeddingGenerator(64), Has("alpha one"));
+        var builder = Builder(store, "m2", TimeSpan.FromMinutes(1), time, embedder: gate);
+        var rag = builder.Build();
+
+        var reindex = builder.BuildAdmin().ReindexAsync(cancellationToken: Ct);
+        var timer = await WithinAsync(time.TimerCreated);
+        Assert.Equal(Start.ToUnixTimeMilliseconds(), (await Manifests(rag).GetMarkerAsync(Ct))!.HeartbeatUnixMs);
+
+        time.Advance(TimeSpan.FromSeconds(60));
+        timer.Fire();
+        await WithinAsync(gate.Reached); // the first document is being re-embedded
+        Assert.Equal(Start.AddSeconds(60).ToUnixTimeMilliseconds(), (await Manifests(rag).GetMarkerAsync(Ct))!.HeartbeatUnixMs);
+
+        gate.Gate.SetResult();
+        Assert.Equal(1, (await WithinAsync(reindex)).DocumentsReindexed);
+    }
+
+    [Fact]
+    public async Task Heartbeat_is_refreshed_between_batches_of_one_document()
+    {
+        var (seed, _, _, _, store) = Create(o => o.EmbeddingModelId = "m1");
+        await seed.IngestAsync(Md("d1", "# A\n\nalpha one\n\n# B\n\nbeta two"), cancellationToken: Ct);
+        var time = new ManualTimeProvider(Start);
+        var second = new GatedEmbeddingGenerator(new FakeEmbeddingGenerator(64), Has("beta two"));
+        var first = new GatedEmbeddingGenerator(second, Has("alpha one"));
+        var builder = Builder(store, "m2", TimeSpan.Zero, time, embedder: first).Configure(o => o.EmbeddingBatchSize = 1);
+        var rag = builder.Build();
+
+        var reindex = builder.BuildAdmin().ReindexAsync(cancellationToken: Ct);
+        await WithinAsync(first.Reached);
+        time.Advance(TimeSpan.FromSeconds(60));
+        first.Gate.SetResult();
+        await WithinAsync(second.Reached); // second batch of d1: the refresh must not wait for the document to finish
+        Assert.Equal(Start.AddSeconds(60).ToUnixTimeMilliseconds(), (await Manifests(rag).GetMarkerAsync(Ct))!.HeartbeatUnixMs);
+
+        second.Gate.SetResult();
+        var result = await WithinAsync(reindex);
+        Assert.Equal((1, 2), (result.DocumentsReindexed, result.ChunksReindexed));
+    }
+
+    [Fact]
+    public async Task Manifest_change_to_high_water_only_abandons_the_document()
+    {
+        var store = await SeedM1Async();
+        var logger = new FakeLogger();
+        var gate = new GatedEmbeddingGenerator(new FakeEmbeddingGenerator(64), Has("alpha one"));
+        var builder = Builder(store, "m2", TimeSpan.Zero, loggers: new SingleLoggerFactory(logger), embedder: gate);
+        var rag = builder.Build();
+
+        var reindex = builder.BuildAdmin().ReindexAsync(cancellationToken: Ct);
+        await WithinAsync(gate.Reached);
+        // Another process's write leaves the same content hash and timestamp but a new high-water mark.
+        var manifest = (await Manifests(rag).GetAsync("", "d1", Ct))!;
+        await Manifests(rag).UpsertAsync(manifest with { ChunkHighWater = manifest.ChunkHighWater + 1 }, Ct);
+        gate.Gate.SetResult();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => WithinAsync(reindex));
+        Assert.StartsWith("Some documents changed during reindex", ex.Message);
+        Assert.Contains(logger.Collector.GetSnapshot(),
+            e => e.Level == LogLevel.Warning && e.Message == "Document d1 changed during reindex; skipped.");
+        var after = (await Manifests(rag).GetAsync("", "d1", Ct))!;
+        Assert.Equal(("m1", manifest.ChunkHighWater + 1), (after.EmbeddingModelId, after.ChunkHighWater)); // the other write survives
     }
 }

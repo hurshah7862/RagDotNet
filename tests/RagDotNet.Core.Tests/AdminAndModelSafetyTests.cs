@@ -198,6 +198,30 @@ public class AdminAndModelSafetyTests
     }
 
     [Fact]
+    public async Task Partitioned_reindex_moves_common_and_tenant_documents_with_the_same_id()
+    {
+        var store = new InMemoryVectorStore();
+        var seed = NewBuilder(store, new FakeEmbeddingGenerator(64), "fake-embed", true).Build();
+        await seed.IngestAsync(Md("d", "alpha common text"), cancellationToken: Ct);
+        await seed.IngestAsync(Md("d", "alpha tenant text", new Dictionary<string, object?> { ["tenant"] = "a" }), cancellationToken: Ct);
+
+        var builder = NewBuilder(store, new FakeEmbeddingGenerator(64), "other", true).UseAccessScope(new FixedScope("a"));
+        var admin = builder.BuildAdmin();
+        var result = await admin.ReindexAsync(cancellationToken: Ct);
+
+        Assert.Equal((2, 0), (result.DocumentsReindexed, result.DocumentsSkipped));
+        var stats = await admin.GetStatsAsync(Ct);
+        Assert.Equal(["other"], stats.EmbeddingModelIds);
+        Assert.Equal(2, stats.Partitions.Count);
+        Assert.Equal((1, 1), stats.Partitions.Where(p => p.Partition.Count == 0).Select(p => (p.DocumentCount, p.ChunkCount)).Single());
+        Assert.Equal((1, 1), stats.Partitions.Where(p => p.Partition.TryGetValue("tenant", out var t) && t == "a").Select(p => (p.DocumentCount, p.ChunkCount)).Single());
+
+        var hits = await builder.Build().RetrieveAsync("alpha", new() { TopK = 10 }, Ct);
+        Assert.Equal(["d", "d"], hits.Select(h => h.DocumentId));
+        Assert.Equal(["d:0", "tenant=a|d:0"], hits.Select(h => h.ChunkKey).Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
     public async Task Admin_delete_targets_named_partition()
     {
         var store = new InMemoryVectorStore();
@@ -208,6 +232,9 @@ public class AdminAndModelSafetyTests
         Assert.False(await admin.DeleteDocumentAsync("d1", new Dictionary<string, string> { ["tenant"] = "a" }, Ct));
         await Assert.ThrowsAsync<ArgumentException>(() => admin.DeleteDocumentAsync("d1", new Dictionary<string, string> { ["other"] = "a" }, Ct));
         Assert.False(await admin.DeleteDocumentAsync("d2", null, Ct)); // null targets the common area, where d2 does not exist
+        var empty = await Assert.ThrowsAsync<ArgumentException>(
+            () => admin.DeleteDocumentAsync("d1", new Dictionary<string, string> { ["tenant"] = "" }, Ct));
+        Assert.StartsWith("Partition value for 'tenant' must not be empty.", empty.Message);
 
         var stats = await admin.GetStatsAsync(Ct);
         Assert.Equal(1, stats.Partitions.Single(p => p.Partition["tenant"] == "a").DocumentCount);

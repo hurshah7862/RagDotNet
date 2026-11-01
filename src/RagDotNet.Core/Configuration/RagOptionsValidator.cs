@@ -8,8 +8,6 @@ namespace RagDotNet.Configuration;
 /// <summary>Records which optional services were registered, so validation never resolves scoped services from the root.</summary>
 internal sealed class RagRegistrations
 {
-    public bool HasAccessScope { get; set; }
-
     public bool HasContentStore { get; set; }
 }
 
@@ -30,6 +28,8 @@ internal sealed class RagOptionsValidator(
         if (options.IngestParallelism < 1) failures.Add("IngestParallelism must be at least 1.");
         if (options.MaxContextTokens < 100) failures.Add("MaxContextTokens must be at least 100.");
         if (options.ModelCheckInterval < TimeSpan.Zero) failures.Add("ModelCheckInterval must not be negative.");
+        // Reindex waits one interval while holding its marker; it must stay well inside the 5-minute takeover window.
+        if (options.ModelCheckInterval > TimeSpan.FromMinutes(1)) failures.Add("ModelCheckInterval must not exceed 1 minute.");
 
         foreach (var key in options.PartitionKeys)
         {
@@ -58,7 +58,7 @@ internal sealed class RagOptionsValidator(
             if (!chunkerNames.Contains(chunking.Chunker ?? ""))
                 failures.Add($"ChunkingByContentType['{contentType}'].Chunker '{chunking.Chunker}' is not a registered chunker.");
 
-        if (hasContentStore && options.ContentStorage !=ContentStorageMode.External)
+        if (hasContentStore && options.ContentStorage != ContentStorageMode.External)
             failures.Add("A content store is registered but ContentStorage is VectorStore. Use UseExternalContent<T>() / UseContentStore(), or set ContentStorage = External.");
 
         if (options.ContentStorage == ContentStorageMode.External && !hasContentStore)
