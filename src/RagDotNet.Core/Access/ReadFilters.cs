@@ -12,11 +12,13 @@ internal static class ReadFilters
     /// <summary>
     /// Scoped: (Partition == own || (includeCommon &amp;&amp; Partition == "")) AND user filter AND caller filter.
     /// Full access: caller filter only, or Partition != "" when the common area is excluded.
-    /// <paramref name="matchesNothing"/> is true when the combined filter can never match.
+    /// <paramref name="includeCommon"/> is ignored when <paramref name="partitioned"/> is false: a single-tenant app
+    /// has only the common area. <paramref name="matchesNothing"/> is true when the combined filter can never match.
     /// </summary>
     public static Expression<Func<Dictionary<string, object?>, bool>>? Build(
-        ResolvedScope scope, bool includeCommon, RagFilter? callerFilter, MetadataSchema schema, out bool matchesNothing)
+        ResolvedScope scope, bool includeCommon, bool partitioned, RagFilter? callerFilter, MetadataSchema schema, out bool matchesNothing)
     {
+        if (!partitioned) includeCommon = true;
         RagFilter? combined = (scope.UserFilter, callerFilter) switch
         {
             (null, var f) => f,

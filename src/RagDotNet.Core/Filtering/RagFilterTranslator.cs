@@ -44,11 +44,11 @@ internal static class RagFilterTranslator
         throw new ArgumentException($"Unknown filter field '{field}'. Declare it with RagOptions.Metadata.Add<T>().");
     }
 
-    private static Type FieldType(string field, MetadataSchema schema) =>
+    internal static Type FieldType(string field, MetadataSchema schema) =>
         StorageName(field, schema) == "DocumentId" ? typeof(string) : schema.Fields[field];
 
     // Returns null when the filter is False (matches nothing). Every branch is validated even if False.
-    private static RagFilter? Simplify(RagFilter filter, MetadataSchema schema)
+    internal static RagFilter? Simplify(RagFilter filter, MetadataSchema schema)
     {
         switch (filter)
         {
@@ -135,7 +135,7 @@ internal static class RagFilterTranslator
     }
 
     /// <summary>Converts a filter value to the field's type without loss; anything inexact or ambiguous is rejected.</summary>
-    private static object ConvertValue(object? value, Type type, string field)
+    internal static object ConvertValue(object? value, Type type, string field)
     {
         if (value is null) throw new ArgumentException($"Filter value for '{field}' must not be null.");
         if (type.IsInstanceOfType(value)) return value;

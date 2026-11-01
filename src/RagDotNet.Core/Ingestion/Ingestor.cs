@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Linq.Expressions;
 using Microsoft.Extensions.Logging;
 using RagDotNet.Access;
 using RagDotNet.Chunking;
@@ -43,8 +42,13 @@ internal sealed class Ingestor(RagEngine engine)
         DocumentSource s, ResolvedScope scope, IngestOptions? o, IProgress<IngestProgress>? p, CancellationToken ct)
     {
         var options = engine.Options;
+        if (!scope.IsFullAccess && !scope.Permissions.HasFlag(RagPermissions.Write))
+            throw new RagAccessDeniedException("ingest", RagPermissions.Write, "The access scope does not grant Write.");
+
         scope = TargetFor(s, scope);
         var metadata = BuildMetadata(s, scope);
+        if (!scope.IsFullAccess && !RagFilterEvaluator.Matches(scope.UserFilter, options.Metadata, s.DocumentId, metadata))
+            throw new RagAccessDeniedException("ingest", null, "The document's metadata is outside the caller's read filter.");
         await engine.EnsureReadyAsync(ct).ConfigureAwait(false);
         await engine.ModelGuard.EnsureCompatibleAsync(ct).ConfigureAwait(false);
 
@@ -60,6 +64,9 @@ internal sealed class Ingestor(RagEngine engine)
         // of the same document in this process cannot leave chunks the manifest does not cover.
         using var documentLock = await engine.DocumentLocks.AcquireAsync(scope.PartitionKey, s.DocumentId, ct).ConfigureAwait(false);
         var existing = await engine.Manifests.GetAsync(scope.PartitionKey, s.DocumentId, ct).ConfigureAwait(false);
+        if (existing is not null && !IsVisible(scope, existing))
+            throw new RagAccessDeniedException("ingest", null, "A document with this id exists and is not visible to the caller.");
+
         if (existing is not null && existing.ContentHash == contentHash && existing.ChunkingHash == chunkingHash
             && existing.MetadataHash == metadataHash)
         {
@@ -163,6 +170,9 @@ internal sealed class Ingestor(RagEngine engine)
 
     public async Task<bool> DeleteAsync(string documentId, ResolvedScope scope, CancellationToken ct)
     {
+        if (!scope.IsFullAccess && !scope.Permissions.HasFlag(RagPermissions.Delete))
+            throw new RagAccessDeniedException("delete", RagPermissions.Delete, "The access scope does not grant Delete.");
+
         await engine.EnsureReadyAsync(ct).ConfigureAwait(false);
         await engine.ModelGuard.EnsureCompatibleAsync(ct).ConfigureAwait(false);
         return await DeleteUnguardedAsync(documentId, scope, ct).ConfigureAwait(false);
@@ -175,11 +185,8 @@ internal sealed class Ingestor(RagEngine engine)
         await engine.ModelGuard.EnsureContentModeAsync(ct).ConfigureAwait(false);
         using var documentLock = await engine.DocumentLocks.AcquireAsync(scope.PartitionKey, documentId, ct).ConfigureAwait(false);
         var existing = await engine.Manifests.GetAsync(scope.PartitionKey, documentId, ct).ConfigureAwait(false);
-        if (existing is null) return false;
-
-        // The scope's read filter must authorize the document. A document with no chunks cannot be authorized.
-        if (scope.UserFilter is not null && !await IsVisibleAsync(scope, documentId, ct).ConfigureAwait(false))
-            return false;
+        // A document the caller cannot read is reported exactly like a missing one.
+        if (existing is null || !IsVisible(scope, existing)) return false;
 
         // Chunks first, so a crash leaves the manifest and a retry finishes the job.
         await DeleteRangeAsync(scope, documentId, 0, Math.Max(existing.ChunkCount, existing.ChunkHighWater), ct).ConfigureAwait(false);
@@ -187,19 +194,9 @@ internal sealed class Ingestor(RagEngine engine)
         return true;
     }
 
-    private async Task<bool> IsVisibleAsync(ResolvedScope scope, string documentId, CancellationToken ct)
-    {
-        var translated = RagFilterTranslator.Translate(scope.PartitionAndUserFilter(), engine.Options.Metadata, out var matchesNothing);
-        if (matchesNothing || translated is null) return false;
-
-        var p = translated.Parameters[0];
-        var idCheck = Expression.Equal(
-            Expression.Convert(Expression.Property(p, "Item", Expression.Constant("DocumentId")), typeof(string)),
-            Expression.Constant(documentId));
-        var body = Expression.AndAlso(translated.Body, idCheck);
-        var filter = Expression.Lambda<Func<Dictionary<string, object?>, bool>>(body, p);
-        return await engine.Chunks.AnyAsync(filter, ct).ConfigureAwait(false);
-    }
+    /// <summary>True when the scope's read filter matches the stored manifest metadata. Full access sees everything.</summary>
+    private bool IsVisible(ResolvedScope scope, ManifestRecord existing) =>
+        scope.IsFullAccess || RagFilterEvaluator.Matches(scope.UserFilter, engine.Options.Metadata, existing.DocumentId, existing.Metadata);
 
     private async Task DeleteRangeAsync(ResolvedScope scope, string documentId, int from, int to, CancellationToken ct)
     {

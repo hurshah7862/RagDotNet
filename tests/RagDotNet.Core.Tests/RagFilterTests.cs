@@ -262,4 +262,37 @@ public class RagFilterTests
             page.Add((string)x["Key"]!);
         Assert.Equal(["2", "3"], page);
     }
+
+    [Fact]
+    public void Evaluator_null_array_field_never_matches()
+    {
+        var schema = new MetadataSchema().Add<string[]>("groups");
+        var values = new Dictionary<string, object?> { ["groups"] = null };
+        Assert.False(RagFilterEvaluator.Matches(RagFilter.ContainsAny("groups", ["hr"]), schema, "d", values));
+    }
+
+    [Fact]
+    public void Evaluator_matches_like_the_translator()
+    {
+        var schema = new MetadataSchema().Add<long>("n").Add<string[]>("groups").Add<string>("kind");
+        var v = new Dictionary<string, object?> { ["n"] = 5L, ["groups"] = new[] { "hr" }, ["kind"] = "memo" };
+        Assert.True(RagFilterEvaluator.Matches(RagFilter.Eq("n", 5) & RagFilter.Contains("groups", "hr"), schema, "d", v));
+        Assert.True(RagFilterEvaluator.Matches(RagFilter.Eq("DocumentId", "d"), schema, "d", v));
+        Assert.False(RagFilterEvaluator.Matches(RagFilter.In("kind", []), schema, "d", v));
+        Assert.Throws<ArgumentException>(() => RagFilterEvaluator.Matches(RagFilter.Eq("n", 5.5), schema, "d", v));
+    }
+
+    [Fact]
+    public void Evaluator_handles_or_null_values_missing_fields_and_ordinal_contains()
+    {
+        var schema = new MetadataSchema().Add<string>("kind").Add<string[]>("groups").Add<int>("year");
+        var v = new Dictionary<string, object?> { ["kind"] = null, ["groups"] = new[] { "HR" } };
+        Assert.True(RagFilterEvaluator.Matches(null, schema, "d", v));
+        Assert.False(RagFilterEvaluator.Matches(RagFilter.Eq("kind", "memo"), schema, "d", v));
+        Assert.False(RagFilterEvaluator.Matches(RagFilter.In("year", [2024]), schema, "d", v));
+        Assert.False(RagFilterEvaluator.Matches(RagFilter.Contains("groups", "hr"), schema, "d", v));
+        Assert.True(RagFilterEvaluator.Matches(RagFilter.Or(RagFilter.Eq("kind", "memo"), RagFilter.ContainsAny("groups", ["x", "HR"])), schema, "d", v));
+        Assert.False(RagFilterEvaluator.Matches(RagFilter.Eq("DocumentId", "other"), schema, "d", v));
+        Assert.Throws<ArgumentException>(() => RagFilterEvaluator.Matches(RagFilter.Eq("unknown", "x"), schema, "d", v));
+    }
 }

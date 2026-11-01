@@ -48,7 +48,7 @@ internal sealed class Retriever(RagEngine engine)
             throw new RagAccessDeniedException("retrieve", RagPermissions.Read, "The access scope does not grant Read.");
 
         var options = engine.Options;
-        var filter = ReadFilters.Build(scope, o.IncludeCommon, o.Filter, options.Metadata, out var matchesNothing);
+        var filter = ReadFilters.Build(scope, o.IncludeCommon, options.PartitionKeys.Count > 0, o.Filter, options.Metadata, out var matchesNothing);
         if (matchesNothing) return [];
 
         await engine.EnsureReadyAsync(ct).ConfigureAwait(false);

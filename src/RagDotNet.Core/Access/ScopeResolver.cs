@@ -9,21 +9,6 @@ internal sealed record ResolvedScope(
 {
     public static ResolvedScope FullAccess { get; } =
         new(new Dictionary<string, string>(), "", null, RagPermissions.All, true);
-
-    /// <summary>Partition equality ANDed with the scope's own filter; null when neither applies. Full access has no partition condition.</summary>
-    public RagFilter? PartitionAndUserFilter()
-    {
-        var parts = new List<RagFilter>();
-        if (!IsFullAccess)
-            parts.AddRange(Partition.OrderBy(kv => kv.Key, StringComparer.Ordinal).Select(kv => RagFilter.Eq(kv.Key, kv.Value)));
-        if (UserFilter is not null) parts.Add(UserFilter);
-        return parts.Count switch
-        {
-            0 => null,
-            1 => parts[0],
-            _ => new RagFilter.AndFilter(parts),
-        };
-    }
 }
 
 /// <remarks>Shared and thread-safe; stateless. The scope provider is passed per call.</remarks>
