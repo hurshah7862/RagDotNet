@@ -5,6 +5,7 @@ using RagDotNet.Chunking;
 using RagDotNet.Content;
 using RagDotNet.Diagnostics;
 using RagDotNet.Documents;
+using RagDotNet.Embedding;
 using RagDotNet.Filtering;
 using RagDotNet.Pipeline;
 using RagDotNet.Storage;
@@ -50,7 +51,7 @@ internal sealed class Ingestor(RagEngine engine)
         if (!scope.IsFullAccess && !RagFilterEvaluator.Matches(scope.UserFilter, options.Metadata, s.DocumentId, metadata))
             throw new RagAccessDeniedException("ingest", null, "The document's metadata is outside the caller's read filter.");
         await engine.EnsureReadyAsync(ct).ConfigureAwait(false);
-        await engine.ModelGuard.EnsureCompatibleAsync(ct).ConfigureAwait(false);
+        await engine.ModelGuard.EnsureAsync(GuardMode.Write, ct).ConfigureAwait(false);
 
         p?.Report(new IngestProgress(s.DocumentId, IngestStage.Reading, 0, 0));
         var bytes = await ReadBytesAsync(s, ct).ConfigureAwait(false);
@@ -174,7 +175,7 @@ internal sealed class Ingestor(RagEngine engine)
             throw new RagAccessDeniedException("delete", RagPermissions.Delete, "The access scope does not grant Delete.");
 
         await engine.EnsureReadyAsync(ct).ConfigureAwait(false);
-        await engine.ModelGuard.EnsureCompatibleAsync(ct).ConfigureAwait(false);
+        await engine.ModelGuard.EnsureAsync(GuardMode.Write, ct).ConfigureAwait(false);
         return await DeleteUnguardedAsync(documentId, scope, ct).ConfigureAwait(false);
     }
 

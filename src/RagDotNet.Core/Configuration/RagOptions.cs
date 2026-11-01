@@ -19,6 +19,13 @@ public sealed class RagOptions
     /// <summary>Identifier of the embedding model; recorded so re-embedding can be detected.</summary>
     public string? EmbeddingModelId { get; set; }
 
+    /// <summary>
+    /// How long the embedding model check result is reused before the store is consulted again. The check looks for
+    /// documents on another model and for a reindex in progress, so a running instance notices a reindex within this time.
+    /// <see cref="TimeSpan.Zero"/> checks on every call; negative values fail validation. Defaults to 5 seconds.
+    /// </summary>
+    public TimeSpan ModelCheckInterval { get; set; } = TimeSpan.FromSeconds(5);
+
     /// <summary>Key type of vector store records.</summary>
     public RagKeyType KeyType { get; set; } = RagKeyType.String;
 

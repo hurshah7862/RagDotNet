@@ -7,6 +7,9 @@ namespace RagDotNet.Storage;
 /// <summary>Deterministic record keys.</summary>
 public static class ChunkKeys
 {
+    /// <summary>Key, DocumentId and Partition of the reindex marker record. No escaped document id can start with '|'.</summary>
+    internal const string ReindexMarkerKey = "|reindex";
+
     /// <summary>Builds the canonical partition key: sorted, URL-escaped <c>k=v</c> pairs joined with <c>&amp;</c>.</summary>
     /// <param name="partition">Partition values; null or empty means no partition.</param>
     /// <returns>The partition key, or an empty string.</returns>

@@ -14,9 +14,12 @@ internal static class ReadFilters
     /// Full access: caller filter only, or Partition != "" when the common area is excluded.
     /// <paramref name="includeCommon"/> is ignored when <paramref name="partitioned"/> is false: a single-tenant app
     /// has only the common area. <paramref name="matchesNothing"/> is true when the combined filter can never match.
+    /// A non-null <paramref name="requireModelId"/> ANDs <c>EmbeddingModelId == requireModelId</c> into the result
+    /// (reads during a reindex see only re-embedded chunks); it is returned alone when there is no other clause.
     /// </summary>
     public static Expression<Func<Dictionary<string, object?>, bool>>? Build(
-        ResolvedScope scope, bool includeCommon, bool partitioned, RagFilter? callerFilter, MetadataSchema schema, out bool matchesNothing)
+        ResolvedScope scope, bool includeCommon, bool partitioned, RagFilter? callerFilter, MetadataSchema schema, out bool matchesNothing,
+        string? requireModelId = null)
     {
         if (!partitioned) includeCommon = true;
         RagFilter? combined = (scope.UserFilter, callerFilter) switch
@@ -36,6 +39,13 @@ internal static class ReadFilters
             body = new ParameterRebinder(translated.Parameters[0], p).Visit(translated.Body);
         if (partition is not null)
             body = body is null ? partition : Expression.AndAlso(partition, body);
+        if (requireModelId is not null)
+        {
+            var model = Expression.Equal(
+                Expression.Convert(Expression.MakeIndex(p, Indexer, [Expression.Constant("EmbeddingModelId")]), typeof(string)),
+                Expression.Constant(requireModelId, typeof(string)));
+            body = body is null ? model : Expression.AndAlso(model, body);
+        }
         return body is null ? null : Expression.Lambda<Func<Dictionary<string, object?>, bool>>(body, p);
     }
 

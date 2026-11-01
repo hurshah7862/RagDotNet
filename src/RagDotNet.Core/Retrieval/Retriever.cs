@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 using RagDotNet.Access;
 using RagDotNet.Diagnostics;
+using RagDotNet.Embedding;
 using RagDotNet.Filtering;
 using RagDotNet.Pipeline;
 using RagDotNet.Storage;
@@ -21,7 +22,7 @@ internal sealed class Retriever(RagEngine engine)
         if (activity is not null && engine.Options.EnableSensitiveData) activity.SetTag("rag.query", query);
         try
         {
-            var results = await RetrieveCoreAsync(query, scope, o!, ct).ConfigureAwait(false);
+            var results = await RetrieveCoreAsync(query, scope, o!, activity, ct).ConfigureAwait(false);
             activity?.SetTag("rag.result.count", results.Count);
             RagTelemetry.RetrieveCount.Record(results.Count);
             return results;
@@ -37,7 +38,7 @@ internal sealed class Retriever(RagEngine engine)
         }
     }
 
-    private async Task<IReadOnlyList<RetrievedChunk>> RetrieveCoreAsync(string query, ResolvedScope scope, RetrievalOptions o, CancellationToken ct)
+    private async Task<IReadOnlyList<RetrievedChunk>> RetrieveCoreAsync(string query, ResolvedScope scope, RetrievalOptions o, Activity? activity, CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query);
         ArgumentNullException.ThrowIfNull(o);
@@ -48,11 +49,20 @@ internal sealed class Retriever(RagEngine engine)
             throw new RagAccessDeniedException("retrieve", RagPermissions.Read, "The access scope does not grant Read.");
 
         var options = engine.Options;
-        var filter = ReadFilters.Build(scope, o.IncludeCommon, options.PartitionKeys.Count > 0, o.Filter, options.Metadata, out var matchesNothing);
+        var partitioned = options.PartitionKeys.Count > 0;
+        var filter = ReadFilters.Build(scope, o.IncludeCommon, partitioned, o.Filter, options.Metadata, out var matchesNothing);
         if (matchesNothing) return [];
 
         await engine.EnsureReadyAsync(ct).ConfigureAwait(false);
-        await engine.ModelGuard.EnsureCompatibleAsync(ct).ConfigureAwait(false);
+        if (await engine.ModelGuard.EnsureAsync(GuardMode.Read, ct).ConfigureAwait(false))
+        {
+            // A reindex to the configured model is in progress: search only chunks already re-embedded.
+            filter = ReadFilters.Build(scope, o.IncludeCommon, partitioned, o.Filter, options.Metadata, out _, requireModelId: engine.EmbeddingModelId);
+            if (engine.ModelGuard.TakeReindexWarning())
+                engine.Logger.LogWarning(
+                    "A reindex to embedding model {ModelId} is in progress; answers include only documents already re-embedded.", engine.EmbeddingModelId);
+            activity?.SetTag("rag.reindex.in_progress", true);
+        }
         var embeddings = await engine.Embedder.GenerateAsync([query], cancellationToken: ct).ConfigureAwait(false);
         if (embeddings.Count != 1)
             throw new InvalidOperationException("The embedding generator did not return exactly one embedding for the query.");

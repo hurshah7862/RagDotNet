@@ -20,7 +20,8 @@ internal static class RagEngineFactory
         IEmbeddingGenerator<string, Embedding<float>> embedder,
         VectorStore store,
         ILoggerFactory? loggerFactory,
-        IChunkContentStore? contentStore)
+        IChunkContentStore? contentStore,
+        TimeProvider? time = null)
     {
         var tokenizer = options.Tokenizer ?? TokenCounter.CreateDefault();
         var tokenizerName = options.Tokenizer is null ? "cl100k_base" : options.Tokenizer.GetType().FullName ?? "custom";
@@ -28,6 +29,6 @@ internal static class RagEngineFactory
         var logger = (loggerFactory ?? NullLoggerFactory.Instance).CreateLogger("RagDotNet");
         return new RagEngine(
             options, readers, new StructureAwareChunker(tokenizer), new TokenCounter(tokenizer), tokenizerName,
-            embedder, new ChunkStore(store, options), new ManifestStore(store, options), logger, contentStore);
+            embedder, new ChunkStore(store, options), new ManifestStore(store, options), logger, contentStore, time);
     }
 }

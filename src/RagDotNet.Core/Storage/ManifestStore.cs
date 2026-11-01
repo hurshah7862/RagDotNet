@@ -68,7 +68,7 @@ internal sealed class ManifestStore(VectorStore store, RagOptions options)
     /// <summary>Whether any manifest is not on <paramref name="configured"/> (a null stored id counts), with that id (null coerced to empty). Reads the raw field, so it works under any partition schema.</summary>
     public async Task<(bool Found, string StoredId)> FindOtherModelAsync(string configured, CancellationToken ct)
     {
-        await foreach (var r in _collection.GetAsync(m => (string)m["EmbeddingModelId"]! != configured, 1, new FilteredRecordRetrievalOptions<Dictionary<string, object?>> { IncludeVectors = false }, ct).ConfigureAwait(false))
+        await foreach (var r in _collection.GetAsync(m => (string)m["EmbeddingModelId"]! != configured && (int)m["ChunkCount"]! >= 0, 1,new FilteredRecordRetrievalOptions<Dictionary<string, object?>> { IncludeVectors = false }, ct).ConfigureAwait(false))
             return (true, r.TryGetValue("EmbeddingModelId", out var id) ? id as string ?? "" : "");
         return (false, "");
     }
@@ -81,6 +81,44 @@ internal sealed class ManifestStore(VectorStore store, RagOptions options)
             return (true, r.TryGetValue("ContentStorage", out var v) ? v as string ?? "" : "");
         return (false, "");
     }
+
+    /// <summary>The reindex marker, or null when no reindex is in progress.</summary>
+    public async Task<ReindexMarker?> GetMarkerAsync(CancellationToken ct)
+    {
+        var r = await _collection.GetAsync(ConvertKey(ChunkKeys.ReindexMarkerKey), new RecordRetrievalOptions { IncludeVectors = false }, ct).ConfigureAwait(false);
+        if (r is null) return null;
+        return new ReindexMarker(
+            r.TryGetValue("EmbeddingModelId", out var model) ? model as string ?? "" : "",
+            r.TryGetValue("SourceName", out var owner) ? owner as string ?? "" : "",
+            r.TryGetValue("UpdatedAtUnixMs", out var beat) && beat is not null ? Convert.ToInt64(beat, System.Globalization.CultureInfo.InvariantCulture) : 0);
+    }
+
+    /// <summary>Writes the reindex marker: a manifest-shaped record with ChunkCount -1, so document listings skip it. Metadata fields stay null.</summary>
+    public Task UpsertMarkerAsync(ReindexMarker marker, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(marker);
+        var d = new Dictionary<string, object?>
+        {
+            ["Key"] = ConvertKey(ChunkKeys.ReindexMarkerKey),
+            ["DocumentId"] = ChunkKeys.ReindexMarkerKey,
+            ["Partition"] = ChunkKeys.ReindexMarkerKey,
+            ["ContentHash"] = "reindex-marker",
+            ["ChunkingHash"] = "",
+            ["EmbeddingModelId"] = marker.TargetModelId,
+            ["ChunkCount"] = -1,
+            ["SourceName"] = marker.OwnerId,
+            ["UpdatedAtUnixMs"] = marker.HeartbeatUnixMs,
+            ["ContentStorage"] = options.ContentStorage.ToString(),
+            ["MetadataHash"] = "",
+            ["ChunkHighWater"] = 0,
+            ["Placeholder"] = new ReadOnlyMemory<float>([1f]),
+        };
+        return _collection.UpsertAsync(d, ct);
+    }
+
+    /// <summary>Removes the reindex marker; does nothing when there is none.</summary>
+    public Task DeleteMarkerAsync(CancellationToken ct) =>
+        _collection.DeleteAsync(ConvertKey(ChunkKeys.ReindexMarkerKey), ct);
 
     private object ConvertKey(string key) => options.KeyType == RagKeyType.Guid ? ChunkKeys.ToGuid(key) : key;
 }

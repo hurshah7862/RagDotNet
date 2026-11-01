@@ -94,6 +94,8 @@ RagDotNet.Configuration.RagOptions.MaxContextTokens.get -> int
 RagDotNet.Configuration.RagOptions.MaxContextTokens.set -> void
 RagDotNet.Configuration.RagOptions.Metadata.get -> RagDotNet.Filtering.MetadataSchema!
 RagDotNet.Configuration.RagOptions.Metadata.set -> void
+RagDotNet.Configuration.RagOptions.ModelCheckInterval.get -> System.TimeSpan
+RagDotNet.Configuration.RagOptions.ModelCheckInterval.set -> void
 RagDotNet.Configuration.RagOptions.PartitionKeys.get -> System.Collections.Generic.IList<string!>!
 RagDotNet.Configuration.RagOptions.PartitionKeys.set -> void
 RagDotNet.Configuration.RagOptions.Prompt.get -> RagDotNet.Generation.IRagPromptBuilder?

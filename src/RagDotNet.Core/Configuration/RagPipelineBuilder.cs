@@ -27,6 +27,7 @@ public sealed class RagPipelineBuilder
     private IAccessScope? _scope;
     private RagEngine? _engine;
     private IChunkContentStore? _contentStore;
+    private TimeProvider? _time;
     private bool _frozen;
 
     /// <summary>Sets the chat client used to generate answers.</summary>
@@ -157,7 +158,15 @@ public sealed class RagPipelineBuilder
     internal IChatClient? ChatClient => _chat;
 
     private RagEngine CreateEngine(IEmbeddingGenerator<string, Embedding<float>> embedder, VectorStore store) =>
-        RagEngineFactory.Create(_options, _readers, embedder, store, _loggerFactory, _contentStore);
+        RagEngineFactory.Create(_options, _readers, embedder, store, _loggerFactory, _contentStore, _time);
+
+    /// <summary>Sets the clock used for model check expiry and reindex heartbeats; tests use a manual clock.</summary>
+    internal RagPipelineBuilder UseTimeProvider(TimeProvider time)
+    {
+        ThrowIfFrozen();
+        _time = time ?? throw new ArgumentNullException(nameof(time));
+        return this;
+    }
 
     private void ThrowIfFrozen()
     {

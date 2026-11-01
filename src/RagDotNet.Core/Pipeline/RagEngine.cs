@@ -28,8 +28,10 @@ internal sealed class RagEngine
         ChunkStore chunks,
         ManifestStore manifests,
         ILogger logger,
-        IChunkContentStore? contentStore = null)
+        IChunkContentStore? contentStore = null,
+        TimeProvider? time = null)
     {
+        Time = time ?? TimeProvider.System;
         if (options.ContentStorage == ContentStorageMode.External && contentStore is null)
             throw new NotSupportedException("External content storage requires a content store. Call UseContentStore().");
         ContentStore = options.ContentStorage == ContentStorageMode.External ? contentStore : null;
@@ -52,6 +54,9 @@ internal sealed class RagEngine
     }
 
     public EmbeddingModelGuard ModelGuard { get; }
+
+    /// <summary>The clock for model check expiry and reindex heartbeats.</summary>
+    public TimeProvider Time { get; }
 
     public Retriever Retriever { get; }
 

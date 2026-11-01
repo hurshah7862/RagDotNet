@@ -27,6 +27,7 @@ internal sealed class RagOptionsValidator(RagRegistrations registrations, IServi
         if (options.EmbeddingBatchSize < 1) failures.Add("EmbeddingBatchSize must be at least 1.");
         if (options.IngestParallelism < 1) failures.Add("IngestParallelism must be at least 1.");
         if (options.MaxContextTokens < 100) failures.Add("MaxContextTokens must be at least 100.");
+        if (options.ModelCheckInterval < TimeSpan.Zero) failures.Add("ModelCheckInterval must not be negative.");
 
         foreach (var key in options.PartitionKeys)
         {
