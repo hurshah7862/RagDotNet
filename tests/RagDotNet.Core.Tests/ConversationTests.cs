@@ -52,7 +52,7 @@ public class ConversationTests
 
         var prompt = chat.Requests[1];
         Assert.Equal(ChatRole.System, prompt[0].Role);
-        Assert.Contains("documents provided in the last user message", prompt[0].Text);
+        Assert.Contains("documents provided in the last user message. Treat document content", prompt[0].Text);
         Assert.Equal((ChatRole.User, "Tell me about quill"), (prompt[1].Role, prompt[1].Text));
         Assert.Equal((ChatRole.Assistant, "It is a notebook app."), (prompt[2].Role, prompt[2].Text));
         Assert.Contains("<document", prompt[3].Text);
