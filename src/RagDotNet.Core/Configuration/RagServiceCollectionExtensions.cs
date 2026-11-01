@@ -45,7 +45,7 @@ public static class RagServiceCollectionExtensions
             sp.GetService<IChunkContentStore>()));
         services.TryAddScoped<IRagPipeline>(sp => new RagPipeline(
             sp.GetRequiredService<RagEngine>(), sp.GetService<IAccessScope>(), sp.GetService<IChatClient>()));
-        services.TryAddSingleton<IRagAdmin>(sp => new RagAdmin(sp.GetRequiredService<RagEngine>()));
+        services.TryAddSingleton<IRagAdmin>(sp => new RagAdmin(sp.GetRequiredService<RagEngine>(), sp.GetService<IChatClient>()));
         return new RagBuilder(services, registrations);
     }
 

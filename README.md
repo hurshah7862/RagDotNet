@@ -50,11 +50,31 @@ The first `Build()` or `BuildAdmin()` freezes the builder: later `Use*`, `Config
 
 Ingest and delete of the same document (same partition and document id) are serialized within a process, across every pipeline and admin built from one builder or one DI container. Writers in different processes must not ingest or delete the same document concurrently: nothing coordinates them, and interleaved writes can leave chunks the document's manifest does not cover.
 
-## Access scope
+## Access control
 
-Register an `IAccessScope` (`.AddAccessScope<T>()` or `.UseAccessScope(scope)`) to partition data per tenant. Its partition values are stamped on every chunk and become part of the chunk key; its filter is ANDed with the caller's filter inside every query. Partition keys must be declared in `o.Metadata`. Admin operations live on the separate `IRagAdmin` and bypass the scope.
+**Full access.** With no `IAccessScope`, or a scope that returns `null`, the caller has full access. A write goes to the tenant named by the document's metadata (every partition key set), or to the common area when it names none.
 
-The scope's `Filter` restricts reads (retrieval and answers) and deletes, not writes: ingest within a partition is governed by the partition alone, so a caller can create or replace any document in its partition whether or not the filter would let it read that document.
+**Single-tenant and multi-tenant.** Without `PartitionKeys` the app is single-tenant: there is no tenant to name, and the one area is the common area. `AccessScope.Unpartitioned(filter, permissions)` gives read filters and permissions without a partition. With `PartitionKeys` (declared as string fields in `o.Metadata`) each tenant gets its own partition, stamped on every chunk and part of the chunk key.
+
+**`AccessScope`.** A scope carries a partition, an optional filter (ANDed with the caller's filter inside every query) and `RagPermissions`:
+
+```csharp
+// A tenant user who may search but not change anything.
+new AccessScope(
+    new Dictionary<string, string> { ["tenant"] = "acme" },
+    RagFilter.ContainsAny("groups", userGroups),
+    RagPermissions.Read);
+```
+
+**Common documents.** Tenants see their own documents plus the common ones. `RetrievalOptions.IncludeCommon = false` limits a tenant to its own documents (it has no effect without `PartitionKeys`). The common area is read-only to tenants: a scoped write or delete never changes a common document. Ingesting an id that exists only in the common area creates a separate tenant document.
+
+**Writes with a tenant user's rights.** `IRagAdmin.ForScope(scope)` returns a pipeline bound to an explicit scope, ignoring any registered one, so a back-office job can write on behalf of a tenant user and still have the user's read filter and permissions applied. An invalid scope throws `ArgumentException` immediately. Everything else on `IRagAdmin` bypasses scopes; keep it away from end users. `DeleteDocumentAsync(id, null)` deletes from the common area.
+
+**Known leak.** A scoped write that is refused because the user cannot see an existing document reveals that the id exists. To avoid this, give each group its own document id prefix so users never write ids outside their own group.
+
+## Caching
+
+Wrap the app's `IChatClient` and `IEmbeddingGenerator` with the Microsoft.Extensions.AI caching wrappers before handing them to RagDotNet, for example `new ChatClientBuilder(inner).UseDistributedCache(cache).Build()` and `new EmbeddingGeneratorBuilder<string, Embedding<float>>(inner).UseDistributedCache(cache).Build()`. This is safe with access control: the prompt contains the retrieved documents, so new documents or a different access scope produce a different prompt and miss the cache. Semantic caching is not provided.
 
 ## External content mode
 

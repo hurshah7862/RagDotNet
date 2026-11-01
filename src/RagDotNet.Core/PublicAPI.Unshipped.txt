@@ -375,6 +375,7 @@ RagDotNet.Ingestion.IngestStatus.Unchanged = 2 -> RagDotNet.Ingestion.IngestStat
 RagDotNet.Ingestion.IngestStatus.Updated = 1 -> RagDotNet.Ingestion.IngestStatus
 RagDotNet.Pipeline.IRagAdmin
 RagDotNet.Pipeline.IRagAdmin.DeleteDocumentAsync(string! documentId, System.Collections.Generic.IReadOnlyDictionary<string!, string!>? partition, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
+RagDotNet.Pipeline.IRagAdmin.ForScope(RagDotNet.Access.AccessScope! scope) -> RagDotNet.Pipeline.IRagPipeline!
 RagDotNet.Pipeline.IRagAdmin.GetStatsAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<RagDotNet.Pipeline.RagStats!>!
 RagDotNet.Pipeline.IRagAdmin.ReindexAsync(System.IProgress<RagDotNet.Pipeline.ReindexProgress!>? progress = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<RagDotNet.Pipeline.ReindexResult!>!
 RagDotNet.Pipeline.IRagPipeline

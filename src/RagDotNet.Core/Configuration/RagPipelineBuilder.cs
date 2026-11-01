@@ -151,7 +151,7 @@ public sealed class RagPipelineBuilder
         Validate();
         _engine ??= CreateEngine(_embedder, _store);
         _frozen = true;
-        return new RagAdmin(_engine);
+        return new RagAdmin(_engine, _chat);
     }
 
     internal IChatClient? ChatClient => _chat;

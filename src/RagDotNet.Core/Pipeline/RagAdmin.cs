@@ -1,11 +1,24 @@
+using Microsoft.Extensions.AI;
 using RagDotNet.Access;
 using RagDotNet.Chunking;
 using RagDotNet.Storage;
 
 namespace RagDotNet.Pipeline;
 
-internal sealed class RagAdmin(RagEngine engine) : IRagAdmin
+internal sealed class RagAdmin(RagEngine engine, IChatClient? chat = null) : IRagAdmin
 {
+    private sealed class FixedAccessScope(AccessScope scope) : IAccessScope
+    {
+        public ValueTask<AccessScope?> GetScopeAsync(CancellationToken cancellationToken) => new(scope);
+    }
+
+    public IRagPipeline ForScope(AccessScope scope)
+    {
+        ArgumentNullException.ThrowIfNull(scope);
+        engine.Scope.ValidateExplicit(scope);
+        return new RagPipeline(engine, new FixedAccessScope(scope), chat);
+    }
+
     private const string ProbeText = "dimension probe";
 
     public async Task<ReindexResult> ReindexAsync(IProgress<ReindexProgress>? progress = null, CancellationToken cancellationToken = default)
@@ -78,7 +91,7 @@ internal sealed class RagAdmin(RagEngine engine) : IRagAdmin
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(documentId);
         IReadOnlyDictionary<string, string> values = partition ?? new Dictionary<string, string>();
-        if (values.Count > 0 || engine.Options.PartitionKeys.Count > 0)
+        if (values.Count > 0)
         {
             var expected = new HashSet<string>(engine.Options.PartitionKeys, StringComparer.Ordinal);
             if (!expected.SetEquals(values.Keys))

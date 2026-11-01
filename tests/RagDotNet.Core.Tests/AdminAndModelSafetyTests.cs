@@ -200,13 +200,88 @@ public class AdminAndModelSafetyTests
         Assert.True(await admin.DeleteDocumentAsync("d1", new Dictionary<string, string> { ["tenant"] = "a" }, Ct));
         Assert.False(await admin.DeleteDocumentAsync("d1", new Dictionary<string, string> { ["tenant"] = "a" }, Ct));
         await Assert.ThrowsAsync<ArgumentException>(() => admin.DeleteDocumentAsync("d1", new Dictionary<string, string> { ["other"] = "a" }, Ct));
-        var missing = await Assert.ThrowsAsync<ArgumentException>(() => admin.DeleteDocumentAsync("d2", null, Ct));
-        Assert.Contains("tenant", missing.Message);
-        await Assert.ThrowsAsync<ArgumentException>(() => admin.DeleteDocumentAsync("d2", new Dictionary<string, string>(), Ct));
+        Assert.False(await admin.DeleteDocumentAsync("d2", null, Ct)); // null targets the common area, where d2 does not exist
 
         var stats = await admin.GetStatsAsync(Ct);
         Assert.Equal(1, stats.Partitions.Single(p => p.Partition["tenant"] == "a").DocumentCount);
         Assert.Equal(1, stats.Partitions.Single(p => p.Partition["tenant"] == "b").DocumentCount);
+    }
+
+    private static RagPipelineBuilder Partitioned(VectorStore store, FakeChatClient? chat = null) =>
+        NewBuilder(store, new FakeEmbeddingGenerator(64), "fake-embed", true).UseChatClient(chat ?? new FakeChatClient());
+
+    [Fact]
+    public async Task ForScope_writes_into_the_named_tenant_partition()
+    {
+        var store = new InMemoryVectorStore();
+        var b = Partitioned(store);
+        var admin = b.BuildAdmin();
+        var rag = b.Build();
+
+        await admin.ForScope(TestScopes.Tenant("a")).IngestAsync(Md("d1", "alpha beta gamma"), cancellationToken: Ct);
+
+        var hits = await rag.RetrieveAsync("alpha", cancellationToken: Ct);
+        Assert.Equal("tenant=a|d1:0", Assert.Single(hits).ChunkKey);
+        var stats = await admin.GetStatsAsync(Ct);
+        var p = Assert.Single(stats.Partitions);
+        Assert.Equal("a", p.Partition["tenant"]);
+        Assert.Equal(1, p.DocumentCount);
+    }
+
+    [Fact]
+    public void ForScope_rejects_an_invalid_scope()
+    {
+        var admin = Partitioned(new InMemoryVectorStore()).BuildAdmin();
+        Assert.Throws<ArgumentNullException>(() => admin.ForScope(null!));
+        Assert.Throws<ArgumentException>(() => admin.ForScope(new AccessScope(new Dictionary<string, string>())));
+        Assert.Throws<ArgumentException>(() => admin.ForScope(new AccessScope(new Dictionary<string, string> { ["other"] = "a" })));
+    }
+
+    [Fact]
+    public async Task ForScope_pipeline_can_ask_with_the_builder_chat_client()
+    {
+        var chat = new FakeChatClient();
+        chat.Replies.Enqueue("See [1].");
+        var admin = Partitioned(new InMemoryVectorStore(), chat).BuildAdmin();
+        var rag = admin.ForScope(TestScopes.Tenant("a"));
+        await rag.IngestAsync(Md("d1", "alpha beta gamma"), cancellationToken: Ct);
+
+        var answer = await rag.AskAsync("alpha", cancellationToken: Ct);
+
+        Assert.True(answer.IsAnswered);
+        Assert.Single(answer.Citations);
+    }
+
+    [Fact]
+    public async Task Admin_delete_with_null_partition_targets_the_common_area()
+    {
+        var store = new InMemoryVectorStore();
+        var b = Partitioned(store);
+        var admin = b.BuildAdmin();
+        var full = b.Build();
+        var scoped = admin.ForScope(TestScopes.Tenant("a"));
+        await full.IngestAsync(Md("c", "alpha beta gamma"), cancellationToken: Ct);
+        await scoped.IngestAsync(Md("c", "alpha beta gamma"), cancellationToken: Ct);
+
+        Assert.True(await admin.DeleteDocumentAsync("c", null, Ct));
+
+        Assert.NotEmpty(await scoped.RetrieveAsync("alpha", cancellationToken: Ct));
+        var stats = await admin.GetStatsAsync(Ct);
+        Assert.Equal("a", Assert.Single(stats.Partitions).Partition["tenant"]);
+    }
+
+    [Fact]
+    public async Task Stats_report_the_common_area_as_an_empty_partition()
+    {
+        var b = Partitioned(new InMemoryVectorStore());
+        var admin = b.BuildAdmin();
+        await b.Build().IngestAsync(Md("c", "alpha beta gamma"), cancellationToken: Ct);
+        await admin.ForScope(TestScopes.Tenant("a")).IngestAsync(Md("t", "alpha beta gamma"), cancellationToken: Ct);
+
+        var stats = await admin.GetStatsAsync(Ct);
+
+        Assert.Equal(1, stats.Partitions.Single(p => p.Partition.Count == 0).DocumentCount);
+        Assert.Equal(1, stats.Partitions.Single(p => p.Partition.Count > 0).DocumentCount);
     }
 
     private sealed class ReversingEmbedder(FakeEmbeddingGenerator inner) : Microsoft.Extensions.AI.IEmbeddingGenerator<string, Microsoft.Extensions.AI.Embedding<float>>

@@ -22,6 +22,19 @@ internal sealed class ScopeResolver(RagOptions options)
         return s is null ? ResolvedScope.FullAccess : Validate(s);
     }
 
+    /// <summary>Validates an explicit scope with the same rules as <see cref="ResolveAsync"/>, reporting failures as <see cref="ArgumentException"/>.</summary>
+    public ResolvedScope ValidateExplicit(AccessScope scope)
+    {
+        try
+        {
+            return Validate(scope);
+        }
+        catch (InvalidOperationException ex)
+        {
+            throw new ArgumentException(ex.Message, nameof(scope), ex);
+        }
+    }
+
     private ResolvedScope Validate(AccessScope s)
     {
         if (options.PartitionKeys.Count == 0)

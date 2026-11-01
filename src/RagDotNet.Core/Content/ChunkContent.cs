@@ -3,7 +3,7 @@ namespace RagDotNet.Content;
 /// <summary>A chunk's text and the data needed to join it to its vector record.</summary>
 /// <param name="ChunkKey">The string chunk key; the same key the vector record uses before any Guid hashing.</param>
 /// <param name="DocumentId">The document id.</param>
-/// <param name="Partition">The raw partition values; empty when the collection is not partitioned.</param>
+/// <param name="Partition">The raw partition values; empty for common-area chunks (and when the collection is not partitioned).</param>
 /// <param name="ChunkIndex">The zero-based chunk index within the document.</param>
 /// <param name="Text">The chunk text.</param>
 /// <param name="PageStart">First page of the chunk, if known.</param>

@@ -193,6 +193,22 @@ public class DependencyInjectionTests
     }
 
     [Fact]
+    public async Task ForScope_from_DI_admin_ignores_the_registered_scope()
+    {
+        var (services, _) = BaseServices();
+        services.AddSingleton(new TenantHolder { Tenant = "b" });
+        services.AddRag(o => { o.EmbeddingDimensions = 64; o.Metadata.Add<string>("tenant"); o.PartitionKeys.Add("tenant"); })
+            .AddAccessScope<HolderScope>();
+        using var provider = services.BuildServiceProvider();
+
+        await provider.GetRequiredService<IRagAdmin>().ForScope(new AccessScope(new Dictionary<string, string> { ["tenant"] = "a" }))
+            .IngestAsync(Md("d", "alpha beta gamma"), cancellationToken: Ct);
+
+        var stats = await provider.GetRequiredService<IRagAdmin>().GetStatsAsync(Ct);
+        Assert.Equal("a", Assert.Single(stats.Partitions).Partition["tenant"]);
+    }
+
+    [Fact]
     public void Options_bind_from_configuration()
     {
         var config = new ConfigurationBuilder()

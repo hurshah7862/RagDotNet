@@ -1,7 +1,7 @@
 namespace RagDotNet.Pipeline;
 
 /// <summary>Document and chunk counts for one partition.</summary>
-/// <param name="Partition">The partition values; empty when unpartitioned.</param>
+/// <param name="Partition">The partition values; empty for the common area (and for an unpartitioned collection).</param>
 /// <param name="DocumentCount">Number of documents.</param>
 /// <param name="ChunkCount">Number of chunks.</param>
 public sealed record PartitionStats(IReadOnlyDictionary<string, string> Partition, int DocumentCount, int ChunkCount);
