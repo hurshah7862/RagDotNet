@@ -64,10 +64,8 @@ internal sealed class RagPipeline(RagEngine engine, IAccessScope? accessScope = 
         return RetrieveCoreAsync(question, history, options, cancellationToken);
     }
 
-    private async Task<IReadOnlyList<RetrievedChunk>> RetrieveCoreAsync(string query, IReadOnlyList<ChatMessage> history, RetrievalOptions? options, CancellationToken cancellationToken)
-    {
-        return await RetrieveWithPlanAsync(query, history, options ?? new RetrievalOptions(), cancellationToken).ConfigureAwait(false);
-    }
+    private Task<IReadOnlyList<RetrievedChunk>> RetrieveCoreAsync(string query, IReadOnlyList<ChatMessage> history, RetrievalOptions? options, CancellationToken cancellationToken) =>
+        RetrieveWithPlanAsync(query, history, options ?? new RetrievalOptions(), cancellationToken);
 
     /// <summary>
     /// Checks first (options, Read, filter, readiness, model guard), then plans the queries, then searches: a denied,
