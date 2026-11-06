@@ -12,6 +12,41 @@ internal static class TestData
     public static Question Q(string documentId, string evidence, string id = "q") =>
         new(id, "question?", documentId, evidence);
 
+    /// <summary>A valid two-document, three-question dataset whose questions share wording with their evidence.</summary>
+    public static string SmallDataset() => WriteDataset(
+        new Dictionary<string, string>
+        {
+            ["garden"] = """
+                # Garden guide
+
+                ## Watering
+
+                Water tomato plants deeply twice a week in summer. Shallow daily watering keeps roots near the surface.
+
+                ## Soil
+
+                Mix compost into clay soil before planting so that drainage improves over the season.
+                """,
+            ["kitchen"] = """
+                # Kitchen guide
+
+                ## Bread
+
+                Bake sourdough bread at a high oven temperature with steam for the first twenty minutes.
+
+                ## Storage
+
+                Store fresh herbs upright in a glass of water inside the refrigerator door.
+                """,
+        },
+        """
+        [
+          { "id": "w1", "question": "How often should I water tomato plants?", "documentId": "garden", "evidence": "water tomato plants deeply twice a week" },
+          { "id": "s1", "question": "What should I mix into clay soil?", "documentId": "garden", "evidence": "mix compost into clay soil before planting" },
+          { "id": "h1", "question": "How do I store fresh herbs?", "documentId": "kitchen", "evidence": "store fresh herbs upright in a glass of water" }
+        ]
+        """);
+
     /// <summary>Writes a dataset directory (corpus/*.md and questions.json) under a fresh temp folder.</summary>
     public static string WriteDataset(IReadOnlyDictionary<string, string> documents, string questionsJson)
     {
