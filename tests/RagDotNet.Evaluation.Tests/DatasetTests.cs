@@ -48,6 +48,18 @@ public class DatasetTests
         Assert.Contains("q1: evidence not found in b", ex.Errors);
     }
 
+    [Fact] // Review Focus 1: evidence no chunk can contain would always score a miss
+    public async Task Evidence_spanning_two_blocks_is_rejected()
+    {
+        var dir = WriteDataset(
+            new Dictionary<string, string> { ["a"] = "# A\n\nThe first paragraph ends here.\n\nThe second paragraph starts here.\n" },
+            """[ { "id": "q1", "question": "?", "documentId": "a", "evidence": "ends here. the second paragraph" } ]""");
+
+        var ex = await Assert.ThrowsAsync<DatasetValidationException>(() => DatasetLoader.LoadAsync(dir, Ct));
+
+        Assert.Contains(ex.Errors, e => e.StartsWith("q1:", StringComparison.Ordinal) && e.Contains("block", StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task Valid_dataset_loads_with_stable_hash()
     {

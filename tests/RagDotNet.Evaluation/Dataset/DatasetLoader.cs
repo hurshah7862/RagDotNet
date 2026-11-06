@@ -28,12 +28,15 @@ public static class DatasetLoader
         var files = Directory.GetFiles(corpusDir, "*.md").Order(StringComparer.Ordinal).ToList();
         var reader = new MarkdownReader();
         var documents = new List<CorpusDocument>();
+        var blocks = new Dictionary<string, string[]>(StringComparer.Ordinal);
         foreach (var file in files)
         {
             await using var stream = File.OpenRead(file);
             var parsed = await reader.ReadAsync(stream, new DocumentReadContext(Path.GetFileName(file), null), ct).ConfigureAwait(false);
             var text = TextNormalizer.Normalize(string.Join(' ', parsed.Blocks.Select(b => b.Text)));
-            documents.Add(new CorpusDocument(Path.GetFileNameWithoutExtension(file), file, text));
+            var id = Path.GetFileNameWithoutExtension(file);
+            documents.Add(new CorpusDocument(id, file, text));
+            blocks[id] = [.. parsed.Blocks.Select(b => TextNormalizer.Normalize(b.Text))];
         }
 
         var questionsBytes = await File.ReadAllBytesAsync(questionsPath, ct).ConfigureAwait(false);
@@ -47,7 +50,7 @@ public static class DatasetLoader
             throw new DatasetValidationException([$"questions.json is not valid: {ex.Message}"]);
         }
 
-        var errors = Validate(documents, questions);
+        var errors = Validate(documents, blocks, questions);
         if (errors.Count > 0)
         {
             throw new DatasetValidationException(errors);
@@ -56,7 +59,7 @@ public static class DatasetLoader
         return new Dataset(documents, questions, await HashAsync(files, questionsBytes, ct).ConfigureAwait(false));
     }
 
-    private static List<string> Validate(List<CorpusDocument> documents, List<Question> questions)
+    private static List<string> Validate(List<CorpusDocument> documents, Dictionary<string, string[]> blocks, List<Question> questions)
     {
         var errors = new List<string>();
         if (documents.Count == 0) errors.Add("corpus has no .md files");
@@ -100,6 +103,11 @@ public static class DatasetLoader
             else if (total != 1)
             {
                 errors.Add($"{q.Id}: evidence found {total} times");
+            }
+            else if (!blocks[q.DocumentId].Any(b => b.Contains(evidence, StringComparison.Ordinal)))
+            {
+                // A chunk can end at any block boundary, so evidence crossing one could never be scored as found.
+                errors.Add($"{q.Id}: evidence spans more than one block of {q.DocumentId}; pick a fragment inside one paragraph, list, table or code block");
             }
         }
 

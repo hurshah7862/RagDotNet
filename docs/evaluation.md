@@ -20,7 +20,8 @@ The harness refuses to run, with exit code 1, if the dataset is inconsistent. Ev
 - question ids must be unique;
 - `documentId` must name a corpus document;
 - evidence must be 20–80 characters after normalization;
-- evidence must occur exactly once in the whole corpus, and in the labelled document (`q7: evidence found 2 times`, `q7: evidence not found in install-guide`).
+- evidence must occur exactly once in the whole corpus, and in the labelled document (`q7: evidence found 2 times`, `q7: evidence not found in install-guide`);
+- evidence must lie inside one paragraph, list, table or code block, because a chunk can end at any block boundary.
 
 Matching uses the text `MarkdownReader` produces, not the raw Markdown. Editing a document so that a question's evidence disappears, or appears twice, therefore fails the run instead of quietly changing the scores.
 
