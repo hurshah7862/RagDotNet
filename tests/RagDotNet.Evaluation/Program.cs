@@ -50,15 +50,32 @@ public static class Program
             return InvalidInput;
         }
 
+        IEmbeddingGenerator<string, Embedding<float>> embedder;
+        IChatClient? chat;
+        ReportMetadata meta;
         if (options.IsReal)
         {
-            await stderr.WriteLineAsync("--embedder ollama is not available until Task 4.").ConfigureAwait(false);
-            return InvalidInput;
+            embedder = OllamaProviders.CreateEmbedder(options.OllamaUrl, options.EmbedModel);
+            if (await OllamaProviders.PingAsync(embedder, options.Dimensions, ct).ConfigureAwait(false) is { } reason)
+            {
+                embedder.Dispose();
+                await stderr.WriteLineAsync($"Ollama is not reachable at {options.OllamaUrl.OriginalString}: {reason}").ConfigureAwait(false);
+                return ProviderUnreachable;
+            }
+
+            chat = options.NeedsChat ? OllamaProviders.CreateChat(options.OllamaUrl, options.ChatModel) : null;
+            meta = new ReportMetadata("ollama", options.EmbedModel, chat is null ? "none" : options.ChatModel,
+                DateOnly.FromDateTime(DateTime.UtcNow), Fake: false);
+        }
+        else
+        {
+            embedder = new FakeEmbeddingGenerator(options.Dimensions);
+            chat = options.NeedsChat ? new EchoChatClient() : null;
+            meta = new ReportMetadata("fake", FakeEmbeddingGenerator.ModelId, chat is null ? "none" : EchoChatClient.ModelId, null, Fake: true);
         }
 
-        using var embedder = new FakeEmbeddingGenerator(options.Dimensions);
-        using IChatClient? chat = options.NeedsChat ? new EchoChatClient() : null;
-        var meta = new ReportMetadata("fake", FakeEmbeddingGenerator.ModelId, chat is null ? "none" : EchoChatClient.ModelId, null, Fake: true);
+        using var ownedEmbedder = embedder;
+        using var ownedChat = chat;
 
         var configs = EvaluationConfig.Matrix(options.Chunkers, options.MaxTokens, options.Overlaps, options.Modes);
         var results = await new EvaluationRunner(embedder, options.Dimensions, chat).RunAsync(dataset, configs, ct).ConfigureAwait(false);

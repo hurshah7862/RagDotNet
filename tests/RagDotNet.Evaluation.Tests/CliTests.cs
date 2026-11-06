@@ -99,6 +99,24 @@ public class CliTests
         Assert.Contains("bad-q: evidence not found in a", err, StringComparison.Ordinal);
     }
 
+    [Fact] // Review Focus 4
+    public async Task Unreachable_ollama_fails_fast_with_exit_code_2()
+    {
+        var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
+        listener.Stop();
+
+        var started = System.Diagnostics.Stopwatch.StartNew();
+        var (code, report, err) = await Run("--dataset", SmallDataset(), "--embedder", "ollama", "--ollama-url", $"http://127.0.0.1:{port}");
+
+        Assert.True(started.Elapsed < TimeSpan.FromSeconds(15), $"took {started.Elapsed}");
+        Assert.Equal(2, code);
+        Assert.Equal("", report);
+        Assert.Contains($"Ollama is not reachable at http://127.0.0.1:{port}", err, StringComparison.Ordinal);
+        Assert.DoesNotContain("   at ", err, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task Output_option_writes_the_report_file()
     {

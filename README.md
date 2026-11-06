@@ -157,6 +157,10 @@ ollama pull nomic-embed-text
 RAGDOTNET_INTEGRATION=1 dotnet test --project tests/RagDotNet.IntegrationTests
 ```
 
+## Evaluation
+
+`tests/RagDotNet.Evaluation` measures how well retrieval finds the passage that answers each of 40 labelled questions, reporting recall@1/3/5 and MRR for each chunk size, overlap and retrieval mode. `dotnet run --project tests/RagDotNet.Evaluation` runs it on fake embeddings; add `-- --embedder ollama` for real numbers. See [docs/evaluation.md](docs/evaluation.md) for the method and the baseline results.
+
 ## License
 
 MIT
