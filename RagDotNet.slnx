@@ -7,6 +7,8 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/RagDotNet.Core.Tests/RagDotNet.Core.Tests.csproj" />
+    <Project Path="tests/RagDotNet.Evaluation/RagDotNet.Evaluation.csproj" />
+    <Project Path="tests/RagDotNet.Evaluation.Tests/RagDotNet.Evaluation.Tests.csproj" />
     <Project Path="tests/RagDotNet.IntegrationTests/RagDotNet.IntegrationTests.csproj" />
   </Folder>
 </Solution>
