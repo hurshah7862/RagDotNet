@@ -1,0 +1,49 @@
+[
+  { "id": "install-1", "question": "Which versions of Windows can Quill be installed on?", "documentId": "install-guide", "evidence": "Windows 10 version 22H2 or later, 64-bit only" },
+  { "id": "install-2", "question": "What command installs Quill with winget?", "documentId": "install-guide", "evidence": "winget install --id Quill.Quill --exact" },
+  { "id": "install-3", "question": "The sandboxed Linux build can't see my notes on another disk. How do I fix that?", "documentId": "install-guide", "evidence": "flatpak override --user --filesystem=/mnt/notes" },
+  { "id": "install-4", "question": "Where does Quill keep its application data on a Mac?", "documentId": "install-guide", "evidence": "~/Library/Application Support/Quill" },
+  { "id": "install-5", "question": "If I get rid of the program, are my notes gone too?", "documentId": "install-guide", "evidence": "Removing the app does not remove your vaults" },
+
+  { "id": "config-1", "question": "What range of values does the editor font size setting accept?", "documentId": "configuration", "evidence": "Editor text size in points, from 8 to 32" },
+  { "id": "config-2", "question": "How many daily backups of my notes does the app hold on to?", "documentId": "configuration", "evidence": "How many daily snapshots of the vault to retain" },
+  { "id": "config-3", "question": "If a setting is in both the global file and the vault file, which one applies?", "documentId": "configuration", "evidence": "When a setting appears in both files, the vault file wins" },
+  { "id": "config-4", "question": "Do I have to relaunch the app after tweaking the config in a text editor?", "documentId": "configuration", "evidence": "are picked up within two seconds, because Quill watches" },
+  { "id": "config-5", "question": "How can I carry my preferences around on a portable drive?", "documentId": "configuration", "evidence": "QUILL_CONFIG_DIR moves the global configuration file" },
+
+  { "id": "sync-1", "question": "How much storage does the free Quill Cloud plan include?", "documentId": "sync-and-storage", "evidence": "The free plan includes 1 GB of storage across all vaults" },
+  { "id": "sync-2", "question": "Does Quill duplicate really big files into the vault folder?", "documentId": "sync-and-storage", "evidence": "Attachments larger than 200 MB are linked in place instead of copied" },
+  { "id": "sync-3", "question": "What does Quill do when two devices changed the same lines of a note?", "documentId": "sync-and-storage", "evidence": "saves the other version next to it as a conflict copy" },
+  { "id": "sync-4", "question": "If my internet connection drops, what happens to the edits I make?", "documentId": "sync-and-storage", "evidence": "changes queue up locally and a cloud icon with a slash" },
+  { "id": "sync-5", "question": "What is the maximum size of a single note for sync?", "documentId": "sync-and-storage", "evidence": "A single note can be at most 25 MB of text" },
+
+  { "id": "trouble-1", "question": "Quill shows nothing but an empty white screen when it starts. Why?", "documentId": "troubleshooting", "evidence": "A blank window almost always means the graphics driver" },
+  { "id": "trouble-2", "question": "How do I start Quill without loading any plugins?", "documentId": "troubleshooting", "evidence": "holding Shift while it launches, which skips all plugins" },
+  { "id": "trouble-3", "question": "Search can't find a note that I know is there. What should I try?", "documentId": "troubleshooting", "evidence": "Choose **Rebuild search index** from the Help menu" },
+  { "id": "trouble-4", "question": "Why did notes I threw away reappear?", "documentId": "troubleshooting", "evidence": "a device that was offline for a long time still had the old notes" },
+  { "id": "trouble-5", "question": "How can I paste text as plain characters without any conversion?", "documentId": "troubleshooting", "evidence": "To paste text exactly as plain characters without any conversion" },
+
+  { "id": "keys-1", "question": "Which shortcut searches the full text of every note?", "documentId": "keyboard-shortcuts", "evidence": "Search the full text of every note in the vault" },
+  { "id": "keys-2", "question": "Is there a quick way to drop the current day's date into what I'm writing?", "documentId": "keyboard-shortcuts", "evidence": "Insert the date of today at the cursor" },
+  { "id": "keys-3", "question": "Why doesn't the usual bold key combination work?", "documentId": "keyboard-shortcuts", "evidence": "was taken by the sidebar before formatting shortcuts were added" },
+  { "id": "keys-4", "question": "In which file are custom keyboard shortcuts saved?", "documentId": "keyboard-shortcuts", "evidence": "Shortcuts are saved in a file named `keymap.json`" },
+  { "id": "keys-5", "question": "I closed a tab by accident. How do I get it back?", "documentId": "keyboard-shortcuts", "evidence": "Reopen the tab you closed most recently" },
+
+  { "id": "plugin-1", "question": "Which file must every plugin folder contain to describe the plugin?", "documentId": "plugin-api", "evidence": "It must contain a manifest named `plugin.json`" },
+  { "id": "plugin-2", "question": "What lets an extension call out to a web service?", "documentId": "plugin-api", "evidence": "`network` allows outgoing HTTP requests" },
+  { "id": "plugin-3", "question": "Show the permissions list from the example plugin manifest.", "documentId": "plugin-api", "evidence": "\"permissions\": [\"notes:read\", \"statusbar\"]" },
+  { "id": "plugin-4", "question": "How does the timestamp command write the current time into the editor?", "documentId": "plugin-api", "evidence": "editor.replaceSelection(new Date().toISOString())" },
+  { "id": "plugin-5", "question": "How does the word count example add its item to the status bar?", "documentId": "plugin-api", "evidence": "this.app.statusBar.addItem(\"words\")" },
+
+  { "id": "security-1", "question": "Which algorithm derives the encryption key from the passphrase?", "documentId": "security-and-privacy", "evidence": "derives a key from the passphrase with Argon2id" },
+  { "id": "security-2", "question": "Can support get me back in if I forget my secret phrase?", "documentId": "security-and-privacy", "evidence": "nobody can recover a lost passphrase" },
+  { "id": "security-3", "question": "Does the app lock encrypt the note files?", "documentId": "security-and-privacy", "evidence": "The app lock hides the window contents but does not encrypt" },
+  { "id": "security-4", "question": "With end-to-end protection turned on, what can the server still learn about my vault?", "documentId": "security-and-privacy", "evidence": "It can see how many files a vault has, their sizes" },
+  { "id": "security-5", "question": "How long until my data is wiped after I close my account?", "documentId": "security-and-privacy", "evidence": "removes your notes from the Quill Cloud servers within 30 days" },
+
+  { "id": "release-1", "question": "Which release replaced settings.json with quill.toml?", "documentId": "release-notes", "evidence": "Settings moved from `settings.json` to `quill.toml`" },
+  { "id": "release-2", "question": "What is the last version that runs on 32-bit Windows?", "documentId": "release-notes", "evidence": "The last version for 32-bit Windows is 2.9.4" },
+  { "id": "release-3", "question": "When did modal editing arrive and how is it turned on?", "documentId": "release-notes", "evidence": "switched on with the `editor.vim_mode` setting" },
+  { "id": "release-4", "question": "For how long does an older minor version keep getting patched for security?", "documentId": "release-notes", "evidence": "receives security fixes for six months" },
+  { "id": "release-5", "question": "Which plugin method replaces the deprecated app.vault.read?", "documentId": "release-notes", "evidence": "deprecated in favour of `app.notes.get`" }
+]

@@ -70,6 +70,53 @@ public class DatasetTests
         Assert.Equal(new Question("q1", "What is the default theme?", "a-doc", "default theme is called parchment"), first.Questions.Single());
     }
 
+    [Fact] // Review Focus 5
+    public async Task Shipped_dataset_is_valid_and_balanced()
+    {
+        var d = await DatasetLoader.LoadAsync(Path.Combine(AppContext.BaseDirectory, "Dataset"), Ct);
+
+        Assert.Equal(8, d.Documents.Count);
+        Assert.InRange(d.Questions.Count, 40, 40);
+        Assert.All(d.Documents, doc => Assert.True(d.Questions.Count(q => q.DocumentId == doc.DocumentId) >= 3, doc.DocumentId));
+        Assert.All(d.Documents, doc =>
+        {
+            var words = System.Text.RegularExpressions.Regex.Matches(File.ReadAllText(doc.FilePath), @"\w+").Count;
+            Assert.True(words is >= 600 and <= 1500, $"{doc.DocumentId}: {words} words");
+        });
+    }
+
+    [Fact]
+    public async Task Shipped_questions_cover_tables_and_code_blocks()
+    {
+        var d = await DatasetLoader.LoadAsync(Path.Combine(AppContext.BaseDirectory, "Dataset"), Ct);
+        var reader = new RagDotNet.Readers.MarkdownReader();
+        var kinds = new List<RagDotNet.Documents.BlockKind>();
+        foreach (var q in d.Questions)
+        {
+            var doc = d.Documents.Single(x => x.DocumentId == q.DocumentId);
+            await using var stream = File.OpenRead(doc.FilePath);
+            var parsed = await reader.ReadAsync(stream, new(Path.GetFileName(doc.FilePath), null), Ct);
+            var evidence = Scoring.TextNormalizer.Normalize(q.Evidence);
+            var block = parsed.Blocks.FirstOrDefault(b => Scoring.TextNormalizer.Normalize(b.Text).Contains(evidence, StringComparison.Ordinal));
+            Assert.True(block is not null, $"{q.Id}: evidence spans blocks");
+            kinds.Add(block.Kind);
+        }
+
+        Assert.True(kinds.Count(k => k == RagDotNet.Documents.BlockKind.Table) >= 4, "at least 4 table questions");
+        Assert.True(kinds.Count(k => k == RagDotNet.Documents.BlockKind.Code) >= 3, "at least 3 code questions");
+    }
+
+    [Fact]
+    public async Task Shipped_dataset_runs_end_to_end_in_fake_mode()
+    {
+        var (code, report, err) = await CliTests.Run("--max-tokens", "256", "--overlap", "0");
+
+        Assert.True(code == 0, err);
+        var row = Assert.Single(report.Split('\n'), l => l.StartsWith("| structure-aware ", StringComparison.Ordinal));
+        var r5 = double.Parse(row.Split('|', StringSplitOptions.TrimEntries)[8], System.Globalization.CultureInfo.InvariantCulture);
+        Assert.True(r5 > 0, row);
+    }
+
     [Fact]
     public async Task Hash_changes_when_a_question_changes()
     {
