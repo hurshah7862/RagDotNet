@@ -60,6 +60,30 @@ public class DatasetTests
         Assert.Contains(ex.Errors, e => e.StartsWith("q1:", StringComparison.Ordinal) && e.Contains("block", StringComparison.Ordinal));
     }
 
+    [Fact] // Review Focus 1: chunk text never includes headings, so heading evidence could never be found
+    public async Task Evidence_inside_a_heading_is_rejected()
+    {
+        var dir = WriteDataset(
+            new Dictionary<string, string> { ["a"] = "# A\n\n## How to rebuild the search index quickly\n\nOpen the menu and pick Rebuild.\n" },
+            """[ { "id": "q1", "question": "?", "documentId": "a", "evidence": "how to rebuild the search index" } ]""");
+
+        var ex = await Assert.ThrowsAsync<DatasetValidationException>(() => DatasetLoader.LoadAsync(dir, Ct));
+
+        Assert.Contains(ex.Errors, e => e.StartsWith("q1:", StringComparison.Ordinal) && e.Contains("heading", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Null_question_entry_is_reported_not_thrown()
+    {
+        var dir = WriteDataset(
+            new Dictionary<string, string> { ["a"] = "# A\n\nThe default theme is called Parchment.\n" },
+            """[ null, { "id": "q1", "question": "?", "documentId": "a", "evidence": "default theme is called parchment" } ]""");
+
+        var ex = await Assert.ThrowsAsync<DatasetValidationException>(() => DatasetLoader.LoadAsync(dir, Ct));
+
+        Assert.Equal(["question #1: entry is null"], ex.Errors);
+    }
+
     [Fact]
     public async Task Valid_dataset_loads_with_stable_hash()
     {

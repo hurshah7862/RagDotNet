@@ -29,6 +29,7 @@ public static class DatasetLoader
         var reader = new MarkdownReader();
         var documents = new List<CorpusDocument>();
         var blocks = new Dictionary<string, string[]>(StringComparer.Ordinal);
+        var headings = new Dictionary<string, string[]>(StringComparer.Ordinal);
         foreach (var file in files)
         {
             await using var stream = File.OpenRead(file);
@@ -36,44 +37,53 @@ public static class DatasetLoader
             var text = TextNormalizer.Normalize(string.Join(' ', parsed.Blocks.Select(b => b.Text)));
             var id = Path.GetFileNameWithoutExtension(file);
             documents.Add(new CorpusDocument(id, file, text));
-            blocks[id] = [.. parsed.Blocks.Select(b => TextNormalizer.Normalize(b.Text))];
+            // Chunk text never includes headings, so only body blocks can hold scorable evidence.
+            blocks[id] = [.. parsed.Blocks.Where(b => b.Kind != BlockKind.Heading).Select(b => TextNormalizer.Normalize(b.Text))];
+            headings[id] = [.. parsed.Blocks.Where(b => b.Kind == BlockKind.Heading).Select(b => TextNormalizer.Normalize(b.Text))];
         }
 
         var questionsBytes = await File.ReadAllBytesAsync(questionsPath, ct).ConfigureAwait(false);
-        List<Question> questions;
+        List<Question?> questions;
         try
         {
-            questions = JsonSerializer.Deserialize<List<Question>>(questionsBytes) ?? [];
+            questions = JsonSerializer.Deserialize<List<Question?>>(questionsBytes) ?? [];
         }
         catch (JsonException ex)
         {
             throw new DatasetValidationException([$"questions.json is not valid: {ex.Message}"]);
         }
 
-        var errors = Validate(documents, blocks, questions);
+        var errors = Validate(documents, blocks, headings, questions);
         if (errors.Count > 0)
         {
             throw new DatasetValidationException(errors);
         }
 
-        return new Dataset(documents, questions, await HashAsync(files, questionsBytes, ct).ConfigureAwait(false));
+        return new Dataset(documents, [.. questions.Select(q => q!)], await HashAsync(files, questionsBytes, ct).ConfigureAwait(false));
     }
 
-    private static List<string> Validate(List<CorpusDocument> documents, Dictionary<string, string[]> blocks, List<Question> questions)
+    private static List<string> Validate(
+        List<CorpusDocument> documents, Dictionary<string, string[]> blocks, Dictionary<string, string[]> headings, List<Question?> questions)
     {
         var errors = new List<string>();
+        for (var i = 0; i < questions.Count; i++)
+        {
+            if (questions[i] is null) errors.Add($"question #{i + 1}: entry is null");
+        }
+
+        if (errors.Count > 0) return errors;
         if (documents.Count == 0) errors.Add("corpus has no .md files");
         if (questions.Count == 0) errors.Add("questions.json has no questions");
 
         var byId = documents.ToDictionary(d => d.DocumentId, StringComparer.Ordinal);
-        foreach (var dup in questions.GroupBy(q => q.Id ?? "", StringComparer.Ordinal).Where(g => g.Count() > 1))
+        foreach (var dup in questions.GroupBy(q => q!.Id ?? "", StringComparer.Ordinal).Where(g => g.Count() > 1))
         {
             errors.Add($"{dup.Key}: duplicate question id ({dup.Count()} questions)");
         }
 
         for (var i = 0; i < questions.Count; i++)
         {
-            var q = questions[i];
+            var q = questions[i]!;
             if (string.IsNullOrWhiteSpace(q.Id))
             {
                 errors.Add($"question #{i + 1}: id is empty");
@@ -103,6 +113,10 @@ public static class DatasetLoader
             else if (total != 1)
             {
                 errors.Add($"{q.Id}: evidence found {total} times");
+            }
+            else if (headings[q.DocumentId].Any(h => h.Contains(evidence, StringComparison.Ordinal)))
+            {
+                errors.Add($"{q.Id}: evidence is in a heading of {q.DocumentId}; chunk text does not include headings, so pick a fragment from the section body");
             }
             else if (!blocks[q.DocumentId].Any(b => b.Contains(evidence, StringComparison.Ordinal)))
             {
