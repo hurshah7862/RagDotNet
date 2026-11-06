@@ -117,6 +117,74 @@ public class CliTests
         Assert.DoesNotContain("   at ", err, StringComparison.Ordinal);
     }
 
+    [Fact] // Review Focus 4: the server is up but the chat model was never pulled
+    public async Task Missing_chat_model_exits_2_and_names_the_model()
+    {
+        await using var server = new FakeOllamaServer(["nomic-embed-text:latest"]);
+
+        var (code, report, err) = await Run("--dataset", SmallDataset(), "--embedder", "ollama", "--ollama-url", server.Url,
+            "--dimensions", "4", "--modes", "hyde", "--max-tokens", "256", "--overlap", "0");
+
+        Assert.Equal(2, code);
+        Assert.Equal("", report);
+        Assert.Contains("ollama pull llama3.2:3b", err, StringComparison.Ordinal);
+        Assert.DoesNotContain("not reachable", err, StringComparison.Ordinal);
+        Assert.DoesNotContain("   at ", err, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Missing_embed_model_is_not_reported_as_unreachable()
+    {
+        await using var server = new FakeOllamaServer(["llama3.2:3b"]);
+
+        var (code, _, err) = await Run("--dataset", SmallDataset(), "--embedder", "ollama", "--ollama-url", server.Url,
+            "--dimensions", "4", "--max-tokens", "256", "--overlap", "0");
+
+        Assert.Equal(2, code);
+        Assert.Contains("ollama pull nomic-embed-text", err, StringComparison.Ordinal);
+        Assert.DoesNotContain("not reachable", err, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Untagged_model_name_matches_latest_and_runs()
+    {
+        await using var server = new FakeOllamaServer(["nomic-embed-text:latest"]);
+
+        var (code, report, err) = await Run("--dataset", SmallDataset(), "--embedder", "ollama", "--ollama-url", server.Url,
+            "--dimensions", "4", "--max-tokens", "256", "--overlap", "0");
+
+        Assert.True(code == 0, err);
+        Assert.Single(DataRows(report));
+    }
+
+    [Fact]
+    public async Task Provider_failure_mid_run_exits_2_with_one_line()
+    {
+        await using var server = new FakeOllamaServer(["nomic-embed-text:latest"], failEmbedAfter: 1);
+
+        var (code, report, err) = await Run("--dataset", SmallDataset(), "--embedder", "ollama", "--ollama-url", server.Url,
+            "--dimensions", "4", "--max-tokens", "256", "--overlap", "0");
+
+        Assert.Equal(2, code);
+        Assert.Equal("", report);
+        Assert.Contains("failed during the run", err, StringComparison.Ordinal);
+        Assert.DoesNotContain("   at ", err, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Cancellation_exits_cleanly_instead_of_throwing()
+    {
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+        using var stdout = new StringWriter();
+        using var stderr = new StringWriter();
+
+        var code = await Program.RunAsync(["--dataset", SmallDataset()], stdout, stderr, cts.Token);
+
+        Assert.Equal(Program.Cancelled, code);
+        Assert.Contains("Cancelled", stderr.ToString(), StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task Output_option_writes_the_report_file()
     {

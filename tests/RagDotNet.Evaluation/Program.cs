@@ -15,11 +15,23 @@ public static class Program
     /// <summary>Bad arguments or an invalid dataset.</summary>
     public const int InvalidInput = 1;
 
-    /// <summary>The provider is unreachable.</summary>
+    /// <summary>The provider is unreachable, lacks a model, or failed during the run.</summary>
     public const int ProviderUnreachable = 2;
 
+    /// <summary>The run was cancelled, for example with Ctrl+C.</summary>
+    public const int Cancelled = 130;
+
     /// <summary>Runs the harness on the console.</summary>
-    public static Task<int> Main(string[] args) => RunAsync(args, Console.Out, Console.Error, CancellationToken.None);
+    public static async Task<int> Main(string[] args)
+    {
+        using var cts = new CancellationTokenSource();
+        Console.CancelKeyPress += (_, e) =>
+        {
+            e.Cancel = true; // let the run stop at its next await instead of killing the process
+            cts.Cancel();
+        };
+        return await RunAsync(args, Console.Out, Console.Error, cts.Token).ConfigureAwait(false);
+    }
 
     /// <summary>Runs the harness, writing the report to <paramref name="stdout"/> and errors to <paramref name="stderr"/>.</summary>
     public static async Task<int> RunAsync(string[] args, TextWriter stdout, TextWriter stderr, CancellationToken ct)
@@ -39,6 +51,24 @@ public static class Program
             return InvalidInput;
         }
 
+        try
+        {
+            return await RunCoreAsync(options, stdout, stderr, ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            await stderr.WriteLineAsync("Cancelled.").ConfigureAwait(false);
+            return Cancelled;
+        }
+        catch (HttpRequestException ex) when (options.IsReal)
+        {
+            await stderr.WriteLineAsync($"Ollama request failed during the run: {OllamaProviders.Describe(ex)}").ConfigureAwait(false);
+            return ProviderUnreachable;
+        }
+    }
+
+    private static async Task<int> RunCoreAsync(Options options, TextWriter stdout, TextWriter stderr, CancellationToken ct)
+    {
         Dataset dataset;
         try
         {
@@ -55,11 +85,19 @@ public static class Program
         ReportMetadata meta;
         if (options.IsReal)
         {
+            // Checking the pulled models first turns a typo in a model name into a clear message before any work starts.
+            string[] models = options.NeedsChat ? [options.EmbedModel, options.ChatModel] : [options.EmbedModel];
+            if (await OllamaProviders.CheckModelsAsync(options.OllamaUrl, models, ct).ConfigureAwait(false) is { } problem)
+            {
+                await stderr.WriteLineAsync(problem).ConfigureAwait(false);
+                return ProviderUnreachable;
+            }
+
             embedder = OllamaProviders.CreateEmbedder(options.OllamaUrl, options.EmbedModel);
             if (await OllamaProviders.PingAsync(embedder, options.Dimensions, ct).ConfigureAwait(false) is { } reason)
             {
                 embedder.Dispose();
-                await stderr.WriteLineAsync($"Ollama is not reachable at {options.OllamaUrl.OriginalString}: {reason}").ConfigureAwait(false);
+                await stderr.WriteLineAsync($"Ollama embedding check failed for '{options.EmbedModel}': {reason}").ConfigureAwait(false);
                 return ProviderUnreachable;
             }
 

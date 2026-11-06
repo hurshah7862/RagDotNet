@@ -21,7 +21,9 @@ The harness refuses to run, with exit code 1, if the dataset is inconsistent. Ev
 - `documentId` must name a corpus document;
 - evidence must be 20–80 characters after normalization;
 - evidence must occur exactly once in the whole corpus, and in the labelled document (`q7: evidence found 2 times`, `q7: evidence not found in install-guide`);
-- evidence must lie inside one paragraph, list, table or code block, because a chunk can end at any block boundary.
+- evidence must lie inside one paragraph, list, table or code block, because a chunk can end at any block boundary;
+- evidence must not be in a heading, because chunk text does not include headings;
+- no entry in `questions.json` may be `null`.
 
 Matching uses the text `MarkdownReader` produces, not the raw Markdown. Editing a document so that a question's evidence disappears, or appears twice, therefore fails the run instead of quietly changing the scores.
 
@@ -38,7 +40,7 @@ For each question, **rank** is the 1-based position of the first relevant chunk 
 
 ### Limitations
 
-- **Split evidence counts as a miss.** If a chunk boundary falls inside the evidence fragment, no single chunk contains it and the question scores as a miss, even though the answer was retrieved in two pieces. Short evidence keeps this rare, but it penalises small chunk sizes slightly.
+- **Split evidence counts as a miss.** If a chunk boundary falls inside the evidence fragment, no single chunk contains it and the question scores as a miss, even though the answer was retrieved in two pieces. At the default sizes (128 and up) every shipped question's evidence fits in one chunk. Below 64 tokens splits become common, about a quarter of the questions at 16 tokens, so scores there understate retrieval.
 - **Short sections.** The StructureAware chunker never crosses a heading, and most sections in this corpus are shorter than 256 tokens. Chunk counts and scores therefore change little above that size. A corpus with longer sections would separate the larger sizes more.
 - **Small set.** With 40 questions, one question is 0.025 of any recall figure, so treat differences smaller than about 0.05 as noise.
 
@@ -70,7 +72,21 @@ Add `--modes vector,multi-query,hyde` to include query rewriting, which makes on
 | `--dataset` | `Dataset` next to the harness |
 | `--output` | none; the report always goes to stdout |
 
-The harness exits with 0 on success, 1 for bad arguments or an invalid dataset, and 2 when Ollama is not reachable. Before ingesting anything, it embeds `"ping"` with a 10-second timeout and stops with `Ollama is not reachable at <url>: <reason>` if that fails.
+The harness exits with:
+
+| Code | Meaning |
+|---:|---|
+| 0 | success |
+| 1 | bad arguments or an invalid dataset |
+| 2 | Ollama is not reachable, lacks a model, or fails during the run |
+| 130 | cancelled with Ctrl+C |
+
+Before ingesting anything, real mode checks Ollama with a 10-second timeout each time:
+
+1. It asks Ollama for its pulled models. If Ollama doesn't answer, it stops with `Ollama is not reachable at <url>: <reason>`. If the embed model, or the chat model when a chat mode is selected, is missing, it stops with `Ollama at <url> does not have model '<name>'; run ollama pull <name>`. A name without a tag matches `:latest`.
+2. It embeds `"ping"`, and stops with `Ollama embedding check failed for '<model>': <reason>` if that fails or the vector length differs from `--dimensions`.
+
+A request that fails later in the run stops it with one line, `Ollama request failed during the run: <reason>`, not a stack trace.
 
 Each report records the dataset hash, which is the first 12 hex characters of SHA-256 over the corpus files and `questions.json`. Results with different hashes are not comparable.
 

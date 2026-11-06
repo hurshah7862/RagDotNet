@@ -16,6 +16,52 @@ public static class OllamaProviders
     public static IChatClient CreateChat(Uri url, string model) => new OllamaApiClient(url, model);
 
     /// <summary>
+    /// Lists the models Ollama has pulled, within <see cref="PingTimeout"/>, and checks each of <paramref name="models"/>
+    /// is among them. Returns null when all are present, or a one-line message for the user.
+    /// A name without a tag matches <c>:latest</c>, as in Ollama itself.
+    /// </summary>
+    public static async Task<string?> CheckModelsAsync(Uri url, IEnumerable<string> models, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(url);
+        ArgumentNullException.ThrowIfNull(models);
+        using var client = new OllamaApiClient(url);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(PingTimeout);
+        HashSet<string> pulled;
+        try
+        {
+            pulled = [.. (await client.ListLocalModelsAsync(timeout.Token).ConfigureAwait(false)).Select(m => m.Name)];
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return $"Ollama is not reachable at {url.OriginalString}: no response within {PingTimeout.TotalSeconds:0} seconds";
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return $"Ollama is not reachable at {url.OriginalString}: {Describe(ex)}";
+        }
+
+        foreach (var model in models)
+        {
+            if (!pulled.Contains(model) && (model.Contains(':', StringComparison.Ordinal) || !pulled.Contains(model + ":latest")))
+            {
+                return $"Ollama at {url.OriginalString} does not have model '{model}'; run `ollama pull {model}`";
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>One line for an exception, with its inner message when that adds anything.</summary>
+    public static string Describe(Exception ex)
+    {
+        ArgumentNullException.ThrowIfNull(ex);
+        return ex.InnerException is { } inner && !ex.Message.Contains(inner.Message, StringComparison.Ordinal)
+            ? $"{ex.Message} ({inner.Message})"
+            : ex.Message;
+    }
+
+    /// <summary>
     /// Embeds <c>"ping"</c> within <see cref="PingTimeout"/>. Returns null on success, or a one-line reason on failure.
     /// A vector of the wrong length is a failure too, since every later write would be rejected.
     /// </summary>
@@ -36,7 +82,7 @@ public static class OllamaProviders
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            return ex.InnerException is { } inner ? $"{ex.Message} ({inner.Message})" : ex.Message;
+            return Describe(ex);
         }
     }
 }
