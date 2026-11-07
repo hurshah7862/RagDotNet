@@ -2,11 +2,17 @@
 
 RagDotNet is a .NET library for retrieval-augmented generation (RAG). It ingests documents, chunks and embeds them into a vector store, and answers questions with cited sources, built on Microsoft.Extensions.AI and Microsoft.Extensions.VectorData.
 
+> **Under development.** RagDotNet is not released yet. The public API can still change between commits, stored data may need re-ingesting after an update, and no package is published to NuGet. Core ingestion, retrieval, cited answers, chat and query rewriting work today; fixed-size and semantic chunkers, PDF/DOCX/HTML readers, OCR, hybrid search and reranking, more vector stores, and hosting adapters are still to come. Feedback and issues are welcome.
+
 ## Install
 
+No package is on NuGet yet. Until then, clone the repository and reference the project directly:
+
 ```
-dotnet add package RagDotNet.Core
+dotnet add reference path/to/RagDotNet/src/RagDotNet.Core/RagDotNet.Core.csproj
 ```
+
+Once published, it will be `dotnet add package RagDotNet.Core`.
 
 RagDotNet.Core targets net8.0 and net10.0. You bring your own `IChatClient`, `IEmbeddingGenerator<string, Embedding<float>>` (Microsoft.Extensions.AI) and `VectorStore` (any Microsoft.Extensions.VectorData connector). The samples and tests use the in-memory store from `CommunityToolkit.VectorData.InMemory`, which is not meant for production.
 
