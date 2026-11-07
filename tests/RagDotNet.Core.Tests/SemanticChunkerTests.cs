@@ -21,6 +21,8 @@ public class SemanticChunkerTests
     {
         public int Calls { get; private set; }
 
+        public List<string> Inputs { get; } = [];
+
         public Task<GeneratedEmbeddings<Embedding<float>>> GenerateAsync(
             IEnumerable<string> values, EmbeddingGenerationOptions? options = null, CancellationToken cancellationToken = default)
         {
@@ -28,6 +30,7 @@ public class SemanticChunkerTests
             var result = new GeneratedEmbeddings<Embedding<float>>();
             foreach (var v in values)
             {
+                Inputs.Add(v);
                 float[] vector = v.Contains("cat", StringComparison.OrdinalIgnoreCase) ? [1, 0, 0]
                     : v.Contains("rocket", StringComparison.OrdinalIgnoreCase) ? [0, 1, 0]
                     : [0, 0, 1];
@@ -102,6 +105,23 @@ public class SemanticChunkerTests
             Para(Sentences("cat", 3)), new DocumentBlock(BlockKind.Code, code, []), Para(Sentences("rocket", 3)));
 
         Assert.Contains(chunks, c => c.Text.Contains(code, StringComparison.Ordinal));
+    }
+
+    [Theory] // Final review: a whole code block, or text without sentence marks, was embedded at any size
+    [InlineData(BlockKind.Code)]
+    [InlineData(BlockKind.Paragraph)]
+    public async Task Units_over_MaxTokens_are_split_before_embedding(BlockKind kind)
+    {
+        var text = string.Join('\n', Enumerable.Range(0, 120).Select(i => $"var cat{i} = Compute({i})"));
+        var embedder = new TopicEmbedder();
+
+        var chunks = await Run(embedder, new ChunkingOptions { MaxTokens = 64 }, 32, new DocumentBlock(kind, text, []));
+
+        Assert.True(Counter.Count(text) > 64 * 4);
+        Assert.All(embedder.Inputs, input => Assert.True(Counter.Count(input) <= 64, $"{Counter.Count(input)} tokens embedded"));
+        Assert.All(chunks, c => Assert.True(Counter.Count(c.Text) <= 64));
+        Assert.Equal(text.Replace(" ", "", StringComparison.Ordinal).Replace("\n", "", StringComparison.Ordinal),
+            string.Concat(chunks.Select(c => c.Text.Replace(" ", "", StringComparison.Ordinal).Replace("\n", "", StringComparison.Ordinal))));
     }
 
     [Fact] // Review Focus 2

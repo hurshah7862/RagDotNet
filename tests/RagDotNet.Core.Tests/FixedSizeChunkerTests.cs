@@ -60,6 +60,34 @@ public class FixedSizeChunkerTests
         Assert.Equal(text, string.Join(' ', chunks.Select(c => c.Text)));
     }
 
+    // Characters that the tokenizer splits into several byte-level tokens, which all share the character's offset.
+    public static TheoryData<string> MultiTokenTexts => new()
+    {
+        string.Concat(Enumerable.Repeat("日本語のテキストを分割します。東京で会議があります。", 40)),
+        string.Join(' ', Enumerable.Range(0, 300).Select(i => $"smile😀{i} rocket🚀 𝔪𝔞𝔱𝔥")),
+    };
+
+    [Theory] // Final review: windows ending inside a multi-token character went over MaxTokens
+    [MemberData(nameof(MultiTokenTexts))]
+    public async Task Multi_token_characters_never_push_a_window_over_MaxTokens(string text)
+    {
+        var chunks = await Run(new ChunkingOptions { MaxTokens = 64, OverlapRatio = 0.1 }, new DocumentBlock(BlockKind.Paragraph, text, []));
+
+        Assert.True(chunks.Count > 2);
+        Assert.All(chunks, c => Assert.True(Counter.Count(c.Text) <= 64, $"{Counter.Count(c.Text)} tokens: {c.Text}"));
+    }
+
+    [Theory] // Final review: boundary characters appeared in two windows even with no overlap
+    [MemberData(nameof(MultiTokenTexts))]
+    public async Task Zero_overlap_never_repeats_a_character(string text)
+    {
+        static string NoSpace(string s) => string.Concat(s.Where(ch => !char.IsWhiteSpace(ch)));
+
+        var chunks = await Run(new ChunkingOptions { MaxTokens = 64, OverlapRatio = 0 }, new DocumentBlock(BlockKind.Paragraph, text, []));
+
+        Assert.Equal(NoSpace(text), string.Concat(chunks.Select(c => NoSpace(c.Text))));
+    }
+
     [Fact]
     public async Task Headings_are_left_out_and_set_the_heading_path()
     {

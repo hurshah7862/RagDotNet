@@ -46,13 +46,22 @@ public sealed class FixedSizeChunker(Tokenizer tokenizer) : IChunker
 
         var flat = text.ToString();
         var tokens = _tokenizer.EncodeToTokens(flat, out _, considerPreTokenization: true, considerNormalization: false);
-        var stride = options.MaxTokens - (int)Math.Floor(options.MaxTokens * options.OverlapRatio);
-        for (var first = 0; first < tokens.Count; first += stride)
+        var overlap = (int)Math.Floor(options.MaxTokens * options.OverlapRatio);
+        int Start(int t) => tokens[t].Offset.Start.GetOffset(flat.Length);
+        int End(int t) => tokens[t].Offset.End.GetOffset(flat.Length);
+
+        // A character the tokenizer splits into several byte-level tokens gives each of them the whole character's
+        // offsets, so a window edge must never fall between them: the character would be sliced into both windows.
+        bool SplitsCharacter(int boundary) => boundary > 0 && boundary < tokens.Count && Start(boundary) < End(boundary - 1);
+
+        var first = 0;
+        while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var last = Math.Min(first + options.MaxTokens, tokens.Count) - 1;
-            var charStart = tokens[first].Offset.Start.GetOffset(flat.Length);
-            var charEnd = Math.Max(charStart, tokens[last].Offset.End.GetOffset(flat.Length));
+            while (last > first && SplitsCharacter(last + 1)) last--;
+            var charStart = Start(first);
+            var charEnd = Math.Max(charStart, End(last));
             var window = flat[charStart..charEnd].Trim();
             if (window.Length > 0)
             {
@@ -64,6 +73,11 @@ public sealed class FixedSizeChunker(Tokenizer tokenizer) : IChunker
             }
 
             if (last == tokens.Count - 1) break;
+
+            // The next window repeats the last `overlap` tokens, moved forward to a character boundary.
+            var next = Math.Max(first + 1, last + 1 - overlap);
+            while (SplitsCharacter(next)) next++;
+            first = next;
         }
 
         return Task.FromResult<IReadOnlyList<Chunk>>(chunks);

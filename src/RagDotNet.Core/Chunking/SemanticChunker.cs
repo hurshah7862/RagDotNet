@@ -53,8 +53,17 @@ public sealed class SemanticChunker : IChunker
         {
             var block = document.Blocks[i];
             if (block.Kind == BlockKind.Heading || string.IsNullOrWhiteSpace(block.Text)) continue;
-            if (block.Kind is BlockKind.Code or BlockKind.Table) units.Add(new Unit(block.Text.Trim(), block, i));
-            else units.AddRange(SentenceSplitter.Split(block.Text.Trim()).Select(s => new Unit(s.Trim(), block, i)));
+            IEnumerable<string> texts = block.Kind is BlockKind.Code or BlockKind.Table
+                ? [block.Text.Trim()]
+                : SentenceSplitter.Split(block.Text.Trim()).Select(s => s.Trim());
+
+            // A unit over MaxTokens (a big table or code block, or text without sentence marks) is split by tokens first,
+            // so the embedder never receives more than a chunk's worth of text in one input.
+            foreach (var text in texts)
+            {
+                if (_counter.Count(text) <= options.MaxTokens) units.Add(new Unit(text, block, i));
+                else units.AddRange(_counter.SplitByTokens(text, options.MaxTokens).Where(p => !string.IsNullOrWhiteSpace(p)).Select(p => new Unit(p, block, i)));
+            }
         }
 
         if (units.Count == 0) return [];
