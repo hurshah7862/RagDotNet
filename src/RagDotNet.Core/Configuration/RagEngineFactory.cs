@@ -29,7 +29,7 @@ internal static class RagEngineFactory
         var readers = new ReaderSelector(appReaders.Concat<IDocumentReader>([new MarkdownReader(), new PlainTextReader()]));
         var logger = (loggerFactory ?? NullLoggerFactory.Instance).CreateLogger("RagDotNet");
         return new RagEngine(
-            options, readers, new ChunkerRegistry(appChunkers, [new StructureAwareChunker(tokenizer), new FixedSizeChunker(tokenizer)]), new TokenCounter(tokenizer), tokenizerName,
+            options, readers, new ChunkerRegistry(appChunkers, [new StructureAwareChunker(tokenizer), new FixedSizeChunker(tokenizer), new SemanticChunker(tokenizer, embedder, options.EmbeddingBatchSize)]), new TokenCounter(tokenizer), tokenizerName,
             embedder, new ChunkStore(store, options), new ManifestStore(store, options), logger, contentStore, time);
     }
 }

@@ -35,7 +35,7 @@ internal static class Hashing
     public static string ChunkingHash(ChunkingOptions o, IChunker chunker, string tokenizerName)
     {
         var s = string.Create(CultureInfo.InvariantCulture,
-            $"{chunker.Name}|{chunker.Version}|{o.MaxTokens}|{o.OverlapRatio:R}|{tokenizerName}|embed:{EmbeddingText.FormatVersion}");
+            $"{chunker.Name}|{chunker.Version}|{o.MaxTokens}|{o.OverlapRatio:R}|{tokenizerName}|embed:{EmbeddingText.FormatVersion}|bp:{o.BreakpointPercentile:R}");
         return ContentHash(Encoding.UTF8.GetBytes(s));
     }
 }

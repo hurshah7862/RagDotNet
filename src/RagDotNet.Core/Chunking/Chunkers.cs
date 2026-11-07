@@ -8,4 +8,7 @@ public static class Chunkers
 
     /// <summary>A sliding token window over the document's body text.</summary>
     public const string FixedSize = "fixed-size";
+
+    /// <summary>Breaks where the meaning of neighbouring sentences shifts. Makes embedding calls during ingest.</summary>
+    public const string Semantic = "semantic";
 }
