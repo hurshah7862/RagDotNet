@@ -22,15 +22,20 @@ public sealed class SemanticChunker : IChunker
     /// <param name="tokenizer">Tokenizer used to keep chunks within <see cref="ChunkingOptions.MaxTokens"/>.</param>
     /// <param name="embedder">Embeds the sentences.</param>
     /// <param name="batchSize">Sentences per embedding call; at least 1.</param>
-    public SemanticChunker(Tokenizer tokenizer, IEmbeddingGenerator<string, Embedding<float>> embedder, int batchSize = 32)
+    /// <param name="dimensions">The vector length every embedding must have, or 0 to require only that all are the same length.</param>
+    public SemanticChunker(Tokenizer tokenizer, IEmbeddingGenerator<string, Embedding<float>> embedder, int batchSize = 32, int dimensions = 0)
     {
         ArgumentNullException.ThrowIfNull(tokenizer);
         ArgumentNullException.ThrowIfNull(embedder);
         ArgumentOutOfRangeException.ThrowIfLessThan(batchSize, 1);
+        ArgumentOutOfRangeException.ThrowIfNegative(dimensions);
         _counter = new TokenCounter(tokenizer);
         _embedder = embedder;
         _batchSize = batchSize;
+        _dimensions = dimensions;
     }
+
+    private readonly int _dimensions;
 
     /// <inheritdoc />
     public string Name => Chunkers.Semantic;
@@ -69,12 +74,24 @@ public sealed class SemanticChunker : IChunker
         if (units.Count == 0) return [];
 
         var vectors = new List<ReadOnlyMemory<float>>(units.Count);
+        ChunkingProgress.Report(0, units.Count);
         foreach (var batch in units.Chunk(_batchSize))
         {
             var embeddings = await _embedder.GenerateAsync(batch.Select(u => u.Text), cancellationToken: cancellationToken).ConfigureAwait(false);
             if (embeddings.Count != batch.Length)
                 throw new InvalidOperationException($"The embedding generator returned {embeddings.Count} vectors for {batch.Length} sentences.");
-            vectors.AddRange(embeddings.Select(e => e.Vector));
+            foreach (var e in embeddings)
+            {
+                // Comparing vectors of different lengths would silently use only their common prefix.
+                var expected = _dimensions > 0 ? _dimensions : vectors.Count > 0 ? vectors[0].Length : e.Vector.Length;
+                if (e.Vector.Length != expected)
+                    throw new InvalidOperationException(_dimensions > 0
+                        ? $"The embedding generator returned a {e.Vector.Length}-dimensional vector but {expected} dimensions are configured."
+                        : $"The embedding generator returned a {e.Vector.Length}-dimensional vector after a {expected}-dimensional one.");
+                vectors.Add(e.Vector);
+            }
+
+            ChunkingProgress.Report(vectors.Count, units.Count);
         }
 
         // distances[i] is between unit i and i + 1; null where a section boundary forces a break anyway.
@@ -117,7 +134,7 @@ public sealed class SemanticChunker : IChunker
     }
 
     /// <summary>The p-th percentile with linear interpolation between the two nearest ranks; +∞ when there are no values.</summary>
-    private static double Percentile(double[] values, double p)
+    internal static double Percentile(double[] values, double p)
     {
         if (values.Length == 0) return double.PositiveInfinity;
         Array.Sort(values);

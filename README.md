@@ -166,7 +166,7 @@ Three chunkers are built in:
 
 - `structure-aware` (`Chunkers.StructureAware`, the default) splits along headings, paragraphs, sentences and lines, never across headings, and merges small blocks.
 - `fixed-size` (`Chunkers.FixedSize`) cuts the body text into windows of `MaxTokens` tokens, each repeating the last `MaxTokens × OverlapRatio` tokens of the one before.
-- `semantic` (`Chunkers.Semantic`) embeds each sentence and starts a new chunk where neighbouring sentences drift apart, by more than the `BreakpointPercentile`-th percentile of the document's distances (default 95). It also breaks at every heading and ignores `OverlapRatio`. **It makes one embedding call per sentence during ingest.**
+- `semantic` (`Chunkers.Semantic`) embeds each sentence and starts a new chunk where neighbouring sentences drift apart, by more than the `BreakpointPercentile`-th percentile of the document's distances (default 95). It also breaks at every heading and ignores `OverlapRatio`. **It embeds every sentence during ingest**, in batches of `EmbeddingBatchSize`, on top of the usual chunk embeddings; ingest progress reports those sentences under the `Chunking` stage.
 
 Their shared settings are `ChunkingOptions.MaxTokens` (default 512, at least 16) and `OverlapRatio` (default 0.10, in [0, 0.5)). [docs/chunking.md](docs/chunking.md) compares them on the evaluation corpus and says when to pick each.
 

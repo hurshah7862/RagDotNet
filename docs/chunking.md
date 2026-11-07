@@ -30,7 +30,11 @@ Whatever a chunker returns, the library drops blank chunks, splits chunks longer
 
 **Semantic thresholds.** A higher `BreakpointPercentile` makes fewer breaks and larger chunks; a lower one makes more, smaller chunks. Because the threshold is a percentile of each document's own distances, it adapts to how varied a document is: a document that stays on one topic still gets a few breaks at its relatively biggest shifts. Distances are only compared within a section, and the size limit still applies.
 
-**Changing settings re-chunks.** The chunker's name and version, `MaxTokens`, `OverlapRatio`, `BreakpointPercentile` and the tokenizer are all part of each document's chunking hash. Changing any of them re-chunks a document the next time it is ingested.
+**Changing settings re-chunks.** The chunker's name and version, `MaxTokens`, `OverlapRatio` and the tokenizer are part of each document's chunking hash, and so is `BreakpointPercentile` for documents chunked by `semantic`. Changing any of them re-chunks a document the next time it is ingested.
+
+**Semantic chunks and a new embedding model.** The semantic chunker's boundaries come from the embedding model, but the model is not part of the chunking hash. `IRagAdmin.ReindexAsync()` re-embeds stored chunks with the new model without re-chunking them, so semantic documents keep the boundaries the old model chose until their content changes. To get boundaries chosen by the new model, delete those documents and ingest them again after the reindex.
+
+**Dimensions.** The semantic chunker checks that every sentence vector has the configured `EmbeddingDimensions`, as ingest does for chunk vectors, and fails the ingest with `InvalidOperationException` if not.
 
 ## How they compared
 

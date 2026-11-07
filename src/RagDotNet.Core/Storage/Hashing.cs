@@ -35,7 +35,11 @@ internal static class Hashing
     public static string ChunkingHash(ChunkingOptions o, IChunker chunker, string tokenizerName)
     {
         var s = string.Create(CultureInfo.InvariantCulture,
-            $"{chunker.Name}|{chunker.Version}|{o.MaxTokens}|{o.OverlapRatio:R}|{tokenizerName}|embed:{EmbeddingText.FormatVersion}|bp:{o.BreakpointPercentile:R}");
+            $"{chunker.Name}|{chunker.Version}|{o.MaxTokens}|{o.OverlapRatio:R}|{tokenizerName}|embed:{EmbeddingText.FormatVersion}");
+
+        // Only the semantic chunker reads the percentile, so it re-chunks only documents that chunker produced.
+        if (chunker.Name == Chunkers.Semantic)
+            s += string.Create(CultureInfo.InvariantCulture, $"|bp:{o.BreakpointPercentile:R}");
         return ContentHash(Encoding.UTF8.GetBytes(s));
     }
 }

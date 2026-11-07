@@ -78,6 +78,16 @@ public class DatasetSetTests
         Assert.Contains(ex.Errors, e => e.Contains("both corpus/ and dataset set directories", StringComparison.Ordinal));
     }
 
+    [Fact] // Deferred minor 8: the report's pooled section is called "all"
+    public async Task Set_named_all_is_rejected()
+    {
+        var root = WriteSets(("a", DocA, QA), ("all", DocB, QB));
+
+        var ex = await Assert.ThrowsAsync<DatasetValidationException>(() => DatasetLoader.LoadSetsAsync(root, Ct));
+
+        Assert.Contains(ex.Errors, e => e.Contains("'all'", StringComparison.Ordinal) && e.Contains("reserved", StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task Root_without_sets_is_rejected()
     {

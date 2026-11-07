@@ -122,7 +122,7 @@ What this shows:
 - **StructureAware is the strongest chunker overall**, and the most stable: its MRR on all questions stays between 0.800 and 0.842 across all 12 settings.
 - **Fixed-size loses most on `base`.** It ignores headings, so with short sections it builds large chunks that mix several topics: 13 chunks for 8 documents at 1024 tokens. On `long-sections` it is competitive. Its best rows there (256 / 0.2 at 0.881, 512 / 0.2 at 0.875) are slightly above StructureAware's best (0.852), but that gap is about one question of 20, within noise.
 - **Semantic is close to StructureAware but never ahead**, and it costs one embedding call per sentence at ingest. MaxTokens changes its results little, because most of its breaks come from topic shifts rather than the size limit.
-- **On `long-sections`, size now matters**, as intended. StructureAware's chunk count falls from 86 at 128 tokens to 16 at 1024, and R@1 and R@3 move in opposite directions. Larger chunks get the right passage into the top 3 more often (0.950 against 0.850) but rank it first less often.
+- **On `long-sections`, size now matters**, as intended. StructureAware's chunk count falls from 86 at 128 tokens to 16 at 1024. At 512 tokens and above, the right passage is in the top 3 for 19 of 20 questions (R@3 0.950, against 0.850 at 128). Ranking it first does not follow the same trend: R@1 is highest at 256 tokens (0.750 to 0.800) and between 0.600 and 0.750 everywhere else, with no steady direction.
 
 ## Default settings
 

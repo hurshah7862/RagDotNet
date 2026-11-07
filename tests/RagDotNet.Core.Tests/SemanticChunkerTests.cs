@@ -166,6 +166,83 @@ public class SemanticChunkerTests
             Hashing.ChunkingHash(new ChunkingOptions { BreakpointPercentile = 90 }, chunker, "cl100k_base"));
     }
 
+    [Fact] // Deferred minor 6: only the semantic chunker reads the percentile
+    public void Percentile_does_not_change_other_chunkers_hashes()
+    {
+        IChunker[] others = [new StructureAwareChunker(Tok), new FixedSizeChunker(Tok)];
+        Assert.All(others, chunker => Assert.Equal(
+            Hashing.ChunkingHash(new ChunkingOptions { BreakpointPercentile = 95 }, chunker, "cl100k_base"),
+            Hashing.ChunkingHash(new ChunkingOptions { BreakpointPercentile = 90 }, chunker, "cl100k_base")));
+    }
+
+    [Theory] // Deferred minor 7: pins the interpolation (NumPy's default "linear" method)
+    [InlineData(new double[] { 4, 0, 2, 1, 3 }, 50, 2)]
+    [InlineData(new double[] { 0, 0, 0, 0, 0, 0, 1 }, 95, 0.7)]
+    [InlineData(new double[] { 1, 2, 3, 4 }, 25, 1.75)]
+    [InlineData(new double[] { 1, 2 }, 100, 2)]
+    [InlineData(new double[] { 5 }, 10, 5)]
+    public void Percentile_interpolates_between_the_nearest_ranks(double[] values, double p, double expected) =>
+        Assert.Equal(expected, SemanticChunker.Percentile(values, p), 12);
+
+    [Fact]
+    public void Percentile_of_no_values_is_infinite() =>
+        Assert.Equal(double.PositiveInfinity, SemanticChunker.Percentile([], 95));
+
+    /// <summary>Returns a vector whose length is the number of words, so different sentences get different lengths.</summary>
+    private sealed class RaggedEmbedder : IEmbeddingGenerator<string, Embedding<float>>
+    {
+        public Task<GeneratedEmbeddings<Embedding<float>>> GenerateAsync(
+            IEnumerable<string> values, EmbeddingGenerationOptions? options = null, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new GeneratedEmbeddings<Embedding<float>>(
+                values.Select(v => new Embedding<float>(Enumerable.Repeat(1f, v.Split(' ').Length).ToArray()))));
+
+        public object? GetService(Type serviceType, object? serviceKey = null) => null;
+
+        public void Dispose() { }
+    }
+
+    [Fact] // Deferred minor 3
+    public async Task Vectors_of_different_lengths_throw()
+    {
+        var chunker = new SemanticChunker(Tok, new RaggedEmbedder());
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            chunker.ChunkAsync(new ParsedDocument([Para("The cat sat. The black cat sat on the mat.")]), new ChunkingOptions(), Ct));
+
+        Assert.Contains("dimensional", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact] // Deferred minor 3
+    public async Task Vectors_must_match_the_configured_dimensions()
+    {
+        var chunker = new SemanticChunker(Tok, new TopicEmbedder(), dimensions: 4);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            chunker.ChunkAsync(new ParsedDocument([Para("The cat sat.")]), new ChunkingOptions(), Ct));
+
+        Assert.Contains("3-dimensional", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("4 dimensions", ex.Message, StringComparison.Ordinal);
+    }
+
+    private sealed class Collect : IProgress<IngestProgress>
+    {
+        public List<IngestProgress> Reports { get; } = [];
+
+        public void Report(IngestProgress value) => Reports.Add(value);
+    }
+
+    [Fact] // Deferred minor 5
+    public async Task Semantic_ingest_reports_sentence_embedding_progress()
+    {
+        var (rag, _, _, _, _) = Create(o => o.Chunking = new ChunkingOptions { Chunker = Chunkers.Semantic });
+        var progress = new Collect();
+
+        await rag.IngestAsync(Md("d", "# Guide\n\n" + Sentences("cat", 5) + "\n"), progress: progress, cancellationToken: Ct);
+
+        var chunking = progress.Reports.Where(r => r.Stage == IngestStage.Chunking).ToList();
+        Assert.Contains(chunking, r => r.TotalChunks == 5 && r.ChunksEmbedded == 5);
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]

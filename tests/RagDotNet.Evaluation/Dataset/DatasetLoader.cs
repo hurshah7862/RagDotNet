@@ -42,6 +42,12 @@ public static class DatasetLoader
         foreach (var dir in isSet ? new List<string> { full } : subsets)
         {
             var name = Path.GetFileName(dir);
+            if (string.Equals(name, Running.ReportWriter.AllSection, StringComparison.OrdinalIgnoreCase))
+            {
+                errors.Add($"set name '{name}' is reserved for the report section that pools every set; rename the directory");
+                continue;
+            }
+
             try
             {
                 sets.Add(new DatasetSet(name, await LoadAsync(dir, ct).ConfigureAwait(false)));
