@@ -1,8 +1,34 @@
 # RagDotNet
 
+[![CI](https://github.com/hurshah7862/RagDotNet/actions/workflows/ci.yml/badge.svg)](https://github.com/hurshah7862/RagDotNet/actions/workflows/ci.yml)
+
 RagDotNet is a .NET library for retrieval-augmented generation (RAG). It ingests documents, chunks and embeds them into a vector store, and answers questions with cited sources, built on Microsoft.Extensions.AI and Microsoft.Extensions.VectorData.
 
-> **Under development.** RagDotNet is not released yet. The public API can still change between commits, stored data may need re-ingesting after an update, and no package is published to NuGet. Core ingestion, retrieval, cited answers, chat and three chunkers work today; PDF/DOCX/HTML readers, OCR, hybrid search and reranking, more vector stores, and hosting adapters are still to come. Feedback and issues are welcome.
+> **Under development.** RagDotNet is not released yet. The public API can still change between commits, stored data may need re-ingesting after an update, and no package is published to NuGet. Core ingestion, retrieval, cited answers, chat and query rewriting, and three chunkers work today; PDF/DOCX/HTML readers, OCR, hybrid search and reranking, more vector stores, and hosting adapters are still to come. Feedback and issues are welcome.
+
+## Why this exists
+
+RagDotNet is for .NET developers who want an application to answer questions from their own documents, with sources, without assembling a retrieval pipeline by hand. It handles the parts that are easy to get wrong: re-ingesting only documents that changed, citing the passages an answer came from, and keeping one tenant's documents out of another tenant's answers. What sets it apart is per-tenant access control applied inside every query, a tracked reindex when you switch embedding models, and an evaluation project that measures retrieval quality instead of assuming it.
+
+## Project status
+
+| Area | Status |
+|---|---|
+| Text and Markdown readers | Works |
+| Chunking: structure-aware, fixed-size and semantic, with custom chunkers pluggable | Works |
+| Vector retrieval, cited answers, streaming | Works |
+| Conversations and query rewriting (Condense, multi-query, HyDE) | Works |
+| Document lifecycle: change detection, update, delete | Works |
+| Access control: tenant partitions, read filters, permissions | Works |
+| Embedding-model tracking and reindex | Works |
+| External content store, dependency injection, OpenTelemetry tracing | Works |
+| Retrieval evaluation harness | Works |
+| PDF, DOCX and HTML readers | Planned |
+| OCR | Planned |
+| Hybrid search and reranking | Planned |
+| More vector stores | Planned |
+| Hosting adapters | Planned |
+| NuGet packages | Planned |
 
 ## Install
 
@@ -26,8 +52,8 @@ services.AddRag(o =>
     o.Metadata.Add<string>("tenant");
     o.PartitionKeys.Add("tenant"); // each tenant gets its own partition
 })
-.AddReader<MyReader>()
-.AddAccessScope<TenantAccessScope>();
+.AddReader<MyReader>()                   // optional: your own IDocumentReader
+.AddAccessScope<TenantAccessScope>();    // optional: your own IAccessScope
 // The app separately registers IChatClient, IEmbeddingGenerator and VectorStore.
 ```
 
@@ -35,19 +61,32 @@ Options bind through `IOptions<RagOptions>` and are validated at startup. `IRagP
 
 ## Quick start without dependency injection
 
+A complete console program, using local models through [Ollama](https://ollama.com) (`ollama pull llama3.2:3b` and `ollama pull nomic-embed-text`) and the in-memory vector store. Add the `OllamaSharp` and `CommunityToolkit.VectorData.InMemory` packages and a reference to `RagDotNet.Core`:
+
 ```csharp
+using CommunityToolkit.VectorData.InMemory;
+using Microsoft.Extensions.AI;
+using OllamaSharp;
+using RagDotNet.Configuration;
+using RagDotNet.Documents;
+using RagDotNet.Generation;
+
+IChatClient chat = new OllamaApiClient(new Uri("http://localhost:11434"), "llama3.2:3b");
+IEmbeddingGenerator<string, Embedding<float>> embedder = new OllamaApiClient(new Uri("http://localhost:11434"), "nomic-embed-text");
+
 var rag = new RagPipelineBuilder()
     .UseChatClient(chat)
     .UseEmbeddingGenerator(embedder)
-    .UseVectorStore(store, "docs", dimensions: 768)
-    .Configure(o => o.Metadata.Add<string>("category"))
-    .AddReader(new MyReader())
+    .UseVectorStore(new InMemoryVectorStore(), "docs", dimensions: 768)
     .Build();           // or .BuildAdmin() for IRagAdmin
 
 await rag.IngestAsync(DocumentSource.FromFile("guide.md"));
 RagAnswer answer = await rag.AskAsync("How do I install on Linux?");
+Console.WriteLine(answer.Text);
 foreach (var c in answer.Citations) Console.WriteLine($"[{c.Number}] {c.Chunk.SourceName} — {c.Location}");
 ```
+
+Add your own readers with `.AddReader(reader)` and metadata fields with `.Configure(o => o.Metadata.Add<string>("category"))`.
 
 `IRagPipeline` exposes `IngestAsync`, `IngestManyAsync`, `DeleteDocumentAsync`, `RetrieveAsync`, `AskAsync` and `AskStreamingAsync`. Text and Markdown readers are built in.
 
@@ -169,10 +208,22 @@ ollama pull nomic-embed-text
 RAGDOTNET_INTEGRATION=1 dotnet test --project tests/RagDotNet.IntegrationTests
 ```
 
-## Evaluation
+## How retrieval quality is measured
 
-`tests/RagDotNet.Evaluation` measures how well retrieval finds the passage that answers each of 60 labelled questions, in two dataset sets, reporting recall@1/3/5 and MRR for each chunker, chunk size, overlap and retrieval mode. `dotnet run --project tests/RagDotNet.Evaluation` runs it on fake embeddings; add `-- --embedder ollama` for real numbers. See [docs/evaluation.md](docs/evaluation.md) for the method and the baseline results.
+`tests/RagDotNet.Evaluation` is a console app that measures how often retrieval finds the passage that answers a question. It uses only the library's public API.
+
+- **Dataset.** 60 questions over original Markdown documents for a fictional note-taking app, in two sets that are scored separately and together: `base` (8 documents with many short sections, 40 questions) and `long-sections` (4 documents whose sections run 800 to 2000 words, 20 questions), which is what makes chunk size matter. Each question names its document and a short verbatim fragment, 20 to 80 characters, of the passage that answers it. The harness refuses to run if a fragment is missing, appears more than once, spans two blocks or sits in a heading, so editing a document can't silently change the scores.
+- **Run.** For every combination of chunker (structure-aware, fixed-size and semantic), chunk size (128, 256, 512 and 1024 tokens), overlap (0, 0.1 and 0.2; semantic ignores it) and retrieval mode, it builds a fresh in-memory pipeline for each set, ingests the documents, and retrieves the top 10 chunks for each question. Vector search is the default mode; multi-query and HyDE are opt-in.
+- **Scoring.** A retrieved chunk counts as relevant when it comes from the right document and contains the fragment. The report gives recall@1, recall@3 and recall@5, the share of questions whose first relevant chunk is within the top 1, 3 or 5, and the mean reciprocal rank (MRR).
+- **Two modes.** The default fake mode uses a deterministic bag-of-words embedder, needs no model, and gives byte-identical reports; it checks that the harness works, and its scores mean nothing. Ollama mode gives real numbers.
+
+```
+dotnet run --project tests/RagDotNet.Evaluation                            # fake mode, no model needed
+dotnet run --project tests/RagDotNet.Evaluation -- --embedder ollama      # real embeddings via Ollama
+```
+
+The harness's own tests are in `tests/RagDotNet.Evaluation.Tests`. [docs/evaluation.md](docs/evaluation.md) describes the method and its limits and records the latest real-mode results, and [docs/evaluation-results.md](docs/evaluation-results.md) holds the full report. [docs/chunking.md](docs/chunking.md) compares the three chunkers.
 
 ## License
 
-MIT
+MIT. See [LICENSE](LICENSE).
