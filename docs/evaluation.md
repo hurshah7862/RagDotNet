@@ -67,9 +67,10 @@ Add `--modes vector,multi-query,hyde` to include query rewriting, which makes on
 | `--embed-model` / `--chat-model` | `nomic-embed-text` / `llama3.2:3b` |
 | `--dimensions` | 256 (fake), 768 (ollama) |
 | `--modes` | `vector` |
+| `--chunkers` | `structure-aware,fixed-size,semantic` |
 | `--max-tokens` | `128,256,512,1024` |
-| `--overlap` | `0,0.1,0.2` |
-| `--dataset` | `Dataset` next to the harness |
+| `--overlap` | `0,0.1,0.2` (semantic ignores it and runs once per size, shown as `n/a`) |
+| `--dataset` | `Dataset` next to the harness: a root of set directories, or one set |
 | `--output` | none; the report always goes to stdout |
 
 The harness exits with:

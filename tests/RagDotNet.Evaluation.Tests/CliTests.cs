@@ -1,3 +1,4 @@
+using System.Globalization;
 using static RagDotNet.Evaluation.Tests.TestData;
 
 namespace RagDotNet.Evaluation.Tests;
@@ -46,9 +47,8 @@ public class CliTests
         Assert.Equal(0, code);
         Assert.Contains("- Embedder: fake (fake-embed)\n", report, StringComparison.Ordinal);
         Assert.Contains("- Chat model: none\n", report, StringComparison.Ordinal);
-        Assert.Contains("- Corpus documents: 2\n", report, StringComparison.Ordinal);
-        Assert.Contains("- Questions: 3\n", report, StringComparison.Ordinal);
-        Assert.Matches(@"- Dataset hash: [0-9a-f]{12}\n", report);
+        Assert.Matches(@"- Set `ragdotnet-eval-[0-9a-f]+`: 2 documents, 3 questions, hash [0-9a-f]{12}\n", report);
+        Assert.DoesNotContain("- Dataset hash:", report, StringComparison.Ordinal);
         Assert.Matches(@"\| structure-aware \| 256 \| 0\.1 \| vector \| \d+ \| \d\.\d{3} \| \d\.\d{3} \| \d\.\d{3} \| \d\.\d{3} \|", report);
     }
 
@@ -63,7 +63,63 @@ public class CliTests
         Assert.DoesNotContain("- Chat model: none", report, StringComparison.Ordinal);
     }
 
+    private static string[] RowsOf(string report, string chunker) =>
+        report.Split('\n').Where(l => l.StartsWith($"| {chunker} ", StringComparison.Ordinal)).ToArray();
+
+    [Fact]
+    public async Task Default_chunkers_are_all_three()
+    {
+        var (code, report, err) = await Run("--dataset", SmallDataset(), "--max-tokens", "256", "--overlap", "0");
+
+        Assert.True(code == 0, err);
+        Assert.Single(RowsOf(report, "structure-aware"));
+        Assert.Single(RowsOf(report, "fixed-size"));
+        Assert.Single(RowsOf(report, "semantic"));
+    }
+
+    [Fact] // Review Focus 5
+    public async Task Semantic_runs_once_per_MaxTokens_and_shows_na()
+    {
+        var (code, report, err) = await Run("--dataset", SmallDataset(), "--chunkers", "semantic", "--max-tokens", "128,256", "--overlap", "0.1,0.2");
+
+        Assert.True(code == 0, err);
+        var rows = RowsOf(report, "semantic");
+        Assert.Equal(2, rows.Length);
+        Assert.All(rows, r => Assert.Equal("n/a", r.Split('|', StringSplitOptions.TrimEntries)[3]));
+    }
+
+    [Fact]
+    public async Task Report_has_a_section_per_set_and_all()
+    {
+        var root = WriteSets(
+            ("a", new Dictionary<string, string> { ["doc-a"] = "# A\n\nThe default theme is called Parchment.\n" },
+                """[ { "id": "qa", "question": "Theme?", "documentId": "doc-a", "evidence": "default theme is called parchment" } ]"""),
+            ("b", new Dictionary<string, string> { ["doc-b"] = "# B\n\nRun the sync command to force a sync now.\n" },
+                """[ { "id": "qb", "question": "Sync?", "documentId": "doc-b", "evidence": "run the sync command to force a sync" } ]"""));
+
+        var (code, report, err) = await Run("--dataset", root, "--chunkers", "structure-aware", "--max-tokens", "128", "--overlap", "0");
+
+        Assert.True(code == 0, err);
+        var headings = report.Split('\n').Where(l => l.StartsWith("## ", StringComparison.Ordinal)).ToArray();
+        Assert.Equal(["## a", "## b", "## all"], headings);
+        Assert.Matches(@"- Set `a`: 1 documents, 1 questions, hash [0-9a-f]{12}\n- Set `b`: 1 documents, 1 questions, hash [0-9a-f]{12}\n", report);
+        var chunks = RowsOf(report, "structure-aware").Select(r => int.Parse(r.Split('|', StringSplitOptions.TrimEntries)[5], CultureInfo.InvariantCulture)).ToArray();
+        Assert.Equal(3, chunks.Length);
+        Assert.Equal(chunks[0] + chunks[1], chunks[2]);
+    }
+
+    [Fact]
+    public async Task Single_set_report_has_no_all_section()
+    {
+        var (code, report, _) = await Run("--dataset", SmallDataset(), "--chunkers", "structure-aware", "--max-tokens", "128", "--overlap", "0");
+
+        Assert.Equal(0, code);
+        Assert.DoesNotContain("## all", report, StringComparison.Ordinal);
+        Assert.Single(report.Split('\n'), l => l.StartsWith("## ", StringComparison.Ordinal));
+    }
+
     [Theory]
+    [InlineData("--chunkers", "bogus")]
     [InlineData("--max-tokens", "abc")]
     [InlineData("--max-tokens", "8")]
     [InlineData("--overlap", "0.5")]

@@ -13,6 +13,59 @@ public static class DatasetLoader
     private const int MinEvidence = 20;
     private const int MaxEvidence = 80;
 
+    /// <summary>
+    /// Loads the dataset sets under <paramref name="root"/>: the root itself when it holds <c>corpus/</c> (one set named
+    /// after the directory), otherwise each subdirectory holding <c>corpus/</c>, in ordinal name order.
+    /// </summary>
+    /// <exception cref="DatasetValidationException">Any set breaks a rule, or ids repeat across sets; every problem is listed.</exception>
+    public static async Task<IReadOnlyList<DatasetSet>> LoadSetsAsync(string root, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(root);
+        var full = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var subsets = Directory.Exists(full)
+            ? Directory.GetDirectories(full).Where(d => Directory.Exists(Path.Combine(d, "corpus"))).Order(StringComparer.Ordinal).ToList()
+            : [];
+        var isSet = Directory.Exists(Path.Combine(full, "corpus"));
+        if (isSet && subsets.Count > 0)
+        {
+            // Usually a stale build output still holding an older layout; refuse rather than guess which to use.
+            throw new DatasetValidationException([$"{full} holds both corpus/ and dataset set directories; remove one"]);
+        }
+
+        if (!isSet && subsets.Count == 0)
+        {
+            throw new DatasetValidationException([$"no dataset found in {full}: expected corpus/ and questions.json, or set directories holding them"]);
+        }
+
+        var errors = new List<string>();
+        var sets = new List<DatasetSet>();
+        foreach (var dir in isSet ? new List<string> { full } : subsets)
+        {
+            var name = Path.GetFileName(dir);
+            try
+            {
+                sets.Add(new DatasetSet(name, await LoadAsync(dir, ct).ConfigureAwait(false)));
+            }
+            catch (DatasetValidationException ex)
+            {
+                errors.AddRange(ex.Errors.Select(e => $"{name}: {e}"));
+            }
+        }
+
+        Duplicates(sets, s => s.Dataset.Documents.Select(d => d.DocumentId), "document id", errors);
+        Duplicates(sets, s => s.Dataset.Questions.Select(q => q.Id), "question id", errors);
+        return errors.Count > 0 ? throw new DatasetValidationException(errors) : sets;
+    }
+
+    private static void Duplicates(List<DatasetSet> sets, Func<DatasetSet, IEnumerable<string>> ids, string what, List<string> errors)
+    {
+        var seen = sets.SelectMany(s => ids(s).Distinct(StringComparer.Ordinal).Select(id => (Id: id, Set: s.Name)));
+        foreach (var g in seen.GroupBy(x => x.Id, StringComparer.Ordinal).Where(g => g.Count() > 1))
+        {
+            errors.Add($"{what} '{g.Key}' appears in sets {string.Join(" and ", g.Select(x => x.Set))}");
+        }
+    }
+
     /// <summary>Loads and validates the dataset.</summary>
     /// <exception cref="DatasetValidationException">The dataset breaks one or more rules; every problem is listed.</exception>
     public static async Task<Dataset> LoadAsync(string datasetDirectory, CancellationToken ct)

@@ -19,9 +19,10 @@ public sealed record Options
           --chat-model <name>         Ollama chat model for multi-query/hyde (default llama3.2:3b)
           --dimensions <n>            Embedding dimensions (default 256 fake, 768 ollama)
           --modes <list>              vector,multi-query,hyde (default vector)
+          --chunkers <list>           structure-aware,fixed-size,semantic (default all three)
           --max-tokens <list>         Chunk sizes (default 128,256,512,1024)
-          --overlap <list>            Overlap ratios in [0, 0.5) (default 0,0.1,0.2)
-          --dataset <dir>             Dataset directory (default: Dataset next to the harness)
+          --overlap <list>            Overlap ratios in [0, 0.5) (default 0,0.1,0.2; semantic ignores it)
+          --dataset <dir>             A dataset set, or a root of set directories (default: Dataset next to the harness)
           --output <path>             Also write the report to this file
         """;
 
@@ -49,8 +50,12 @@ public sealed record Options
     /// <summary>Overlap ratios.</summary>
     public IReadOnlyList<double> Overlaps { get; init; } = [0, 0.1, 0.2];
 
-    /// <summary>Chunkers; only structure-aware exists in this stage.</summary>
-    public IReadOnlyList<string> Chunkers { get; init; } = [RagDotNet.Chunking.Chunkers.StructureAware];
+    /// <summary>The built-in chunkers the harness can measure.</summary>
+    public static IReadOnlyList<string> KnownChunkers { get; } =
+        [RagDotNet.Chunking.Chunkers.StructureAware, RagDotNet.Chunking.Chunkers.FixedSize, RagDotNet.Chunking.Chunkers.Semantic];
+
+    /// <summary>Chunkers to measure; all three built-ins by default.</summary>
+    public IReadOnlyList<string> Chunkers { get; init; } = KnownChunkers;
 
     /// <summary>Dataset directory.</summary>
     public string DatasetDirectory { get; init; } = Path.Combine(AppContext.BaseDirectory, "Dataset");
@@ -88,6 +93,7 @@ public sealed record Options
                 "--chat-model" => o with { ChatModel = NonEmpty(flag, value) },
                 "--dimensions" => SetDimensions(o, ParseInt(flag, value, 1), out dimensions),
                 "--modes" => o with { Modes = List(flag, value, m => EvaluationConfig.Modes.Contains(m) ? m : throw Bad(flag, m, "expected vector, multi-query or hyde")) },
+                "--chunkers" => o with { Chunkers = List(flag, value, c => KnownChunkers.Contains(c) ? c : throw Bad(flag, c, "expected structure-aware, fixed-size or semantic")) },
                 "--max-tokens" => o with { MaxTokens = List(flag, value, v => ParseInt(flag, v, 16)) },
                 "--overlap" => o with { Overlaps = List(flag, value, v => ParseOverlap(flag, v)) },
                 "--dataset" => o with { DatasetDirectory = NonEmpty(flag, value) },
@@ -100,7 +106,7 @@ public sealed record Options
     }
 
     private static readonly string[] Known =
-        ["--embedder", "--ollama-url", "--embed-model", "--chat-model", "--dimensions", "--modes", "--max-tokens", "--overlap", "--dataset", "--output"];
+        ["--embedder", "--ollama-url", "--embed-model", "--chat-model", "--dimensions", "--modes", "--chunkers", "--max-tokens", "--overlap", "--dataset", "--output"];
 
     private static bool IsKnown(string flag) => Known.Contains(flag, StringComparer.Ordinal);
 

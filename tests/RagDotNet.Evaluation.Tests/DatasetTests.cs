@@ -109,7 +109,7 @@ public class DatasetTests
     [Fact] // Review Focus 5
     public async Task Shipped_dataset_is_valid_and_balanced()
     {
-        var d = await DatasetLoader.LoadAsync(Path.Combine(AppContext.BaseDirectory, "Dataset"), Ct);
+        var d = await DatasetLoader.LoadAsync(Path.Combine(AppContext.BaseDirectory, "Dataset", "base"), Ct);
 
         Assert.Equal(8, d.Documents.Count);
         Assert.InRange(d.Questions.Count, 40, 40);
@@ -124,7 +124,7 @@ public class DatasetTests
     [Fact]
     public async Task Shipped_questions_cover_tables_and_code_blocks()
     {
-        var d = await DatasetLoader.LoadAsync(Path.Combine(AppContext.BaseDirectory, "Dataset"), Ct);
+        var d = await DatasetLoader.LoadAsync(Path.Combine(AppContext.BaseDirectory, "Dataset", "base"), Ct);
         var reader = new RagDotNet.Readers.MarkdownReader();
         var kinds = new List<RagDotNet.Documents.BlockKind>();
         foreach (var q in d.Questions)
@@ -148,9 +148,10 @@ public class DatasetTests
         var (code, report, err) = await CliTests.Run("--max-tokens", "256", "--overlap", "0");
 
         Assert.True(code == 0, err);
-        var row = Assert.Single(report.Split('\n'), l => l.StartsWith("| structure-aware ", StringComparison.Ordinal));
-        var r5 = double.Parse(row.Split('|', StringSplitOptions.TrimEntries)[8], System.Globalization.CultureInfo.InvariantCulture);
-        Assert.True(r5 > 0, row);
+        var rows = report.Split('\n').Where(l => l.StartsWith("| ", StringComparison.Ordinal) && !l.StartsWith("| Chunker", StringComparison.Ordinal)).ToArray();
+        Assert.NotEmpty(rows);
+        Assert.All(rows, row => Assert.True(
+            double.Parse(row.Split('|', StringSplitOptions.TrimEntries)[8], System.Globalization.CultureInfo.InvariantCulture) > 0, row));
     }
 
     [Fact]

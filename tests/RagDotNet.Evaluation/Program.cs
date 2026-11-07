@@ -69,10 +69,10 @@ public static class Program
 
     private static async Task<int> RunCoreAsync(Options options, TextWriter stdout, TextWriter stderr, CancellationToken ct)
     {
-        Dataset dataset;
+        IReadOnlyList<DatasetSet> sets;
         try
         {
-            dataset = await DatasetLoader.LoadAsync(options.DatasetDirectory, ct).ConfigureAwait(false);
+            sets = await DatasetLoader.LoadSetsAsync(options.DatasetDirectory, ct).ConfigureAwait(false);
         }
         catch (DatasetValidationException ex)
         {
@@ -116,8 +116,8 @@ public static class Program
         using var ownedChat = chat;
 
         var configs = EvaluationConfig.Matrix(options.Chunkers, options.MaxTokens, options.Overlaps, options.Modes);
-        var results = await new EvaluationRunner(embedder, options.Dimensions, chat).RunAsync(dataset, configs, ct).ConfigureAwait(false);
-        var report = ReportWriter.Write(meta, dataset, results);
+        var results = await new EvaluationRunner(embedder, options.Dimensions, chat).RunAsync(sets, configs, ct).ConfigureAwait(false);
+        var report = ReportWriter.Write(meta, sets, results);
 
         await stdout.WriteAsync(report).ConfigureAwait(false);
         if (options.Output is { } path)
