@@ -25,6 +25,11 @@ public sealed record CorpusDocument(string DocumentId, string FilePath, string N
 /// <param name="Hash">First 12 hex characters of SHA-256 over the corpus files and questions.json.</param>
 public sealed record Dataset(IReadOnlyList<CorpusDocument> Documents, IReadOnlyList<Question> Questions, string Hash);
 
+/// <summary>A named dataset; each set is ingested and scored on its own.</summary>
+/// <param name="Name">The set's directory name.</param>
+/// <param name="Dataset">Its documents and questions.</param>
+public sealed record DatasetSet(string Name, Dataset Dataset);
+
 /// <summary>The dataset failed validation.</summary>
 public sealed class DatasetValidationException : Exception
 {

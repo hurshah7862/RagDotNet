@@ -47,13 +47,14 @@ public class RunnerTests
     [Fact]
     public async Task Runner_scores_a_small_dataset_with_fake_embeddings()
     {
-        var dataset = await DatasetLoader.LoadAsync(SmallDataset(), Ct);
+        var sets = await DatasetLoader.LoadSetsAsync(SmallDataset(), Ct);
         var configs = EvaluationConfig.Matrix(["structure-aware"], [128, 256], [0], ["vector"]);
         using var embedder = new FakeEmbeddingGenerator(256);
 
-        var results = await new EvaluationRunner(embedder, 256, chat: null).RunAsync(dataset, configs, Ct);
+        var results = await new EvaluationRunner(embedder, 256, chat: null).RunAsync(sets, configs, Ct);
 
         Assert.Equal(configs, results.Select(r => r.Config));
+        Assert.All(results, r => Assert.Equal(sets[0].Name, r.Set));
         Assert.All(results, r =>
         {
             Assert.True(r.ChunkCount > 0);
@@ -68,12 +69,26 @@ public class RunnerTests
     [Fact]
     public async Task Chat_modes_without_a_chat_client_throw_before_ingesting()
     {
-        var dataset = await DatasetLoader.LoadAsync(SmallDataset(), Ct);
+        var sets = await DatasetLoader.LoadSetsAsync(SmallDataset(), Ct);
         using var embedder = new FakeEmbeddingGenerator(256);
         var runner = new EvaluationRunner(embedder, 256, chat: null);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            runner.RunAsync(dataset, EvaluationConfig.Matrix(["structure-aware"], [128], [0], ["hyde"]), Ct));
+            runner.RunAsync(sets, EvaluationConfig.Matrix(["structure-aware"], [128], [0], ["hyde"]), Ct));
+    }
+
+    [Fact]
+    public void Matrix_runs_semantic_once_per_MaxTokens_with_no_overlap()
+    {
+        var m = EvaluationConfig.Matrix(["structure-aware", "semantic"], [128], [0.1, 0.2], ["vector"]);
+
+        Assert.Equal(
+            [
+                new EvaluationConfig("structure-aware", 128, 0.1, "vector"),
+                new EvaluationConfig("structure-aware", 128, 0.2, "vector"),
+                new EvaluationConfig("semantic", 128, 0, "vector"),
+            ],
+            m);
     }
 
     [Fact]

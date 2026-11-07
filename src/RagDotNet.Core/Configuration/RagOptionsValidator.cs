@@ -41,7 +41,7 @@ internal sealed class RagOptionsValidator(
                 failures.Add($"Partition key '{key}' must be of type string but is {type.Name}.");
         }
 
-        var chunkerNames = new HashSet<string>(StringComparer.Ordinal) { Chunkers.StructureAware };
+        var chunkerNames = new HashSet<string>(StringComparer.Ordinal) { Chunkers.StructureAware, Chunkers.FixedSize, Chunkers.Semantic };
         foreach (var chunker in appChunkers)
         {
             if (string.IsNullOrWhiteSpace(chunker.Name))

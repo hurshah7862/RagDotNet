@@ -1,0 +1,22 @@
+[
+  { "id": "long-mig-1", "question": "When I bring my Notion workspace over, what happens to its databases?", "documentId": "migration-guide", "evidence": "Pages, nested pages as folders, databases as tables" },
+  { "id": "long-mig-2", "question": "My laptop went to sleep halfway through a big import. Do I have to start again from the beginning?", "documentId": "migration-guide", "evidence": "the importer resumes from the last note it finished writing" },
+  { "id": "long-mig-3", "question": "Which encoding is assumed for imported files that are not valid UTF-8?", "documentId": "migration-guide", "evidence": "Files that are not valid UTF-8 are read as Windows-1252" },
+  { "id": "long-mig-4", "question": "How can I preview which links the importer would repair without changing anything?", "documentId": "migration-guide", "evidence": "quill import fix-links --dry-run --vault ~/Notes" },
+  { "id": "long-mig-5", "question": "For how long can I still take back an import I regret?", "documentId": "migration-guide", "evidence": "The snapshot taken before the import is kept for 14 days" },
+  { "id": "long-col-1", "question": "Which role lets a reviewer leave remarks without touching the wording?", "documentId": "collaboration", "evidence": "Read every note and leave comments, without changing the text" },
+  { "id": "long-col-2", "question": "How long does an invitation link stay valid?", "documentId": "collaboration", "evidence": "an invitation link stops working after seven days" },
+  { "id": "long-col-3", "question": "Is there a cap on how many people can belong to one shared notebook?", "documentId": "collaboration", "evidence": "A shared notebook can have up to 50 members, counting the owner" },
+  { "id": "long-col-4", "question": "How far back can I go to see earlier versions of a shared note?", "documentId": "collaboration", "evidence": "version history keeps every saved change for 90 days" },
+  { "id": "long-col-5", "question": "Where do resolved comments go once a discussion is finished?", "documentId": "collaboration", "evidence": "Resolved comments are hidden from the margin but remain in the note's history" },
+  { "id": "long-tpl-1", "question": "Which template placeholder decides where I start typing in the new note?", "documentId": "templates-and-automation", "evidence": "The place where typing continues after the template is inserted" },
+  { "id": "long-tpl-2", "question": "How do I keep an old template around without it showing up when I pick one?", "documentId": "templates-and-automation", "evidence": "move it to a subfolder named Archive inside the Templates folder" },
+  { "id": "long-tpl-3", "question": "How can several templates reuse the same block of text?", "documentId": "templates-and-automation", "evidence": "put it in a template of its own and include it with the include variable" },
+  { "id": "long-tpl-4", "question": "In the example weekly review rule, when does it run?", "documentId": "templates-and-automation", "evidence": "schedule: every Friday at 16:00" },
+  { "id": "long-tpl-5", "question": "I was away for a week with the app shut. Will my daily rule create seven notes when I come back?", "documentId": "templates-and-automation", "evidence": "rules that miss their time while Quill is closed run once at the next start" },
+  { "id": "long-perf-1", "question": "Which command rebuilds the search index with four threads?", "documentId": "performance-tuning", "evidence": "quill index rebuild --threads 4 --vault ~/Notes" },
+  { "id": "long-perf-2", "question": "Why does search miss words inside my enormous pasted log note?", "documentId": "performance-tuning", "evidence": "notes larger than 5 MB are indexed by title only" },
+  { "id": "long-perf-3", "question": "Roughly how much disk space does the search index take up?", "documentId": "performance-tuning", "evidence": "it uses about a tenth of the space taken up by the notes themselves" },
+  { "id": "long-perf-4", "question": "What does the cache size setting actually control?", "documentId": "performance-tuning", "evidence": "Memory kept for recently opened notes before the oldest are dropped" },
+  { "id": "long-perf-5", "question": "My vault is gigantic and the sidebar keeps working hard. Which feature should I switch off?", "documentId": "performance-tuning", "evidence": "Vaults with more than 100,000 notes should turn off live backlink counts" }
+]

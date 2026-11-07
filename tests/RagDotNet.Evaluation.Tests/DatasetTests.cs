@@ -109,7 +109,7 @@ public class DatasetTests
     [Fact] // Review Focus 5
     public async Task Shipped_dataset_is_valid_and_balanced()
     {
-        var d = await DatasetLoader.LoadAsync(Path.Combine(AppContext.BaseDirectory, "Dataset"), Ct);
+        var d = await DatasetLoader.LoadAsync(Path.Combine(AppContext.BaseDirectory, "Dataset", "base"), Ct);
 
         Assert.Equal(8, d.Documents.Count);
         Assert.InRange(d.Questions.Count, 40, 40);
@@ -124,7 +124,7 @@ public class DatasetTests
     [Fact]
     public async Task Shipped_questions_cover_tables_and_code_blocks()
     {
-        var d = await DatasetLoader.LoadAsync(Path.Combine(AppContext.BaseDirectory, "Dataset"), Ct);
+        var d = await DatasetLoader.LoadAsync(Path.Combine(AppContext.BaseDirectory, "Dataset", "base"), Ct);
         var reader = new RagDotNet.Readers.MarkdownReader();
         var kinds = new List<RagDotNet.Documents.BlockKind>();
         foreach (var q in d.Questions)
@@ -148,9 +148,64 @@ public class DatasetTests
         var (code, report, err) = await CliTests.Run("--max-tokens", "256", "--overlap", "0");
 
         Assert.True(code == 0, err);
-        var row = Assert.Single(report.Split('\n'), l => l.StartsWith("| structure-aware ", StringComparison.Ordinal));
-        var r5 = double.Parse(row.Split('|', StringSplitOptions.TrimEntries)[8], System.Globalization.CultureInfo.InvariantCulture);
-        Assert.True(r5 > 0, row);
+        var rows = report.Split('\n').Where(l => l.StartsWith("| ", StringComparison.Ordinal) && !l.StartsWith("| Chunker", StringComparison.Ordinal)).ToArray();
+        Assert.NotEmpty(rows);
+        Assert.All(rows, row => Assert.True(
+            double.Parse(row.Split('|', StringSplitOptions.TrimEntries)[8], System.Globalization.CultureInfo.InvariantCulture) > 0, row));
+    }
+
+    [Fact]
+    public async Task Long_sections_set_is_valid_and_actually_long()
+    {
+        var root = Path.Combine(AppContext.BaseDirectory, "Dataset");
+        var set = Assert.Single(await DatasetLoader.LoadSetsAsync(root, Ct), s => s.Name == "long-sections").Dataset;
+
+        Assert.Equal(4, set.Documents.Count);
+        Assert.Equal(20, set.Questions.Count);
+        Assert.All(set.Documents, doc => Assert.Equal(5, set.Questions.Count(q => q.DocumentId == doc.DocumentId)));
+        Assert.All(set.Questions, q => Assert.StartsWith("long-", q.Id, StringComparison.Ordinal));
+
+        var reader = new RagDotNet.Readers.MarkdownReader();
+        var kinds = new List<RagDotNet.Documents.BlockKind>();
+        var secondHalf = 0;
+        foreach (var doc in set.Documents)
+        {
+            // Every ## section is long, and none is split further by ### headings.
+            var markdown = File.ReadAllText(doc.FilePath).Replace("\r\n", "\n", StringComparison.Ordinal);
+            Assert.DoesNotContain("\n### ", markdown, StringComparison.Ordinal);
+            var sections = markdown.Split("\n## ").Skip(1).ToList();
+            Assert.InRange(sections.Count, 2, 3);
+            Assert.All(sections, s =>
+            {
+                var words = System.Text.RegularExpressions.Regex.Matches(s[(s.IndexOf('\n') + 1)..], @"\w+").Count;
+                Assert.True(words is >= 800 and <= 2000, $"{doc.DocumentId} / {s[..s.IndexOf('\n')]}: {words} words");
+            });
+
+            await using var stream = File.OpenRead(doc.FilePath);
+            var parsed = await reader.ReadAsync(stream, new(Path.GetFileName(doc.FilePath), null), Ct);
+            var body = parsed.Blocks.Where(b => b.Kind != RagDotNet.Documents.BlockKind.Heading).ToList();
+            foreach (var q in set.Questions.Where(q => q.DocumentId == doc.DocumentId))
+            {
+                var evidence = Scoring.TextNormalizer.Normalize(q.Evidence);
+                var block = body.First(b => Scoring.TextNormalizer.Normalize(b.Text).Contains(evidence, StringComparison.Ordinal));
+                kinds.Add(block.Kind);
+                var section = string.Join(' ', body.Where(b => b.HeadingPath.SequenceEqual(block.HeadingPath)).Select(b => Scoring.TextNormalizer.Normalize(b.Text)));
+                if (section.IndexOf(evidence, StringComparison.Ordinal) > section.Length / 2) secondHalf++;
+            }
+        }
+
+        Assert.True(secondHalf >= 12, $"{secondHalf} of 20 questions have evidence in the second half of their section");
+        Assert.True(kinds.Count(k => k == RagDotNet.Documents.BlockKind.Table) >= 2, "at least 2 table questions");
+        Assert.True(kinds.Count(k => k == RagDotNet.Documents.BlockKind.Code) >= 2, "at least 2 code questions");
+
+        // The point of the set: chunk size changes how StructureAware cuts it.
+        var (code, report, err) = await CliTests.Run("--dataset", Path.Combine(root, "long-sections"),
+            "--chunkers", "structure-aware", "--max-tokens", "256,1024", "--overlap", "0");
+        Assert.True(code == 0, err);
+        var counts = report.Split('\n').Where(l => l.StartsWith("| structure-aware ", StringComparison.Ordinal))
+            .Select(l => l.Split('|', StringSplitOptions.TrimEntries)[5]).ToArray();
+        Assert.Equal(2, counts.Length);
+        Assert.NotEqual(counts[0], counts[1]);
     }
 
     [Fact]

@@ -47,6 +47,19 @@ internal static class TestData
         ]
         """);
 
+    /// <summary>Writes a dataset root holding one subdirectory per named set.</summary>
+    public static string WriteSets(params (string Name, IReadOnlyDictionary<string, string> Documents, string QuestionsJson)[] sets)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "ragdotnet-eval-sets-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        foreach (var (name, documents, questions) in sets)
+        {
+            Directory.Move(WriteDataset(documents, questions), Path.Combine(root, name));
+        }
+
+        return root;
+    }
+
     /// <summary>Writes a dataset directory (corpus/*.md and questions.json) under a fresh temp folder.</summary>
     public static string WriteDataset(IReadOnlyDictionary<string, string> documents, string questionsJson)
     {

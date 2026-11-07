@@ -70,7 +70,7 @@ public sealed partial class StructureAwareChunker(Tokenizer tokenizer) : IChunke
         var separator = byLines ? "\n" : " ";
         var units = byLines
             ? block.Text.Split('\n').Select(l => l.TrimEnd('\r'))
-            : SentenceSplit().Split(block.Text);
+            : SentenceSplitter.Pattern().Split(block.Text);
 
         var first = true;
         foreach (var unit in units)
@@ -211,7 +211,7 @@ public sealed partial class StructureAwareChunker(Tokenizer tokenizer) : IChunke
         }
         else
         {
-            foreach (Match m in SentenceSplit().Matches(previous))
+            foreach (Match m in SentenceSplitter.Pattern().Matches(previous))
                 starts.Add(m.Index + m.Length);
         }
 
@@ -228,9 +228,6 @@ public sealed partial class StructureAwareChunker(Tokenizer tokenizer) : IChunke
 
         return best;
     }
-
-    [GeneratedRegex(@"(?<=[.!?。！？])\s+")]
-    private static partial Regex SentenceSplit();
 
     private sealed record Piece(string Text, string Separator, int? Page, bool ByLines);
 }

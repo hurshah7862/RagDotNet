@@ -16,17 +16,31 @@ public sealed class EvaluationRunner(IEmbeddingGenerator<string, Embedding<float
     /// <summary>Chunks retrieved per question.</summary>
     public const int TopK = 10;
 
-    /// <summary>Scores each configuration. Configurations sharing chunker, MaxTokens and overlap share one ingestion.</summary>
+    /// <summary>
+    /// Scores each configuration on each set, set by set. Each set is ingested into its own stores, so its questions only
+    /// see its own documents. Within a set, configurations sharing chunker, MaxTokens and overlap share one ingestion.
+    /// </summary>
     /// <exception cref="InvalidOperationException">A mode other than <c>vector</c> is requested without a chat client.</exception>
-    public async Task<IReadOnlyList<ConfigResult>> RunAsync(Dataset dataset, IReadOnlyList<EvaluationConfig> configs, CancellationToken ct)
+    public async Task<IReadOnlyList<ConfigResult>> RunAsync(IReadOnlyList<DatasetSet> sets, IReadOnlyList<EvaluationConfig> configs, CancellationToken ct)
     {
-        ArgumentNullException.ThrowIfNull(dataset);
+        ArgumentNullException.ThrowIfNull(sets);
         ArgumentNullException.ThrowIfNull(configs);
         if (chat is null && configs.FirstOrDefault(c => c.Mode != EvaluationConfig.Vector) is { } needsChat)
         {
             throw new InvalidOperationException($"Mode '{needsChat.Mode}' needs a chat client.");
         }
 
+        var all = new List<ConfigResult>();
+        foreach (var set in sets)
+        {
+            all.AddRange(await RunSetAsync(set.Name, set.Dataset, configs, ct).ConfigureAwait(false));
+        }
+
+        return all;
+    }
+
+    private async Task<IReadOnlyList<ConfigResult>> RunSetAsync(string setName, Dataset dataset, IReadOnlyList<EvaluationConfig> configs, CancellationToken ct)
+    {
         var results = new List<ConfigResult>(configs.Count);
         foreach (var group in configs.GroupBy(c => (c.Chunker, c.MaxTokens, c.Overlap)))
         {
@@ -62,7 +76,7 @@ public sealed class EvaluationRunner(IEmbeddingGenerator<string, Embedding<float
                     ranks.Add(Metrics.RankOfFirstRelevant(retrieved, q));
                 }
 
-                results.Add(new ConfigResult(config, chunkCount, Metrics.Summarize(ranks), ranks));
+                results.Add(new ConfigResult(setName, config, chunkCount, Metrics.Summarize(ranks), ranks));
             }
         }
 

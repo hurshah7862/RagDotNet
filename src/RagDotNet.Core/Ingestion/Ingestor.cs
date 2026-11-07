@@ -97,6 +97,7 @@ internal sealed class Ingestor(RagEngine engine)
         p?.Report(new IngestProgress(s.DocumentId, IngestStage.Chunking, 0, 0));
         IReadOnlyList<Chunk> chunks;
         using (RagTelemetry.ActivitySource.StartActivity("rag.chunk"))
+        using (ChunkingProgress.Use(p is null ? null : (done, totalUnits) => p.Report(new IngestProgress(s.DocumentId, IngestStage.Chunking, done, totalUnits))))
             chunks = ChunkOutputGuard.Normalize(
                 chunker, await chunker.ChunkAsync(parsed, chunking, ct).ConfigureAwait(false), chunking, engine.Tokens);
         var total = chunks.Count;

@@ -4,7 +4,7 @@
 
 RagDotNet is a .NET library for retrieval-augmented generation (RAG). It ingests documents, chunks and embeds them into a vector store, and answers questions with cited sources, built on Microsoft.Extensions.AI and Microsoft.Extensions.VectorData.
 
-> **Under development.** RagDotNet is not released yet. The public API can still change between commits, stored data may need re-ingesting after an update, and no package is published to NuGet. Core ingestion, retrieval, cited answers, chat and query rewriting work today; fixed-size and semantic chunkers, PDF/DOCX/HTML readers, OCR, hybrid search and reranking, more vector stores, and hosting adapters are still to come. Feedback and issues are welcome.
+> **Under development.** RagDotNet is not released yet. The public API can still change between commits, stored data may need re-ingesting after an update, and no package is published to NuGet. Core ingestion, retrieval, cited answers, chat and query rewriting, and three chunkers work today; PDF/DOCX/HTML readers, OCR, hybrid search and reranking, more vector stores, and hosting adapters are still to come. Feedback and issues are welcome.
 
 ## Why this exists
 
@@ -15,7 +15,7 @@ RagDotNet is for .NET developers who want an application to answer questions fro
 | Area | Status |
 |---|---|
 | Text and Markdown readers | Works |
-| Structure-aware chunking, with custom chunkers pluggable | Works |
+| Chunking: structure-aware, fixed-size and semantic, with custom chunkers pluggable | Works |
 | Vector retrieval, cited answers, streaming | Works |
 | Conversations and query rewriting (Condense, multi-query, HyDE) | Works |
 | Document lifecycle: change detection, update, delete | Works |
@@ -23,7 +23,6 @@ RagDotNet is for .NET developers who want an application to answer questions fro
 | Embedding-model tracking and reindex | Works |
 | External content store, dependency injection, OpenTelemetry tracing | Works |
 | Retrieval evaluation harness | Works |
-| Fixed-size and semantic chunkers | Planned |
 | PDF, DOCX and HTML readers | Planned |
 | OCR | Planned |
 | Hybrid search and reranking | Planned |
@@ -163,15 +162,21 @@ new AccessScope(
 
 ## Chunking
 
-The default chunker is `structure-aware` (`Chunkers.StructureAware`). It splits along headings, paragraphs, sentences and lines, never across headings, and merges small blocks. Its settings are `ChunkingOptions.MaxTokens` (default 512, at least 16) and `OverlapRatio` (default 0.10, in [0, 0.5)).
+Three chunkers are built in:
+
+- `structure-aware` (`Chunkers.StructureAware`, the default) splits along headings, paragraphs, sentences and lines, never across headings, and merges small blocks.
+- `fixed-size` (`Chunkers.FixedSize`) cuts the body text into windows of at most `MaxTokens` tokens, each repeating about the last `MaxTokens × OverlapRatio` tokens of the one before (window edges never split a character, so the overlap can be slightly smaller next to emoji or CJK text).
+- `semantic` (`Chunkers.Semantic`) embeds each sentence and starts a new chunk where neighbouring sentences drift apart, by more than the `BreakpointPercentile`-th percentile of the document's distances (default 95). It also breaks at every heading and ignores `OverlapRatio`. **It embeds every sentence during ingest**, in batches of `EmbeddingBatchSize`, on top of the usual chunk embeddings; ingest progress counts those sentence-level units under the `Chunking` stage, then starts again from 0 for the `Embedding` stage.
+
+Their shared settings are `ChunkingOptions.MaxTokens` (default 512, at least 16) and `OverlapRatio` (default 0.10, in [0, 0.5)). [docs/chunking.md](docs/chunking.md) compares them on the evaluation corpus and says when to pick each.
 
 **Choosing a chunker.** `ChunkingOptions.Chunker` names the chunker. Set it as the default with `o.Chunking = new() { Chunker = "my-chunker" }`, per content type with `o.ChunkingByContentType["text/markdown"] = new() { Chunker = "my-chunker" }`, or per call with `new IngestOptions { Chunking = new() { Chunker = "my-chunker" } }`. Names are matched ordinally and are case-sensitive. An unregistered name in the options fails at startup (or `Build`); an unregistered per-call name throws `ArgumentException` before anything is written.
 
-**Writing a chunker.** Implement `IChunker`: a unique `Name`, a `Version`, and `ChunkAsync`. The name and version go into each document's chunking hash, so **bump `Version` whenever the chunker's output changes** and every document is re-chunked on its next ingest. Changing `MaxTokens`, `OverlapRatio` or the tokenizer does the same.
+**Writing a chunker.** Implement `IChunker`: a unique `Name`, a `Version`, and `ChunkAsync`. The name and version go into each document's chunking hash, so **bump `Version` whenever the chunker's output changes** and every document is re-chunked on its next ingest. Changing `MaxTokens` or the tokenizer does the same, and so does changing `OverlapRatio` (for structure-aware and fixed-size documents) or `BreakpointPercentile` (for semantic documents).
 
 **What the library guarantees.** Whatever a chunker returns, the library drops chunks whose text is blank, splits chunks longer than `MaxTokens` (keeping the heading path and pages), renumbers `Index` from 0 with no gaps or duplicates, and recomputes `TokenCount` with its own tokenizer. A chunker that returns `null`, or a list containing `null`, fails the ingest with an `InvalidOperationException` naming the chunker.
 
-**Registration.** With dependency injection call `.AddChunker<MyChunker>()` (a singleton); without it call `builder.AddChunker(new MyChunker())`. Two chunkers with the same name, including `structure-aware`, fail validation.
+**Registration.** With dependency injection call `.AddChunker<MyChunker>()` (a singleton); without it call `builder.AddChunker(new MyChunker())`. Two chunkers with the same name, including a built-in name, fail validation.
 
 ## Caching
 
@@ -207,8 +212,8 @@ RAGDOTNET_INTEGRATION=1 dotnet test --project tests/RagDotNet.IntegrationTests
 
 `tests/RagDotNet.Evaluation` is a console app that measures how often retrieval finds the passage that answers a question. It uses only the library's public API.
 
-- **Dataset.** 8 original Markdown documents for a fictional note-taking app, and 40 questions. Each question names its document and a short verbatim fragment, 20 to 80 characters, of the passage that answers it. The harness refuses to run if a fragment is missing, appears more than once, or spans two blocks, so editing a document can't silently change the scores.
-- **Run.** For every combination of chunk size (128, 256, 512 and 1024 tokens), overlap (0, 0.1 and 0.2) and retrieval mode, it builds a fresh in-memory pipeline, ingests the documents, and retrieves the top 10 chunks for each question. Vector search is the default mode; multi-query and HyDE are opt-in.
+- **Dataset.** 60 questions over original Markdown documents for a fictional note-taking app, in two sets that are scored separately and together: `base` (8 documents with many short sections, 40 questions) and `long-sections` (4 documents whose sections run 800 to 2000 words, 20 questions), which is what makes chunk size matter. Each question names its document and a short verbatim fragment, 20 to 80 characters, of the passage that answers it. The harness refuses to run if a fragment is missing, appears more than once, spans two blocks or sits in a heading, so editing a document can't silently change the scores.
+- **Run.** For every combination of chunker (structure-aware, fixed-size and semantic), chunk size (128, 256, 512 and 1024 tokens), overlap (0, 0.1 and 0.2; semantic ignores it) and retrieval mode, it builds a fresh in-memory pipeline for each set, ingests the documents, and retrieves the top 10 chunks for each question. Vector search is the default mode; multi-query and HyDE are opt-in.
 - **Scoring.** A retrieved chunk counts as relevant when it comes from the right document and contains the fragment. The report gives recall@1, recall@3 and recall@5, the share of questions whose first relevant chunk is within the top 1, 3 or 5, and the mean reciprocal rank (MRR).
 - **Two modes.** The default fake mode uses a deterministic bag-of-words embedder, needs no model, and gives byte-identical reports; it checks that the harness works, and its scores mean nothing. Ollama mode gives real numbers.
 
@@ -217,7 +222,7 @@ dotnet run --project tests/RagDotNet.Evaluation                            # fak
 dotnet run --project tests/RagDotNet.Evaluation -- --embedder ollama      # real embeddings via Ollama
 ```
 
-The harness's own tests are in `tests/RagDotNet.Evaluation.Tests`. [docs/evaluation.md](docs/evaluation.md) describes the method and its limits and records the latest real-mode results, and [docs/evaluation-results.md](docs/evaluation-results.md) holds the full report.
+The harness's own tests are in `tests/RagDotNet.Evaluation.Tests`. [docs/evaluation.md](docs/evaluation.md) describes the method and its limits and records the latest real-mode results, and [docs/evaluation-results.md](docs/evaluation-results.md) holds the full report. [docs/chunking.md](docs/chunking.md) compares the three chunkers.
 
 ## License
 

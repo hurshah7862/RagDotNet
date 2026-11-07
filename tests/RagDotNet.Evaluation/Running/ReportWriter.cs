@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using RagDotNet.Evaluation.Datasets;
+using RagDotNet.Evaluation.Scoring;
 
 namespace RagDotNet.Evaluation.Running;
 
@@ -18,11 +19,17 @@ public static class ReportWriter
     /// <summary>The fake-mode closing note.</summary>
     public const string FakeNote = "Scores from fake embeddings only check that the harness works; they are not meaningful.";
 
-    /// <summary>Renders the report.</summary>
-    public static string Write(ReportMetadata meta, Dataset dataset, IReadOnlyList<ConfigResult> results)
+    /// <summary>The name of the section that pools every set's questions.</summary>
+    public const string AllSection = "all";
+
+    /// <summary>
+    /// Renders the report: metadata, then a section per set with its table and, when there are two or more sets, an
+    /// <see cref="AllSection"/> section whose chunk counts are summed and whose scores pool every question.
+    /// </summary>
+    public static string Write(ReportMetadata meta, IReadOnlyList<DatasetSet> sets, IReadOnlyList<ConfigResult> results)
     {
         ArgumentNullException.ThrowIfNull(meta);
-        ArgumentNullException.ThrowIfNull(dataset);
+        ArgumentNullException.ThrowIfNull(sets);
         ArgumentNullException.ThrowIfNull(results);
         var inv = CultureInfo.InvariantCulture;
         var sb = new StringBuilder();
@@ -32,23 +39,47 @@ public static class ReportWriter
         Line();
         Line($"- Embedder: {meta.Embedder} ({meta.EmbedModel})");
         Line($"- Chat model: {meta.ChatModel}");
-        Line(string.Create(inv, $"- Corpus documents: {dataset.Documents.Count}"));
-        Line(string.Create(inv, $"- Questions: {dataset.Questions.Count}"));
-        Line($"- Dataset hash: {dataset.Hash}");
+        foreach (var set in sets)
+        {
+            Line(string.Create(inv, $"- Set `{set.Name}`: {set.Dataset.Documents.Count} documents, {set.Dataset.Questions.Count} questions, hash {set.Dataset.Hash}"));
+        }
+
         if (meta.Date is { } date)
         {
             Line($"- Date: {date.ToString("yyyy-MM-dd", inv)}");
         }
 
-        Line();
-        Line("| Chunker | MaxTokens | Overlap | Mode | Chunks | R@1 | R@3 | R@5 | MRR |");
-        Line("|---|---:|---:|---|---:|---:|---:|---:|---:|");
-        foreach (var r in results)
+        foreach (var set in sets)
         {
-            var c = r.Config;
-            var s = r.Scores;
-            Line(string.Create(inv,
-                $"| {c.Chunker} | {c.MaxTokens} | {c.Overlap:0.###} | {c.Mode} | {r.ChunkCount} | {s.RecallAt1:0.000} | {s.RecallAt3:0.000} | {s.RecallAt5:0.000} | {s.Mrr:0.000} |"));
+            Table(set.Name, [.. results.Where(r => r.Set == set.Name)]);
+        }
+
+        if (sets.Count > 1)
+        {
+            Table(AllSection, [.. results
+                .GroupBy(r => r.Config)
+                .Select(g =>
+                {
+                    var ranks = g.SelectMany(r => r.Ranks).ToList();
+                    return new ConfigResult(AllSection, g.Key, g.Sum(r => r.ChunkCount), Metrics.Summarize(ranks), ranks);
+                })]);
+        }
+
+        void Table(string title, IReadOnlyList<ConfigResult> rows)
+        {
+            Line();
+            Line($"## {title}");
+            Line();
+            Line("| Chunker | MaxTokens | Overlap | Mode | Chunks | R@1 | R@3 | R@5 | MRR |");
+            Line("|---|---:|---:|---|---:|---:|---:|---:|---:|");
+            foreach (var r in rows)
+            {
+                var c = r.Config;
+                var s = r.Scores;
+                var overlap = c.UsesOverlap ? c.Overlap.ToString("0.###", inv) : "n/a";
+                Line(string.Create(inv,
+                    $"| {c.Chunker} | {c.MaxTokens} | {overlap} | {c.Mode} | {r.ChunkCount} | {s.RecallAt1:0.000} | {s.RecallAt3:0.000} | {s.RecallAt5:0.000} | {s.Mrr:0.000} |"));
+            }
         }
 
         if (meta.Fake)
