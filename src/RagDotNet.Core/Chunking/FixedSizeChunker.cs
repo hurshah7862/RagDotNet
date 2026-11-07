@@ -5,8 +5,10 @@ using RagDotNet.Documents;
 namespace RagDotNet.Chunking;
 
 /// <summary>
-/// Cuts the document's body text into windows of <see cref="ChunkingOptions.MaxTokens"/> tokens, each repeating the last
-/// <c>floor(MaxTokens × OverlapRatio)</c> tokens of the one before. Headings are left out of the text; each chunk's
+/// Cuts the document's body text into windows of at most <see cref="ChunkingOptions.MaxTokens"/> tokens, each repeating
+/// about the last <c>floor(MaxTokens × OverlapRatio)</c> tokens of the one before. Window edges never fall inside a
+/// character that the tokenizer splits into several tokens, so near such characters a window can be a few tokens shorter
+/// and the overlap a few tokens smaller. Headings are left out of the text; each chunk's
 /// <see cref="Chunk.HeadingPath"/> is that of the block where the window starts.
 /// </summary>
 public sealed class FixedSizeChunker(Tokenizer tokenizer) : IChunker

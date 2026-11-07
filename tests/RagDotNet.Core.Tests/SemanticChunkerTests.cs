@@ -175,6 +175,26 @@ public class SemanticChunkerTests
             Hashing.ChunkingHash(new ChunkingOptions { BreakpointPercentile = 90 }, chunker, "cl100k_base")));
     }
 
+    [Fact] // PR review: semantic ignores OverlapRatio, so changing it must not re-chunk semantic documents
+    public void Overlap_does_not_change_the_semantic_hash()
+    {
+        var chunker = new SemanticChunker(Tok, new TopicEmbedder());
+        Assert.Equal(
+            Hashing.ChunkingHash(new ChunkingOptions { OverlapRatio = 0 }, chunker, "cl100k_base"),
+            Hashing.ChunkingHash(new ChunkingOptions { OverlapRatio = 0.2 }, chunker, "cl100k_base"));
+    }
+
+    [Fact] // PR review: token-split pieces kept leading newlines and indentation
+    public async Task Split_pieces_have_no_leading_or_trailing_whitespace()
+    {
+        var code = string.Join('\n', Enumerable.Range(0, 120).Select(i => $"    var cat{i} = Compute({i});"));
+
+        var chunks = await Run(new ChunkingOptions { MaxTokens = 64 }, new DocumentBlock(BlockKind.Code, code, []));
+
+        Assert.True(chunks.Count > 4);
+        Assert.All(chunks, c => Assert.Equal(c.Text.Trim(), c.Text));
+    }
+
     [Theory] // Deferred minor 7: pins the interpolation (NumPy's default "linear" method)
     [InlineData(new double[] { 4, 0, 2, 1, 3 }, 50, 2)]
     [InlineData(new double[] { 0, 0, 0, 0, 0, 0, 1 }, 95, 0.7)]

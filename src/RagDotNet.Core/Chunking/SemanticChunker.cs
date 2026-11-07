@@ -67,7 +67,7 @@ public sealed class SemanticChunker : IChunker
             foreach (var text in texts)
             {
                 if (_counter.Count(text) <= options.MaxTokens) units.Add(new Unit(text, block, i));
-                else units.AddRange(_counter.SplitByTokens(text, options.MaxTokens).Where(p => !string.IsNullOrWhiteSpace(p)).Select(p => new Unit(p, block, i)));
+                else units.AddRange(_counter.SplitByTokens(text, options.MaxTokens).Select(p => p.Trim()).Where(p => p.Length > 0).Select(p => new Unit(p, block, i)));
             }
         }
 
