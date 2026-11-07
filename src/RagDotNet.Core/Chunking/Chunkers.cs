@@ -5,4 +5,7 @@ public static class Chunkers
 {
     /// <summary>Splits along headings, paragraphs, sentences and lines, never across headings.</summary>
     public const string StructureAware = "structure-aware";
+
+    /// <summary>A sliding token window over the document's body text.</summary>
+    public const string FixedSize = "fixed-size";
 }

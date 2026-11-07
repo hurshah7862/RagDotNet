@@ -702,3 +702,9 @@ RagDotNet.Generation.RagPromptContext.History.init -> void
 RagDotNet.Pipeline.IRagPipeline.RetrieveAsync(System.Collections.Generic.IList<Microsoft.Extensions.AI.ChatMessage!>! conversation, RagDotNet.Retrieval.RetrievalOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<RagDotNet.Retrieval.RetrievedChunk!>!>!
 RagDotNet.Pipeline.IRagPipeline.AskAsync(System.Collections.Generic.IList<Microsoft.Extensions.AI.ChatMessage!>! conversation, RagDotNet.Generation.AskOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<RagDotNet.Generation.RagAnswer!>!
 RagDotNet.Pipeline.IRagPipeline.AskStreamingAsync(System.Collections.Generic.IList<Microsoft.Extensions.AI.ChatMessage!>! conversation, RagDotNet.Generation.AskOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Collections.Generic.IAsyncEnumerable<RagDotNet.Generation.RagAnswerUpdate!>!
+const RagDotNet.Chunking.Chunkers.FixedSize = "fixed-size" -> string!
+RagDotNet.Chunking.FixedSizeChunker
+RagDotNet.Chunking.FixedSizeChunker.ChunkAsync(RagDotNet.Documents.ParsedDocument! document, RagDotNet.Chunking.ChunkingOptions! options, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<RagDotNet.Chunking.Chunk!>!>!
+RagDotNet.Chunking.FixedSizeChunker.FixedSizeChunker(Microsoft.ML.Tokenizers.Tokenizer! tokenizer) -> void
+RagDotNet.Chunking.FixedSizeChunker.Name.get -> string!
+RagDotNet.Chunking.FixedSizeChunker.Version.get -> string!
