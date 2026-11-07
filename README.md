@@ -2,11 +2,17 @@
 
 RagDotNet is a .NET library for retrieval-augmented generation (RAG). It ingests documents, chunks and embeds them into a vector store, and answers questions with cited sources, built on Microsoft.Extensions.AI and Microsoft.Extensions.VectorData.
 
+> **Under development.** RagDotNet is not released yet. The public API can still change between commits, stored data may need re-ingesting after an update, and no package is published to NuGet. Core ingestion, retrieval, cited answers, chat and three chunkers work today; PDF/DOCX/HTML readers, OCR, hybrid search and reranking, more vector stores, and hosting adapters are still to come. Feedback and issues are welcome.
+
 ## Install
 
+No package is on NuGet yet. Until then, clone the repository and reference the project directly:
+
 ```
-dotnet add package RagDotNet.Core
+dotnet add reference path/to/RagDotNet/src/RagDotNet.Core/RagDotNet.Core.csproj
 ```
+
+Once published, it will be `dotnet add package RagDotNet.Core`.
 
 RagDotNet.Core targets net8.0 and net10.0. You bring your own `IChatClient`, `IEmbeddingGenerator<string, Embedding<float>>` (Microsoft.Extensions.AI) and `VectorStore` (any Microsoft.Extensions.VectorData connector). The samples and tests use the in-memory store from `CommunityToolkit.VectorData.InMemory`, which is not meant for production.
 
@@ -117,7 +123,13 @@ new AccessScope(
 
 ## Chunking
 
-The default chunker is `structure-aware` (`Chunkers.StructureAware`). It splits along headings, paragraphs, sentences and lines, never across headings, and merges small blocks. Its settings are `ChunkingOptions.MaxTokens` (default 512, at least 16) and `OverlapRatio` (default 0.10, in [0, 0.5)).
+Three chunkers are built in:
+
+- `structure-aware` (`Chunkers.StructureAware`, the default) splits along headings, paragraphs, sentences and lines, never across headings, and merges small blocks.
+- `fixed-size` (`Chunkers.FixedSize`) cuts the body text into windows of `MaxTokens` tokens, each repeating the last `MaxTokens × OverlapRatio` tokens of the one before.
+- `semantic` (`Chunkers.Semantic`) embeds each sentence and starts a new chunk where neighbouring sentences drift apart, by more than the `BreakpointPercentile`-th percentile of the document's distances (default 95). It also breaks at every heading and ignores `OverlapRatio`. **It makes one embedding call per sentence during ingest.**
+
+Their shared settings are `ChunkingOptions.MaxTokens` (default 512, at least 16) and `OverlapRatio` (default 0.10, in [0, 0.5)). [docs/chunking.md](docs/chunking.md) compares them on the evaluation corpus and says when to pick each.
 
 **Choosing a chunker.** `ChunkingOptions.Chunker` names the chunker. Set it as the default with `o.Chunking = new() { Chunker = "my-chunker" }`, per content type with `o.ChunkingByContentType["text/markdown"] = new() { Chunker = "my-chunker" }`, or per call with `new IngestOptions { Chunking = new() { Chunker = "my-chunker" } }`. Names are matched ordinally and are case-sensitive. An unregistered name in the options fails at startup (or `Build`); an unregistered per-call name throws `ArgumentException` before anything is written.
 
@@ -125,7 +137,7 @@ The default chunker is `structure-aware` (`Chunkers.StructureAware`). It splits 
 
 **What the library guarantees.** Whatever a chunker returns, the library drops chunks whose text is blank, splits chunks longer than `MaxTokens` (keeping the heading path and pages), renumbers `Index` from 0 with no gaps or duplicates, and recomputes `TokenCount` with its own tokenizer. A chunker that returns `null`, or a list containing `null`, fails the ingest with an `InvalidOperationException` naming the chunker.
 
-**Registration.** With dependency injection call `.AddChunker<MyChunker>()` (a singleton); without it call `builder.AddChunker(new MyChunker())`. Two chunkers with the same name, including `structure-aware`, fail validation.
+**Registration.** With dependency injection call `.AddChunker<MyChunker>()` (a singleton); without it call `builder.AddChunker(new MyChunker())`. Two chunkers with the same name, including a built-in name, fail validation.
 
 ## Caching
 
@@ -159,7 +171,7 @@ RAGDOTNET_INTEGRATION=1 dotnet test --project tests/RagDotNet.IntegrationTests
 
 ## Evaluation
 
-`tests/RagDotNet.Evaluation` measures how well retrieval finds the passage that answers each of 40 labelled questions, reporting recall@1/3/5 and MRR for each chunk size, overlap and retrieval mode. `dotnet run --project tests/RagDotNet.Evaluation` runs it on fake embeddings; add `-- --embedder ollama` for real numbers. See [docs/evaluation.md](docs/evaluation.md) for the method and the baseline results.
+`tests/RagDotNet.Evaluation` measures how well retrieval finds the passage that answers each of 60 labelled questions, in two dataset sets, reporting recall@1/3/5 and MRR for each chunker, chunk size, overlap and retrieval mode. `dotnet run --project tests/RagDotNet.Evaluation` runs it on fake embeddings; add `-- --embedder ollama` for real numbers. See [docs/evaluation.md](docs/evaluation.md) for the method and the baseline results.
 
 ## License
 
