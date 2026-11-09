@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Release notes | Quill Help Centre</title>
+<script>window.dataLayer = [];</script>
+</head>
+<body>
+<header><nav><a href="/">Quill</a> <a href="/help">Help Centre</a> <a href="/download">Download</a></nav></header>
+<div class="cookie-banner">We use cookies to understand how the help centre is used. <button>Accept</button></div>
+<main>
+<h1>Release notes</h1>
+<p>This page lists what changed in each release of Quill, newest first. Releases follow semantic versioning: minor releases add features without breaking anything, and patch releases only fix bugs.</p>
+<h2>Quill 3.2</h2>
+<p>Released in September.</p>
+<h3>New features</h3>
+<ul>
+<li>Daily notes templates. Daily notes can now start from a template. Pick one under Settings → Daily notes, and use placeholders such as the date and the weekday inside the template.</li>
+<li>Faster search. The search index was rewritten and now answers most queries in under twenty milliseconds, even on vaults with a hundred thousand notes. The first index build after upgrading takes a little longer than usual.</li>
+<li>Profiles. You can now keep several named sets of settings and switch between them from the account menu or with the --profile flag.</li>
+<li>Folder sync joins Quill Cloud and WebDAV as a third sync provider. It copies the vault to any folder, which makes it easy to use with other cloud drives.</li>
+</ul>
+<h3>Improvements</h3>
+<ul>
+<li>Pasting a table from a spreadsheet now produces a Markdown table instead of tab-separated text.</li>
+<li>The graph view groups notes by folder when the vault has more than two thousand notes, which keeps it readable.</li>
+<li>Tooltips on the status bar now explain every sync icon.</li>
+</ul>
+<h3>Fixes</h3>
+<ul>
+<li>Fixed a crash when renaming a folder that contained an open note on Linux.</li>
+<li>Fixed checklist items losing their ticked state when moved with Alt+Up.</li>
+<li>Fixed the importer creating empty notes for HTML files that contained only images.</li>
+</ul>
+<h2>Quill 3.1</h2>
+<p>Released in June.</p>
+<h3>New features</h3>
+<ul>
+<li>Vim mode. Modal editing with Vim key bindings, switched on with the editor.vim_mode setting.</li>
+<li>Attachment search. Quill can now index the text of PDF attachments. Turn it on with search.index_attachments; it is off by default because it makes indexing slower.</li>
+<li>Hardware security keys are supported for two-factor sign-in to Quill Cloud, alongside authenticator apps.</li>
+</ul>
+<h3>Improvements</h3>
+<ul>
+<li>Conflict copies now include the device name in the file name, so it is easier to tell where each version came from.</li>
+<li>The plugin API gained registerView for adding sidebar panels.</li>
+<li>Daily snapshots are now compressed, which cuts their size on disk by about two thirds.</li>
+</ul>
+<h3>Fixes</h3>
+<ul>
+<li>Fixed sync stopping after the computer woke from sleep until the app was restarted.</li>
+<li>Fixed links to headings breaking when the heading contained a colon.</li>
+</ul>
+<h3>Deprecations</h3>
+<p>The old app.vault.read plugin method is deprecated in favour of app.notes.get. It still works in 3.1 and 3.2 and will be removed in Quill 4.0.</p>
+<h2>Quill 3.0</h2>
+<p>Released in February. This was a major release with changes that affect existing setups.</p>
+<h3>Breaking changes</h3>
+<ul>
+<li>New configuration format. Settings moved from settings.json to quill.toml. The first start of 3.0 converts the old file automatically and keeps a backup named settings.json.bak.</li>
+<li>Plugin manifests require permissions. Plugins written for 2.x must add a permissions list to plugin.json before they load. Until then they appear as disabled with an explanation.</li>
+<li>Dropped 32-bit Windows. Quill 3.0 and later are 64-bit only. The last version for 32-bit Windows is 2.9.4.</li>
+</ul>
+<h3>New features</h3>
+<ul>
+<li>End-to-end encryption for Quill Cloud vaults, with keys derived from a passphrase only you know.</li>
+<li>Command palette with fuzzy matching, opened with Ctrl+P.</li>
+<li>Linux packages. Official .deb and .rpm packages, plus a Flatpak on Flathub, replace the old AppImage.</li>
+</ul>
+<h3>Improvements</h3>
+<ul>
+<li>Startup is about twice as fast on large vaults because the index is loaded lazily.</li>
+<li>The editor now renders with the GPU when available, which makes scrolling smoother in long notes.</li>
+</ul>
+<h2>Quill 2.9</h2>
+<p>Released the previous year. This was the last release of the 2.x line.</p>
+<ul>
+<li>2.9.4 fixed a memory leak in the graph view that grew with every note opened.</li>
+<li>2.9.3 fixed WebDAV sync failing on servers that return file names in a different Unicode normalization form.</li>
+<li>2.9.0 added the importer for exported Markdown and HTML folders, and the ability to pin notes to the top of the sidebar.</li>
+</ul>
+<h2>Support policy</h2>
+<p>The current minor release receives every fix. The previous minor release receives security fixes for six months after a new minor release comes out. Older versions are not supported, so we recommend leaving automatic updates on unless you have a specific reason to stay on one version.</p>
+<h2>Upgrade notes</h2>
+<p>Upgrading never changes your notes. Before a major upgrade, it is still a good idea to make sure your vault is synced or backed up, because plugins written for an older major version may stop loading until their authors update them. Check the plugin settings page after upgrading; any plugin that failed to load shows the reason next to its name.</p>
+</main>
+<aside><h2>Related articles</h2><ul><li><a href="/help/start">Getting started</a></li></ul></aside>
+<footer>Copyright 2026 Quill Labs. All rights reserved.</footer>
+</body>
+</html>

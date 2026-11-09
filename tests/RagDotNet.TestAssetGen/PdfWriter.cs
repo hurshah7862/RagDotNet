@@ -67,8 +67,19 @@ internal sealed class PdfWriter
         w.Save(path);
     }
 
+    /// <summary>The standard 14 fonts cover WinAnsi only; characters outside it get an ASCII stand-in.</summary>
+    private static GenBlock Encodable(GenBlock block) => block with
+    {
+        Text = Ascii(block.Text),
+        Items = block.Items?.Select(i => (i.Depth, Ascii(i.Text))).ToList(),
+        Rows = block.Rows?.Select(r => (IReadOnlyList<string>)r.Select(Ascii).ToList()).ToList(),
+    };
+
+    private static string Ascii(string text) => text.Replace("→", "->", StringComparison.Ordinal);
+
     private void Block(GenBlock block)
     {
+        block = Encodable(block);
         switch (block.Kind)
         {
             case BlockKind.Heading:

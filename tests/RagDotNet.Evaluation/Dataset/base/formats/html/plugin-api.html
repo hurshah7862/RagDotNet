@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Plugin API | Quill Help Centre</title>
+<script>window.dataLayer = [];</script>
+</head>
+<body>
+<header><nav><a href="/">Quill</a> <a href="/help">Help Centre</a> <a href="/download">Download</a></nav></header>
+<div class="cookie-banner">We use cookies to understand how the help centre is used. <button>Accept</button></div>
+<main>
+<h1>Plugin API</h1>
+<p>Plugins extend Quill with new commands, views and integrations. They are written in TypeScript or JavaScript and run inside the app with access to a documented API. This page explains how a plugin is structured, the main parts of the API, and how to publish a plugin.</p>
+<h2>Plugin structure</h2>
+<p>A plugin is a folder inside the vault&#39;s .quill/plugins directory. It must contain a manifest named plugin.json and a JavaScript entry file. Quill loads every enabled plugin when a vault opens.</p>
+<h3>The manifest</h3>
+<p>The manifest describes the plugin and the permissions it needs:</p>
+<pre><code>{
+  &quot;id&quot;: &quot;word-count&quot;,
+  &quot;name&quot;: &quot;Word Count&quot;,
+  &quot;version&quot;: &quot;1.4.0&quot;,
+  &quot;minAppVersion&quot;: &quot;3.0.0&quot;,
+  &quot;main&quot;: &quot;main.js&quot;,
+  &quot;permissions&quot;: [&quot;notes:read&quot;, &quot;statusbar&quot;]
+}</code></pre>
+<p>The id must be unique and may contain only lower-case letters, digits and hyphens. minAppVersion stops the plugin from loading on older versions of Quill that lack an API it relies on. Quill refuses to load a plugin whose manifest is missing a required field and shows the reason in the plugin settings.</p>
+<h3>Permissions</h3>
+<p>Plugins must declare every permission they use. When a user enables a plugin, Quill lists its permissions and asks for confirmation. Calling an API without the matching permission throws an error.</p>
+<ul>
+<li>notes:read allows reading note content and metadata.</li>
+<li>notes:write allows creating, changing and deleting notes.</li>
+<li>network allows outgoing HTTP requests through the API&#39;s fetch function.</li>
+<li>statusbar allows adding items to the status bar.</li>
+</ul>
+<p>Plugins have no direct access to the file system outside the vault, and they cannot load native code.</p>
+<h2>The plugin lifecycle</h2>
+<p>The entry file exports a class that extends Plugin. Quill calls onload when the plugin is enabled and onunload when it is disabled or the vault closes. Anything registered through the API during onload is cleaned up automatically on unload, so most plugins never need to write an onunload method at all.</p>
+<pre><code>import { Plugin } from &quot;quill&quot;;
+
+export default class WordCount extends Plugin {
+  async onload() {
+    const item = this.app.statusBar.addItem(&quot;words&quot;);
+    this.registerEvent(this.app.notes.onChange((note) =&gt; {
+      item.setText(`${note.text.split(/\s+/).length} words`);
+    }));
+  }
+}</code></pre>
+<h2>Main API areas</h2>
+<h3>Commands</h3>
+<p>Commands appear in the command palette and can be given keyboard shortcuts by the user. Register one with this.addCommand and an object with an id, a name and a run callback. Command ids are prefixed with the plugin id automatically, so two plugins can both define a command named refresh without clashing.</p>
+<pre><code>this.addCommand({
+  id: &quot;insert-timestamp&quot;,
+  name: &quot;Insert timestamp&quot;,
+  run: (editor) =&gt; editor.replaceSelection(new Date().toISOString()),
+});</code></pre>
+<h3>Notes</h3>
+<p>The app.notes object reads and writes notes. get(path) returns a note with its text and front matter, create(path, text) makes a new note, and onChange fires whenever any note is saved, whether by the user, by sync or by another plugin. Writes made through the API are recorded in version history like any other edit.</p>
+<h3>Views</h3>
+<p>A plugin can add a panel to the right sidebar with registerView. Views are rendered with plain DOM elements; Quill does not require or bundle any front-end framework. Use the CSS variables exposed by the active theme so that your view matches light and dark themes.</p>
+<h3>Settings</h3>
+<p>Plugins store their settings with this.loadData() and this.saveData(obj). The data is kept as JSON in the plugin&#39;s folder and synced along with the vault, so settings follow the user to other devices.</p>
+<h2>Debugging</h2>
+<p>Open the developer console with Ctrl+Shift+I to see log output and errors from plugins. Changes to a plugin&#39;s files are not picked up automatically; use the Reload plugins command after editing. Enable QUILL_LOG_LEVEL=debug to see when each plugin loads and how long its onload took, which helps when tracking down slow startups.</p>
+<h2>Performance guidelines</h2>
+<p>Plugins run on the same thread as the editor, so slow work in an event handler makes typing feel sluggish. Keep onChange handlers fast, debounce anything that runs on every keystroke, and move heavy work to a web worker. Quill warns in the console when a single handler takes longer than 50 milliseconds.</p>
+<h2>Publishing</h2>
+<p>To list a plugin in the community directory, publish its source in a public repository with a release that contains plugin.json and main.js, then submit the repository address through the form on the Quill website. Every new plugin and every update that adds a permission is reviewed by a person before it appears in the directory. Reviews usually take about a week.</p>
+<p>Plugins in the directory must use an open-source license, must not collect analytics without asking the user first, and must not show advertisements.</p>
+<h2>Versioning and compatibility</h2>
+<p>The plugin API follows semantic versioning. Methods are never removed in a minor release; a deprecated method keeps working for at least two minor releases and logs a warning when used. Breaking changes happen only in major versions and are announced in the release notes well in advance.</p>
+</main>
+<aside><h2>Related articles</h2><ul><li><a href="/help/start">Getting started</a></li></ul></aside>
+<footer>Copyright 2026 Quill Labs. All rights reserved.</footer>
+</body>
+</html>

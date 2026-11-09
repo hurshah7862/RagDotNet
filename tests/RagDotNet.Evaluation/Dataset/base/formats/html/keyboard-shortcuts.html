@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Keyboard shortcuts | Quill Help Centre</title>
+<script>window.dataLayer = [];</script>
+</head>
+<body>
+<header><nav><a href="/">Quill</a> <a href="/help">Help Centre</a> <a href="/download">Download</a></nav></header>
+<div class="cookie-banner">We use cookies to understand how the help centre is used. <button>Accept</button></div>
+<main>
+<h1>Keyboard shortcuts</h1>
+<p>Quill is designed to be used without a mouse. Nearly every action has a shortcut, and those that do not can be reached from the command palette. This page lists the default shortcuts and explains how to change them.</p>
+<h2>Conventions</h2>
+<p>On macOS, use the Command key wherever this page says Ctrl, and Option wherever it says Alt. Shortcuts written with a comma, such as Ctrl+K, Ctrl+S, are chords: press the first combination, release it, then press the second.</p>
+<h2>The command palette</h2>
+<p>Press Ctrl+P to open the command palette. Start typing to filter the list of commands; the palette matches words in any order and forgives small typos. Each entry shows its shortcut on the right, which makes the palette a good way to learn shortcuts over time. Plugins add their own commands to the palette as well.</p>
+<h2>Default shortcuts</h2>
+<h3>Navigation</h3>
+<table>
+<thead><tr><th>Shortcut</th><th>Action</th></tr></thead>
+<tbody>
+<tr><td>Ctrl+O</td><td>Quick open a note by typing part of its title</td></tr>
+<tr><td>Ctrl+Shift+F</td><td>Search the full text of every note in the vault</td></tr>
+<tr><td>Ctrl+Tab</td><td>Cycle through recently viewed notes</td></tr>
+<tr><td>Alt+Left</td><td>Go back to the previously viewed note</td></tr>
+<tr><td>Ctrl+B</td><td>Show or hide the sidebar with the folder tree</td></tr>
+<tr><td>Ctrl+G</td><td>Open the graph view of linked notes</td></tr>
+</tbody>
+</table>
+<h3>Editing</h3>
+<table>
+<thead><tr><th>Shortcut</th><th>Action</th></tr></thead>
+<tbody>
+<tr><td>Ctrl+N</td><td>Create a new note in the current folder</td></tr>
+<tr><td>Ctrl+Shift+D</td><td>Insert the date of today at the cursor</td></tr>
+<tr><td>Ctrl+L</td><td>Turn the current line into a checklist item</td></tr>
+<tr><td>Ctrl+Enter</td><td>Tick or untick the checklist item under the cursor</td></tr>
+<tr><td>Ctrl+]</td><td>Indent the current list item one level deeper</td></tr>
+<tr><td>Ctrl+K</td><td>Insert a link around the selected text</td></tr>
+<tr><td>Alt+Up</td><td>Move the current line or selection up by one line</td></tr>
+</tbody>
+</table>
+<h3>Formatting</h3>
+<table>
+<thead><tr><th>Shortcut</th><th>Action</th></tr></thead>
+<tbody>
+<tr><td>Ctrl+I</td><td>Italic</td></tr>
+<tr><td>Ctrl+Shift+B</td><td>Bold</td></tr>
+<tr><td>Ctrl+Shift+X</td><td>Strikethrough</td></tr>
+<tr><td>Ctrl+1 to Ctrl+6</td><td>Turn the line into a heading of that level</td></tr>
+<tr><td>Ctrl+Shift+C</td><td>Wrap the selection in an inline code span</td></tr>
+</tbody>
+</table>
+<p>Bold uses Ctrl+Shift+B rather than the more familiar Ctrl+B, because Ctrl+B was taken by the sidebar before formatting shortcuts were added. You can swap them if you prefer; see below.</p>
+<h3>Windows and panes</h3>
+<table>
+<thead><tr><th>Shortcut</th><th>Action</th></tr></thead>
+<tbody>
+<tr><td>Ctrl+\</td><td>Split the editor and open the note side by side</td></tr>
+<tr><td>Ctrl+W</td><td>Close the current tab</td></tr>
+<tr><td>Ctrl+Shift+T</td><td>Reopen the tab you closed most recently</td></tr>
+<tr><td>F11</td><td>Enter or leave distraction-free full screen</td></tr>
+<tr><td>Ctrl+,</td><td>Open the Settings window</td></tr>
+</tbody>
+</table>
+<h2>Changing shortcuts</h2>
+<p>Open Settings → Keyboard to see every command with its current shortcut. Click a shortcut and press the new key combination to change it. If the combination is already used by another command, Quill shows which one and asks whether to reassign it.</p>
+<p>Shortcuts are saved in a file named keymap.json inside the active profile, so each profile can have its own layout. The file is a list of objects with a command and a keys field. Editing it by hand is supported, and changes apply as soon as you save the file.</p>
+<pre><code>[
+  { &quot;command&quot;: &quot;format.bold&quot;, &quot;keys&quot;: &quot;Ctrl+B&quot; },
+  { &quot;command&quot;: &quot;view.toggle-sidebar&quot;, &quot;keys&quot;: &quot;Ctrl+Shift+E&quot; }
+]</code></pre>
+<h3>Removing a shortcut</h3>
+<p>To remove a shortcut without assigning a new one, right-click it in the keyboard settings and choose Remove. In keymap.json, set keys to an empty string. The command stays available from the command palette.</p>
+<h3>Resetting shortcuts</h3>
+<p>The Reset all button at the bottom of the keyboard settings restores the defaults for the active profile. It does not affect other profiles or any other settings.</p>
+<h2>Vim mode</h2>
+<p>When editor.vim_mode is on, the editor starts in normal mode and the usual Vim motions apply. Quill&#39;s own shortcuts that use Ctrl still work in every mode, so Ctrl+P opens the palette even in normal mode. Press Esc twice quickly to leave insert mode and close any open popup at the same time.</p>
+<h2>Global shortcut</h2>
+<p>Quill can register one system-wide shortcut that works even when the app is in the background. By default it is not set. Assign it under Settings → Keyboard → Global quick capture. Pressing it opens a small floating window where you can type a quick note; when you press Ctrl+Enter there, the note is saved to the inbox folder of your default vault and the window disappears.</p>
+<h2>Accessibility</h2>
+<p>All shortcuts can also be triggered through screen readers and switch-access devices, because every command is exposed through the command palette. The keyboard settings include a search box, so you can find a command by name and hear its current binding read aloud.</p>
+</main>
+<aside><h2>Related articles</h2><ul><li><a href="/help/start">Getting started</a></li></ul></aside>
+<footer>Copyright 2026 Quill Labs. All rights reserved.</footer>
+</body>
+</html>

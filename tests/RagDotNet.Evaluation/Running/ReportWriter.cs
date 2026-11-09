@@ -41,7 +41,8 @@ public static class ReportWriter
         Line($"- Chat model: {meta.ChatModel}");
         foreach (var set in sets)
         {
-            Line(string.Create(inv, $"- Set `{set.Name}`: {set.Dataset.Documents.Count} documents, {set.Dataset.Questions.Count} questions, hash {set.Dataset.Hash}"));
+            var format = set.Format == DatasetSet.Markdown ? "" : " · " + set.Format;
+            Line(string.Create(inv, $"- Set `{set.Name}`{format}: {set.Dataset.Documents.Count} documents, {set.Dataset.Questions.Count} questions, hash {set.Dataset.Hash}"));
         }
 
         if (meta.Date is { } date)
@@ -51,12 +52,16 @@ public static class ReportWriter
 
         foreach (var set in sets)
         {
-            Table(set.Name, [.. results.Where(r => r.Set == set.Name)]);
+            var note = set.Format == DatasetSet.Markdown ? null : string.Create(inv, $"- Unscorable questions: {set.Unscorable}");
+            Table(set.Label, [.. results.Where(r => r.Set == set.Label)], note);
         }
 
-        if (sets.Count > 1)
+        // The pooled section covers the sets' own Markdown only, so it stays comparable across runs with other formats.
+        var markdown = sets.Where(s => s.Format == DatasetSet.Markdown).Select(s => s.Label).ToHashSet(StringComparer.Ordinal);
+        if (markdown.Count > 1)
         {
             Table(AllSection, [.. results
+                .Where(r => markdown.Contains(r.Set))
                 .GroupBy(r => r.Config)
                 .Select(g =>
                 {
@@ -65,11 +70,17 @@ public static class ReportWriter
                 })]);
         }
 
-        void Table(string title, IReadOnlyList<ConfigResult> rows)
+        void Table(string title, IReadOnlyList<ConfigResult> rows, string? note = null)
         {
             Line();
             Line($"## {title}");
             Line();
+            if (note is not null)
+            {
+                Line(note);
+                Line();
+            }
+
             Line("| Chunker | MaxTokens | Overlap | Mode | Chunks | R@1 | R@3 | R@5 | MRR |");
             Line("|---|---:|---:|---|---:|---:|---:|---:|---:|");
             foreach (var r in rows)

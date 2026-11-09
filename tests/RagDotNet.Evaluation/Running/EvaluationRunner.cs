@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using CommunityToolkit.VectorData.InMemory;
 using Microsoft.Extensions.AI;
 using RagDotNet.Chunking;
@@ -33,7 +34,7 @@ public sealed class EvaluationRunner(IEmbeddingGenerator<string, Embedding<float
         var all = new List<ConfigResult>();
         foreach (var set in sets)
         {
-            all.AddRange(await RunSetAsync(set.Name, set.Dataset, configs, ct).ConfigureAwait(false));
+            all.AddRange(await RunSetAsync(set.Label, set.Dataset, configs, ct).ConfigureAwait(false));
         }
 
         return all;
@@ -47,6 +48,9 @@ public sealed class EvaluationRunner(IEmbeddingGenerator<string, Embedding<float
             var builder = new RagPipelineBuilder()
                 .UseEmbeddingGenerator(embedder)
                 .UseVectorStore(new InMemoryVectorStore(), "eval", dimensions)
+                .AddPdfReader()
+                .AddDocxReader()
+                .AddHtmlReader()
                 .Configure(o => o.Chunking = new ChunkingOptions
                 {
                     Chunker = group.Key.Chunker,

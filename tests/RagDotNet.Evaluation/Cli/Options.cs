@@ -20,6 +20,7 @@ public sealed record Options
           --dimensions <n>            Embedding dimensions (default 256 fake, 768 ollama)
           --modes <list>              vector,multi-query,hyde (default vector)
           --chunkers <list>           structure-aware,fixed-size,semantic (default all three)
+          --formats <list>            md,pdf,docx,html: also read the sets rendered in these formats (default md)
           --max-tokens <list>         Chunk sizes (default 128,256,512,1024)
           --overlap <list>            Overlap ratios in [0, 0.5) (default 0,0.1,0.2; semantic ignores it)
           --dataset <dir>             A dataset set, or a root of set directories (default: Dataset next to the harness)
@@ -57,6 +58,9 @@ public sealed record Options
     /// <summary>Chunkers to measure; all three built-ins by default.</summary>
     public IReadOnlyList<string> Chunkers { get; init; } = KnownChunkers;
 
+    /// <summary>Formats to read each set in: md (its own corpus) and any of pdf, docx, html it has rendered copies of.</summary>
+    public IReadOnlyList<string> Formats { get; init; } = [RagDotNet.Evaluation.Datasets.DatasetSet.Markdown];
+
     /// <summary>Dataset directory.</summary>
     public string DatasetDirectory { get; init; } = Path.Combine(AppContext.BaseDirectory, "Dataset");
 
@@ -93,6 +97,7 @@ public sealed record Options
                 "--chat-model" => o with { ChatModel = NonEmpty(flag, value) },
                 "--dimensions" => SetDimensions(o, ParseInt(flag, value, 1), out dimensions),
                 "--modes" => o with { Modes = List(flag, value, m => EvaluationConfig.Modes.Contains(m) ? m : throw Bad(flag, m, "expected vector, multi-query or hyde")) },
+                "--formats" => o with { Formats = List(flag, value, f => RagDotNet.Evaluation.Datasets.DatasetSet.Formats.Contains(f) ? f : throw Bad(flag, f, "expected md, pdf, docx or html")) },
                 "--chunkers" => o with { Chunkers = List(flag, value, c => KnownChunkers.Contains(c) ? c : throw Bad(flag, c, "expected structure-aware, fixed-size or semantic")) },
                 "--max-tokens" => o with { MaxTokens = List(flag, value, v => ParseInt(flag, v, 16)) },
                 "--overlap" => o with { Overlaps = List(flag, value, v => ParseOverlap(flag, v)) },
@@ -106,7 +111,7 @@ public sealed record Options
     }
 
     private static readonly string[] Known =
-        ["--embedder", "--ollama-url", "--embed-model", "--chat-model", "--dimensions", "--modes", "--chunkers", "--max-tokens", "--overlap", "--dataset", "--output"];
+        ["--embedder", "--ollama-url", "--embed-model", "--chat-model", "--dimensions", "--modes", "--chunkers", "--formats", "--max-tokens", "--overlap", "--dataset", "--output"];
 
     private static bool IsKnown(string flag) => Known.Contains(flag, StringComparer.Ordinal);
 

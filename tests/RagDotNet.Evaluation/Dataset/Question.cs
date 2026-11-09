@@ -25,10 +25,22 @@ public sealed record CorpusDocument(string DocumentId, string FilePath, string N
 /// <param name="Hash">First 12 hex characters of SHA-256 over the corpus files and questions.json.</param>
 public sealed record Dataset(IReadOnlyList<CorpusDocument> Documents, IReadOnlyList<Question> Questions, string Hash);
 
-/// <summary>A named dataset; each set is ingested and scored on its own.</summary>
+/// <summary>A named dataset in one file format; each is ingested and scored on its own.</summary>
 /// <param name="Name">The set's directory name.</param>
 /// <param name="Dataset">Its documents and questions.</param>
-public sealed record DatasetSet(string Name, Dataset Dataset);
+/// <param name="Format"><c>md</c> for the set's own corpus, or <c>pdf</c>, <c>docx</c> or <c>html</c> for a rendered variant.</param>
+/// <param name="Unscorable">Questions whose evidence the variant's reader did not keep intact in one body block.</param>
+public sealed record DatasetSet(string Name, Dataset Dataset, string Format = DatasetSet.Markdown, int Unscorable = 0)
+{
+    /// <summary>The format of a set's own corpus.</summary>
+    public const string Markdown = "md";
+
+    /// <summary>The formats a set can be read in.</summary>
+    public static IReadOnlyList<string> Formats { get; } = [Markdown, "pdf", "docx", "html"];
+
+    /// <summary>The report section title: the set name, plus the format for a rendered variant.</summary>
+    public string Label => Format == Markdown ? Name : $"{Name} · {Format}";
+}
 
 /// <summary>The dataset failed validation.</summary>
 public sealed class DatasetValidationException : Exception

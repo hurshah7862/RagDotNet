@@ -14,8 +14,22 @@ switch (command)
         PdfWriter.WriteSample(pdf);
         Console.WriteLine($"wrote {Path.GetRelativePath(root, pdf)}");
         return 0;
+    case "formats":
+        // Renders the evaluation's base set as PDF, DOCX and HTML for the format check.
+        var set = Path.Combine(root, "tests", "RagDotNet.Evaluation", "Dataset", "base");
+        foreach (var md in Directory.GetFiles(Path.Combine(set, "corpus"), "*.md").Order(StringComparer.Ordinal))
+        {
+            var id = Path.GetFileNameWithoutExtension(md);
+            var (blocks, title) = MarkdownToGenBlocks.Convert(File.ReadAllText(md));
+            PdfWriter.Write(Path.Combine(set, "formats", "pdf", id + ".pdf"), blocks, title);
+            DocxWriter.Write(Path.Combine(set, "formats", "docx", id + ".docx"), blocks, title);
+            HtmlWriter.Write(Path.Combine(set, "formats", "html", id + ".html"), blocks, title);
+            Console.WriteLine($"wrote {id}.pdf, {id}.docx, {id}.html");
+        }
+
+        return 0;
     default:
-        Console.Error.WriteLine("Usage: RagDotNet.TestAssetGen samples");
+        Console.Error.WriteLine("Usage: RagDotNet.TestAssetGen samples|formats");
         return 1;
 }
 

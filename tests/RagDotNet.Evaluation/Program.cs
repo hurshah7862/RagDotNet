@@ -72,7 +72,7 @@ public static class Program
         IReadOnlyList<DatasetSet> sets;
         try
         {
-            sets = await DatasetLoader.LoadSetsAsync(options.DatasetDirectory, ct).ConfigureAwait(false);
+            sets = await DatasetLoader.LoadSetsAsync(options.DatasetDirectory, options.Formats, ct).ConfigureAwait(false);
         }
         catch (DatasetValidationException ex)
         {
