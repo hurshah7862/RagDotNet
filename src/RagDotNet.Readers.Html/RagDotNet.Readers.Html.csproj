@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <Description>HTML reader for RagDotNet: heading paths, lists, tables and code, with page boilerplate removed.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="AngleSharp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\RagDotNet.Core\RagDotNet.Core.csproj" />
+  </ItemGroup>
+</Project>

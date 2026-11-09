@@ -104,7 +104,7 @@ internal sealed class Ingestor(RagEngine engine)
 
         var warnings = new List<IngestWarning>(parsed.Warnings);
         if (total == 0)
-            warnings.Add(new IngestWarning("EmptyDocument", $"Document '{s.DocumentId}' produced no text to index."));
+            warnings.Add(new IngestWarning(IngestWarningCodes.EmptyDocument, $"Document '{s.DocumentId}' produced no text to index."));
 
         List<ReadOnlyMemory<float>> vectors;
         using (RagTelemetry.ActivitySource.StartActivity("rag.embed"))

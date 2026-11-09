@@ -716,3 +716,11 @@ RagDotNet.Chunking.SemanticChunker.ChunkAsync(RagDotNet.Documents.ParsedDocument
 RagDotNet.Chunking.SemanticChunker.Name.get -> string!
 RagDotNet.Chunking.SemanticChunker.SemanticChunker(Microsoft.ML.Tokenizers.Tokenizer! tokenizer, Microsoft.Extensions.AI.IEmbeddingGenerator<string!, Microsoft.Extensions.AI.Embedding<float>!>! embedder, int batchSize = 32, int dimensions = 0) -> void
 RagDotNet.Chunking.SemanticChunker.Version.get -> string!
+const RagDotNet.Documents.IngestWarningCodes.EmptyDocument = "EmptyDocument" -> string!
+const RagDotNet.Documents.IngestWarningCodes.ImageNotRead = "ImageNotRead" -> string!
+const RagDotNet.Documents.IngestWarningCodes.PageWithoutText = "PageWithoutText" -> string!
+RagDotNet.Documents.DocumentReadException
+RagDotNet.Documents.DocumentReadException.DocumentReadException(string! fileName, string! reason, System.Exception? inner = null) -> void
+RagDotNet.Documents.DocumentReadException.FileName.get -> string!
+RagDotNet.Documents.DocumentReadException.Reason.get -> string!
+RagDotNet.Documents.IngestWarningCodes

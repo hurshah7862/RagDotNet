@@ -32,5 +32,8 @@ jobs:
         run: dotnet build --no-restore --configuration Release
 
       # Unit tests only: they need no model, network or Docker.
-      - name: Test (net8.0)
+      - name: Test Core (net8.0)
         run: dotnet test --project tests/RagDotNet.Core.Tests --no-build --configuration Release --framework net8.0
+
+      - name: Test readers (net8.0)
+        run: dotnet test --project tests/RagDotNet.Readers.Tests --no-build --configuration Release --framework net8.0

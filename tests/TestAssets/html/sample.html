@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Quill Help: Sync</title>
+  <style>body { font-family: sans-serif; } .STYLE_TEXT { color: red; }</style>
+  <script>window.analytics = "SECRET_SCRIPT";</script>
+</head>
+<body>
+  <a class="skip-link" href="#content">SKIP_TEXT skip to content</a>
+  <header>
+    <span class="logo">HEADER_TEXT Quill</span>
+    <nav><a href="/">NAV_LINK Home</a> <a href="/help">Help</a></nav>
+  </header>
+  <div id="cookie-consent">COOKIE_TEXT We use cookies to improve the help centre.</div>
+  <main id="content">
+    <h1>Sync</h1>
+    <p>Quill keeps your notes the same on every device you sign in to. Changes are sent to the sync service as soon as you stop typing, and other devices pick them up within a few seconds when they are online.</p>
+    <p hidden>HIDDEN_TEXT This paragraph is not shown.</p>
+    <h2>How sync works</h2>
+    <p>Each note is stored as a small file. When you edit a note, Quill uploads only the parts that changed, which keeps sync fast even on a slow connection.<br>Attachments are uploaded separately, in the background.</p>
+    <ul>
+      <li>Notes sync as soon as you stop typing.</li>
+      <li>Attachments sync in the background:
+        <ul>
+          <li>images first,</li>
+          <li>then other files.</li>
+        </ul>
+      </li>
+      <li>Settings sync once a minute.</li>
+    </ul>
+    <h3>Sync settings</h3>
+    <table>
+      <thead><tr><th>Setting</th><th>Default</th></tr></thead>
+      <tbody>
+        <tr><td>Sync on mobile data</td><td>Off</td></tr>
+        <tr><td>Largest attachment to sync</td><td>200 MB</td></tr>
+      </tbody>
+    </table>
+    <h2>Conflicts</h2>
+    <p>A conflict happens when the same note is changed on two devices before either change has synced. Quill keeps both versions and marks the note so you can choose which one to keep.</p>
+    <p>To see every note with a conflict, run this search in the command palette:</p>
+    <pre><code>is:conflict
+sort:modified</code></pre>
+    <figure>
+      <img alt="The conflict banner" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==">
+      <figcaption>The banner shown at the top of a note with a conflict.</figcaption>
+    </figure>
+    <img alt="Remote screenshot" src="https://example.com/remote.png">
+    <dl>
+      <dt>Local version</dt><dd>The note as it is on this device.</dd>
+      <dt>Remote version</dt><dd>The note as it arrived from another device.</dd>
+    </dl>
+    <div style="display: none">DISPLAY_NONE_TEXT</div>
+  </main>
+  <aside class="sidebar">ASIDE_TEXT Related articles</aside>
+  <footer>FOOTER_TEXT Copyright Quill Labs</footer>
+  <script>console.log("SECRET_SCRIPT");</script>
+</body>
+</html>
