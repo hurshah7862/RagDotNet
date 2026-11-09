@@ -5,4 +5,5 @@ RagDotNet.Readers.Html.HtmlReader.CanRead(string? contentType, string! fileName)
 RagDotNet.Readers.Html.HtmlReader.HtmlReader() -> void
 RagDotNet.Readers.Html.HtmlReader.ReadAsync(System.IO.Stream! stream, RagDotNet.Documents.DocumentReadContext! context, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<RagDotNet.Documents.ParsedDocument!>!
 static Microsoft.Extensions.DependencyInjection.HtmlReaderExtensions.AddHtmlReader(this RagDotNet.Configuration.IRagBuilder! builder) -> RagDotNet.Configuration.IRagBuilder!
-static Microsoft.Extensions.DependencyInjection.HtmlReaderExtensions.AddHtmlReader(this RagDotNet.Configuration.RagPipelineBuilder! builder) -> RagDotNet.Configuration.RagPipelineBuilder!
+static RagDotNet.Configuration.HtmlReaderBuilderExtensions.AddHtmlReader(this RagDotNet.Configuration.RagPipelineBuilder! builder) -> RagDotNet.Configuration.RagPipelineBuilder!
+RagDotNet.Configuration.HtmlReaderBuilderExtensions

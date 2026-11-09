@@ -1,4 +1,3 @@
-using Microsoft.Extensions.DependencyInjection;
 using CommunityToolkit.VectorData.InMemory;
 using Microsoft.Extensions.AI;
 using RagDotNet.Chunking;
@@ -34,13 +33,13 @@ public sealed class EvaluationRunner(IEmbeddingGenerator<string, Embedding<float
         var all = new List<ConfigResult>();
         foreach (var set in sets)
         {
-            all.AddRange(await RunSetAsync(set.Label, set.Dataset, configs, ct).ConfigureAwait(false));
+            all.AddRange(await RunSetAsync(set.Label, set.Dataset, set.UnscorableIds ?? [], configs, ct).ConfigureAwait(false));
         }
 
         return all;
     }
 
-    private async Task<IReadOnlyList<ConfigResult>> RunSetAsync(string setName, Dataset dataset, IReadOnlyList<EvaluationConfig> configs, CancellationToken ct)
+    private async Task<IReadOnlyList<ConfigResult>> RunSetAsync(string setName, Dataset dataset, IReadOnlyList<string> unscorable, IReadOnlyList<EvaluationConfig> configs, CancellationToken ct)
     {
         var results = new List<ConfigResult>(configs.Count);
         foreach (var group in configs.GroupBy(c => (c.Chunker, c.MaxTokens, c.Overlap)))
@@ -77,7 +76,7 @@ public sealed class EvaluationRunner(IEmbeddingGenerator<string, Embedding<float
                 foreach (var q in dataset.Questions)
                 {
                     var retrieved = await pipeline.RetrieveAsync(q.Text, options, ct).ConfigureAwait(false);
-                    ranks.Add(Metrics.RankOfFirstRelevant(retrieved, q));
+                    ranks.Add(unscorable.Contains(q.Id) ? null : Metrics.RankOfFirstRelevant(retrieved, q));
                 }
 
                 results.Add(new ConfigResult(setName, config, chunkCount, Metrics.Summarize(ranks), ranks));

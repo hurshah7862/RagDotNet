@@ -31,12 +31,14 @@ public sealed partial class PdfReader : IDocumentReader
         ArgumentNullException.ThrowIfNull(stream);
         ArgumentNullException.ThrowIfNull(context);
 
-        var buffer = new MemoryStream();
+        // PdfPig needs a seekable stream; one copy in memory, read in place.
+        using var buffer = new MemoryStream();
         await stream.CopyToAsync(buffer, cancellationToken).ConfigureAwait(false);
+        buffer.Position = 0;
 
         try
         {
-            using var pdf = PdfDocument.Open(buffer.ToArray());
+            using var pdf = PdfDocument.Open(buffer);
             return Read(pdf, cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException and not DocumentReadException)
@@ -48,7 +50,7 @@ public sealed partial class PdfReader : IDocumentReader
     private static ParsedDocument Read(PdfDocument pdf, CancellationToken ct)
     {
         var warnings = new List<IngestWarning>();
-        var pages = new List<(int Number, IReadOnlyList<TextBlock> Blocks)>();
+        var pages = new List<(int Number, IReadOnlyList<Lines> Blocks)>();
 
         foreach (var page in pdf.GetPages())
         {
@@ -70,7 +72,7 @@ public sealed partial class PdfReader : IDocumentReader
 
             var words = NearestNeighbourWordExtractor.Instance.GetWords(page.Letters);
             var blocks = DocstrumBoundingBoxes.Instance.GetBlocks(words);
-            pages.Add((page.Number, UnsupervisedReadingOrderDetector.Instance.Get(blocks).ToList()));
+            pages.Add((page.Number, UnsupervisedReadingOrderDetector.Instance.Get(blocks).SelectMany(SplitAtSizeChanges).ToList()));
         }
 
         var bodySize = BodySize(pages.SelectMany(p => p.Blocks));
@@ -121,17 +123,50 @@ public sealed partial class PdfReader : IDocumentReader
 
     private static string[] Snapshot(List<(int Level, string Title)> path) => [.. path.Select(h => h.Title)];
 
-    private static IEnumerable<Letter> Letters(TextBlock block) =>
+    /// <summary>The lines of one text block, or of one part of it after <see cref="SplitAtSizeChanges"/>.</summary>
+    private sealed record Lines(IReadOnlyList<TextLine> TextLines);
+
+    /// <summary>
+    /// Layout analysis can put a heading set close above its text into the same block. Splitting wherever the font size
+    /// between neighbouring lines changes by the heading ratio or more keeps the heading on its own.
+    /// </summary>
+    private static IEnumerable<Lines> SplitAtSizeChanges(TextBlock block)
+    {
+        var current = new List<TextLine>();
+        double? previous = null;
+        foreach (var line in block.TextLines)
+        {
+            var size = LineSize(line);
+            if (previous is { } p && size > 0 && p > 0 && Math.Max(size, p) / Math.Min(size, p) >= HeadingRatio && current.Count > 0)
+            {
+                yield return new Lines(current);
+                current = [];
+            }
+
+            current.Add(line);
+            if (size > 0) previous = size;
+        }
+
+        if (current.Count > 0) yield return new Lines(current);
+    }
+
+    private static double LineSize(TextLine line)
+    {
+        var letters = line.Words.SelectMany(w => w.Letters).Where(l => !string.IsNullOrWhiteSpace(l.Value)).ToList();
+        return letters.Count == 0 ? 0 : letters.Average(l => l.PointSize);
+    }
+
+    private static IEnumerable<Letter> Letters(Lines block) =>
         block.TextLines.SelectMany(l => l.Words).SelectMany(w => w.Letters).Where(l => !string.IsNullOrWhiteSpace(l.Value));
 
     /// <summary>The most common letter size in the document, rounded to half a point.</summary>
-    private static double BodySize(IEnumerable<TextBlock> blocks)
+    private static double BodySize(IEnumerable<Lines> blocks)
     {
         var sizes = blocks.SelectMany(Letters).Select(l => RoundHalf(l.PointSize)).ToList();
         return sizes.Count == 0 ? 0 : sizes.GroupBy(s => s).OrderByDescending(g => g.Count()).ThenBy(g => g.Key).First().Key;
     }
 
-    private static double AverageSize(TextBlock block)
+    private static double AverageSize(Lines block)
     {
         var letters = Letters(block).ToList();
         return letters.Count == 0 ? 0 : letters.Average(l => l.PointSize);
@@ -139,10 +174,10 @@ public sealed partial class PdfReader : IDocumentReader
 
     private static double RoundHalf(double size) => Math.Round(size * 2, MidpointRounding.AwayFromZero) / 2;
 
-    private static bool IsHeading(TextBlock block, double bodySize) =>
+    private static bool IsHeading(Lines block, double bodySize) =>
         bodySize > 0 && block.TextLines.Count <= 2 && AverageSize(block) >= bodySize * HeadingRatio && !IsCode(block);
 
-    private static bool IsCode(TextBlock block)
+    private static bool IsCode(Lines block)
     {
         var letters = Letters(block).ToList();
         return letters.Count > 0 && letters.All(l => IsMonospace(l.FontName));
@@ -153,8 +188,26 @@ public sealed partial class PdfReader : IDocumentReader
             || font.Contains("Mono", StringComparison.OrdinalIgnoreCase)
             || font.Contains("Consolas", StringComparison.OrdinalIgnoreCase));
 
-    private static string Join(TextBlock block, string separator) =>
-        string.Join(separator, block.TextLines.Select(l => l.Text.Trim()).Where(t => t.Length > 0));
+    /// <summary>
+    /// Joins the block's lines. With a space separator (prose), a word hyphenated at a line end is rejoined when the
+    /// next line continues it in lower case ("appli-" + "cation"); a hyphen before a capital is kept.
+    /// </summary>
+    private static string Join(Lines block, string separator)
+    {
+        var lines = block.TextLines.Select(l => l.Text.Trim()).Where(t => t.Length > 0).ToList();
+        if (separator != " " || lines.Count == 0) return string.Join(separator, lines);
+
+        var sb = new System.Text.StringBuilder(lines[0]);
+        for (var i = 1; i < lines.Count; i++)
+        {
+            var hyphenated = sb.Length > 1 && sb[^1] == '-' && char.IsLetter(sb[^2]) && char.IsLower(lines[i][0]);
+            if (hyphenated) sb.Length--;
+            else sb.Append(' ');
+            sb.Append(lines[i]);
+        }
+
+        return sb.ToString();
+    }
 
     /// <summary>
     /// A block whose first line starts with a list marker is a list: each marked line starts an item and an unmarked
@@ -162,7 +215,7 @@ public sealed partial class PdfReader : IDocumentReader
     /// keep their number, as in Markdown. A number alone is not enough: a block counts as a numbered list only when at
     /// least two lines start with a number, so a paragraph such as "2026. was a good year" stays a paragraph.
     /// </summary>
-    private static string? ListText(TextBlock block)
+    private static string? ListText(Lines block)
     {
         var lines = block.TextLines.Select(l => l.Text.Trim()).Where(t => t.Length > 0).ToList();
         if (lines.Count == 0) return null;

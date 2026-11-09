@@ -80,6 +80,14 @@ public static class Program
             return InvalidInput;
         }
 
+        if (sets.Count == 0)
+        {
+            // Every requested format was one no set has a rendered copy of; an empty report would look like success.
+            await stderr.WriteLineAsync(
+                $"No dataset set has the requested format(s) {string.Join(", ", options.Formats)} in {options.DatasetDirectory}.").ConfigureAwait(false);
+            return InvalidInput;
+        }
+
         IEmbeddingGenerator<string, Embedding<float>> embedder;
         IChatClient? chat;
         ReportMetadata meta;

@@ -84,6 +84,12 @@ public static class DatasetLoader
                     var label = format == DatasetSet.Markdown ? name : $"{name} · {format}";
                     errors.AddRange(ex.Errors.Select(e => $"{label}: {e}"));
                 }
+                catch (DocumentReadException ex)
+                {
+                    // A damaged corpus file is a dataset problem to report with the rest, not a crash.
+                    var label = format == DatasetSet.Markdown ? name : $"{name} · {format}";
+                    errors.Add($"{label}: {ex.Message}");
+                }
             }
         }
 
@@ -98,7 +104,7 @@ public static class DatasetLoader
     /// Loads a set's rendered copy in <paramref name="format"/>. It shares the set's questions; a question whose evidence
     /// the format's reader did not keep intact in one body block is counted as unscorable instead of failing the load.
     /// </summary>
-    private static async Task<(Dataset Dataset, int Unscorable)> LoadVariantAsync(string setDir, string format, CancellationToken ct)
+    private static async Task<(Dataset Dataset, IReadOnlyList<string> Unscorable)> LoadVariantAsync(string setDir, string format, CancellationToken ct)
     {
         var expected = Directory.GetFiles(Path.Combine(setDir, "corpus"), "*.md").Select(Path.GetFileNameWithoutExtension).ToHashSet(StringComparer.Ordinal);
         var files = Directory.GetFiles(Path.Combine(setDir, "formats", format), "*." + format).Order(StringComparer.Ordinal).ToList();
@@ -110,7 +116,7 @@ public static class DatasetLoader
 
         var unscorable = new List<string>();
         var dataset = await LoadFilesAsync(files, Path.Combine(setDir, "questions.json"), $"formats/{format}/", unscorable, ct).ConfigureAwait(false);
-        return (dataset, unscorable.Count);
+        return (dataset, unscorable);
     }
 
     private static void Duplicates(List<DatasetSet> sets, Func<DatasetSet, IEnumerable<string>> ids, string what, List<string> errors)

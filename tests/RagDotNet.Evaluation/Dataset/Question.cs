@@ -29,9 +29,14 @@ public sealed record Dataset(IReadOnlyList<CorpusDocument> Documents, IReadOnlyL
 /// <param name="Name">The set's directory name.</param>
 /// <param name="Dataset">Its documents and questions.</param>
 /// <param name="Format"><c>md</c> for the set's own corpus, or <c>pdf</c>, <c>docx</c> or <c>html</c> for a rendered variant.</param>
-/// <param name="Unscorable">Questions whose evidence the variant's reader did not keep intact in one body block.</param>
-public sealed record DatasetSet(string Name, Dataset Dataset, string Format = DatasetSet.Markdown, int Unscorable = 0)
+/// <param name="UnscorableIds">
+/// Ids of questions whose evidence the variant's reader did not keep intact in one body block; they always score as a miss.
+/// </param>
+public sealed record DatasetSet(string Name, Dataset Dataset, string Format = DatasetSet.Markdown, IReadOnlyList<string>? UnscorableIds = null)
 {
+    /// <summary>The number of unscorable questions.</summary>
+    public int Unscorable => UnscorableIds?.Count ?? 0;
+
     /// <summary>The format of a set's own corpus.</summary>
     public const string Markdown = "md";
 

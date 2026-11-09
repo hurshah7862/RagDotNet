@@ -1,3 +1,4 @@
+using RagDotNet.Configuration;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using RagDotNet.Documents;
@@ -90,6 +91,35 @@ public class PdfReaderTests
         }
 
         return builder.Build();
+    }
+
+    [Fact] // Final review minor: words hyphenated across lines stayed split ("appli- cation")
+    public async Task Words_hyphenated_across_lines_are_rejoined()
+    {
+        var doc = await ReadAsync(Reader, OnePagePdf("Quill keeps a local appli-", "cation cache so search stays fast, while well-", "Known names keep their hyphen."), "hy.pdf");
+
+        Assert.Equal("Quill keeps a local application cache so search stays fast, while well- Known names keep their hyphen.", Assert.Single(doc.Blocks).Text);
+    }
+
+    [Fact] // Final review minor: a heading set close above its paragraph merged into it
+    public async Task A_heading_close_above_its_text_is_still_a_heading()
+    {
+        var builder = new UglyToad.PdfPig.Writer.PdfDocumentBuilder();
+        var regular = builder.AddStandard14Font(UglyToad.PdfPig.Fonts.Standard14Fonts.Standard14Font.Helvetica);
+        var bold = builder.AddStandard14Font(UglyToad.PdfPig.Fonts.Standard14Fonts.Standard14Font.HelveticaBold);
+        var page = builder.AddPage(595, 842);
+        page.AddText("Installing Quill", 16, new UglyToad.PdfPig.Core.PdfPoint(72, 760), bold);
+        page.AddText("Download the installer from the website and run it on your", 11, new UglyToad.PdfPig.Core.PdfPoint(72, 745.5), regular);
+        page.AddText("computer; the wizard asks two questions before it finishes.", 11, new UglyToad.PdfPig.Core.PdfPoint(72, 732.1), regular);
+        page.AddText("A second paragraph follows the first one after a normal gap", 11, new UglyToad.PdfPig.Core.PdfPoint(72, 710.7), regular);
+        page.AddText("and wraps onto a second line as body text usually does.", 11, new UglyToad.PdfPig.Core.PdfPoint(72, 697.3), regular);
+
+        var doc = await ReadAsync(Reader, builder.Build(), "tight.pdf");
+
+        Assert.Equal(BlockKind.Heading, doc.Blocks[0].Kind);
+        Assert.Equal("Installing Quill", doc.Blocks[0].Text);
+        Assert.All(doc.Blocks.Skip(1), b => Assert.Equal(["Installing Quill"], b.HeadingPath));
+        Assert.StartsWith("Download the installer", doc.Blocks[1].Text, StringComparison.Ordinal);
     }
 
     [Fact] // Final review: a paragraph starting with a number and a full stop lost the number

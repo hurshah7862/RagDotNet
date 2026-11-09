@@ -90,6 +90,49 @@ public class FormatTests
         Assert.Contains("## base · html\n\n- Unscorable questions: 0\n", report, StringComparison.Ordinal);
     }
 
+    [Fact] // Final review minor: an unscorable question could still score a hit (e.g. evidence found twice)
+    public async Task Unscorable_questions_always_score_as_a_miss()
+    {
+        var dir = WriteDataset(
+            new Dictionary<string, string> { ["a"] = "# A\n\nThe default theme is called Parchment.\n" },
+            """[ { "id": "q1", "question": "What is the default theme called?", "documentId": "a", "evidence": "default theme is called parchment" } ]""");
+        Directory.CreateDirectory(Path.Combine(dir, "formats", "html"));
+        await File.WriteAllTextAsync(Path.Combine(dir, "formats", "html", "a.html"),
+            "<main><p>The default theme is called Parchment.</p><p>Again: the default theme is called Parchment.</p></main>", Ct);
+        var sets = await DatasetLoader.LoadSetsAsync(dir, ["html"], Ct);
+        using var embedder = new Providers.FakeEmbeddingGenerator(256);
+
+        var results = await new Running.EvaluationRunner(embedder, 256, chat: null)
+            .RunAsync(sets, Running.EvaluationConfig.Matrix(["structure-aware"], [512], [0], ["vector"]), Ct);
+
+        Assert.Equal(1, sets[0].Unscorable);
+        Assert.Equal([null], Assert.Single(results).Ranks);
+    }
+
+    [Fact] // Final review minor: asking for a format no set has gave an empty report and exit 0
+    public async Task A_format_no_set_has_exits_1()
+    {
+        var (code, report, err) = await CliTests.Run("--dataset", SmallDataset(), "--formats", "pdf");
+
+        Assert.Equal(1, code);
+        Assert.Equal("", report);
+        Assert.Contains("pdf", err, StringComparison.Ordinal);
+    }
+
+    [Fact] // Final review minor: an unreadable file in a rendered format escaped as an unhandled exception
+    public async Task An_unreadable_variant_file_is_a_dataset_error()
+    {
+        var dir = WriteDataset(
+            new Dictionary<string, string> { ["a"] = "# A\n\nThe default theme is called Parchment.\n" },
+            """[ { "id": "q1", "question": "Theme?", "documentId": "a", "evidence": "default theme is called parchment" } ]""");
+        Directory.CreateDirectory(Path.Combine(dir, "formats", "pdf"));
+        await File.WriteAllBytesAsync(Path.Combine(dir, "formats", "pdf", "a.pdf"), [1, 2, 3, 4, 5], Ct);
+
+        var ex = await Assert.ThrowsAsync<DatasetValidationException>(() => DatasetLoader.LoadSetsAsync(dir, ["pdf"], Ct));
+
+        Assert.Contains(ex.Errors, e => e.Contains("a.pdf", StringComparison.Ordinal) && e.Contains("· pdf", StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task Unknown_format_exits_1()
     {

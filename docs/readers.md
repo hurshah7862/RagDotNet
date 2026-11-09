@@ -37,7 +37,7 @@ The reader is chosen by the document's content type when one is given, and other
 ## What each reader keeps
 
 **PDF**
-- **Text:** every block carries its page number, so citations show `p. 3` or `pp. 3–4`. Text is grouped into blocks and put in reading order with PdfPig's layout analysis.
+- **Text:** every block carries its page number, so citations show `p. 3` or `pp. 3–4`. Text is grouped into blocks and put in reading order with PdfPig's layout analysis. A block is also split wherever the font size changes sharply between lines, so a heading set close above its text stays separate. A word hyphenated at the end of a line is rejoined when the next line continues it in lower case.
 - **Headings:** recognised by font size. A block of at most two lines whose text is at least 1.15 times the document's most common size is a heading. The distinct heading sizes, largest first, give levels 1, 2, 3 and so on. A PDF whose headings are the same size as its body text gets no heading paths, but its citations still show pages.
 - **Code:** a block set entirely in a monospace font (Courier, Consolas, or any font with "Mono" in its name) keeps its line breaks.
 - **Lists:** a block whose first line starts with `•`, `-`, `–` or `*` becomes a list, with each item written as `- item`. A block counts as a numbered list only when at least two of its lines start with a number such as `1.`, and those items keep their numbers. A paragraph that merely begins with a number, such as "2026. was a good year", stays a paragraph with its text unchanged. A line without a marker continues the previous item, so wrapped items stay whole.
@@ -47,9 +47,10 @@ The reader is chosen by the document's content type when one is given, and other
 **DOCX**
 - **Headings:** from the built-in Heading 1–9 styles, from the Title style, and from any style or paragraph that sets an outline level, following each style's "based on" chain. A company template with its own heading styles therefore works without configuration as long as those styles have outline levels, as Word's own templates do.
 - **Lists:** consecutive numbered or bulleted paragraphs become one list, indented by level.
-- **Tables:** become table blocks with one line per row (`| cell | cell |`), so a chunk never splits a row. Nested tables are flattened into their cell.
+- **Tables:** become table blocks with one line per row (`| cell | cell |`), so a chunk never splits a row. Rows inside content controls are included, and nested tables are flattened into their cell.
+- **Table of contents:** entries in the TOC 1–9 styles are skipped, because they repeat the headings with page numbers. The headings themselves are read.
 - **Code:** paragraphs in a style whose name contains "Code", or set entirely in a monospace font, become one code block.
-- **Also:** tabs become spaces and line breaks are kept. Tracked deletions are ignored; tracked insertions are read.
+- **Also:** tabs become spaces, line breaks are kept, and non-breaking hyphens are kept as hyphens. Tracked deletions are ignored; tracked insertions are read. Symbol characters inserted from symbol fonts (`w:sym`, such as Wingdings arrows) are not read.
 - **Not read:** headers, footers, footnotes, endnotes, comments and text boxes. Text boxes are skipped on purpose: Word stores each one twice inside the paragraph it is anchored to, so reading them would add duplicated text to that paragraph.
 
 **HTML**
@@ -73,7 +74,8 @@ The reader is chosen by the document's content type when one is given, and other
   - loose text in a `div` or `section` becomes a paragraph;
   - an inline element that wraps blocks, such as a link around a card with a heading and text, is read as the blocks it holds.
 - **Encoding:** detected like a browser does: byte-order mark, then `<meta charset>`, then UTF-8. A damaged page still gives its readable text. Nothing on the page is run or fetched.
-- **Title:** the page `<title>`, otherwise its first `h1`.
+- **Tables:** a cell that spans several columns (`colspan`) is followed by empty cells, so the columns of each row stay aligned.
+- **Title:** the page `<title>`, otherwise its first top-level heading (an `h1`, or the highest heading the page has).
 
 ## Warnings
 
@@ -90,6 +92,11 @@ Reading text in images needs an OCR provider, which is planned as the separate `
 ## Errors
 
 A PDF or DOCX file that is corrupt, truncated or password-protected raises `DocumentReadException`. Its message names the file, `FileName` and `Reason` give the details, and the parser's own exception is the inner exception. Nothing is written for that document. HTML never raises it for damaged markup, only if the stream itself cannot be read.
+
+- **A DOCX that opens but contains something the reader does not expect** raises `DocumentReadException` with the reason "unexpected content in the document". That separates it from a damaged file.
+- **One unreadable page fails the whole PDF.** If PdfPig cannot parse a single page or image, the reader raises `DocumentReadException` for the whole file rather than skipping that page, so nothing is lost without notice. If that happens with a file that opens in a PDF viewer, re-saving or printing it to PDF usually produces a file the reader can open.
+
+The `Add…Reader()` methods for `RagPipelineBuilder` are in the `RagDotNet.Configuration` namespace, next to the builder itself. The ones for `services.AddRag(...)` are in `Microsoft.Extensions.DependencyInjection`, next to `AddRag`.
 
 ## How well they work
 

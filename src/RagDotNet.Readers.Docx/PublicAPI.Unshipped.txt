@@ -5,4 +5,5 @@ RagDotNet.Readers.Docx.DocxReader.CanRead(string? contentType, string! fileName)
 RagDotNet.Readers.Docx.DocxReader.DocxReader() -> void
 RagDotNet.Readers.Docx.DocxReader.ReadAsync(System.IO.Stream! stream, RagDotNet.Documents.DocumentReadContext! context, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<RagDotNet.Documents.ParsedDocument!>!
 static Microsoft.Extensions.DependencyInjection.DocxReaderExtensions.AddDocxReader(this RagDotNet.Configuration.IRagBuilder! builder) -> RagDotNet.Configuration.IRagBuilder!
-static Microsoft.Extensions.DependencyInjection.DocxReaderExtensions.AddDocxReader(this RagDotNet.Configuration.RagPipelineBuilder! builder) -> RagDotNet.Configuration.RagPipelineBuilder!
+static RagDotNet.Configuration.DocxReaderBuilderExtensions.AddDocxReader(this RagDotNet.Configuration.RagPipelineBuilder! builder) -> RagDotNet.Configuration.RagPipelineBuilder!
+RagDotNet.Configuration.DocxReaderBuilderExtensions

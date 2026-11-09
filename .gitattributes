@@ -1,6 +1,10 @@
-tests/RagDotNet.Evaluation/Dataset/** text eol=lf
+# Evaluation dataset text files keep LF everywhere, so dataset hashes match across platforms.
+# The rule names text types explicitly, so a binary file added under Dataset is never converted.
+tests/RagDotNet.Evaluation/Dataset/**/*.md text eol=lf
+tests/RagDotNet.Evaluation/Dataset/**/*.json text eol=lf
+tests/RagDotNet.Evaluation/Dataset/**/*.html text eol=lf
 
-# Binary formats: never convert line endings (later lines win over the text rule above).
+# Binary formats: never convert line endings.
 *.pdf binary
 *.docx binary
 *.png binary

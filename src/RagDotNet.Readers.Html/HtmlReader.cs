@@ -269,10 +269,18 @@ public sealed partial class HtmlReader : IDocumentReader
         // Rows of nested tables belong to their own table and are flattened into the outer cell's text.
         var rows = table.QuerySelectorAll("tr").Where(r => r.Closest("table") == table);
         var lines = rows
-            .Select(r => r.Children.Where(c => c.LocalName is "td" or "th").Select(c => InlineText(c).Replace('\n', ' ')).ToList())
+            .Select(r => r.Children.Where(c => c.LocalName is "td" or "th").SelectMany(Cells).ToList())
             .Where(cells => cells.Count > 0)
             .Select(cells => "| " + string.Join(" | ", cells) + " |");
         return string.Join('\n', lines);
+    }
+
+    /// <summary>A cell's text, followed by an empty cell for each extra column it spans, so later columns stay aligned.</summary>
+    private static IEnumerable<string> Cells(IElement cell)
+    {
+        yield return InlineText(cell).Replace('\n', ' ');
+        var span = int.TryParse(cell.GetAttribute("colspan"), out var n) ? Math.Clamp(n, 1, 50) : 1;
+        for (var i = 1; i < span; i++) yield return "";
     }
 
     /// <summary>The element's text with whitespace collapsed to single spaces and <c>br</c> kept as a newline.</summary>

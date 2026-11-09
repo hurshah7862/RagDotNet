@@ -151,7 +151,7 @@ The format check asks whether the PDF, DOCX and HTML readers keep enough of a do
 - **Rendering:** `tests/RagDotNet.TestAssetGen` renders each of the 8 `base` documents into the three formats, in `Dataset/base/formats/{pdf,docx,html}`:
   - **PDF:** Helvetica with larger bold headings, Courier code, and tables drawn as lines of text.
   - **DOCX:** Word's built-in heading styles, numbered lists, real tables and a Consolas code style.
-  - **HTML:** a full page with navigation, a cookie banner, a sidebar and a footer around a `main` element, so the check also covers boilerplate removal.
+  - **HTML:** a full page with navigation, a cookie banner, a sidebar and a footer around a `main` element. Because the reader reads only the `main` element, this checks that the boilerplate around the content is left out. It does not exercise the boilerplate rules that apply inside the content; the reader's unit tests cover those.
 - **Questions:** each rendered copy is read with its reader and gets the same 40 questions.
 - **Unscorable questions:** a question whose evidence the reader did not keep intact in one body block is counted as "unscorable" and still scored as a miss, so a reader that loses or scrambles text shows up in the report.
 - **Command:** `--formats md,pdf,docx,html --chunkers structure-aware --max-tokens 512 --overlap 0.1`. That is the library default, so the check measures the readers rather than the chunker settings.
@@ -170,7 +170,7 @@ What this shows:
 - **No reader loses answer text.** In every format, all 40 questions' evidence is intact inside one body block, so no question is unscorable.
 - **All three formats retrieve at least as well as the Markdown source.** Each format puts one more question first than Markdown does (R@1 0.825 against 0.800); DOCX and HTML also put one more in the top 3. These are differences of one question in 40 (0.025), within noise. A visible difference in the input is that the readers' blocks contain no Markdown markup (`**`, `|---|`, backticks), which Markdown blocks keep; this run does not show whether that is the cause.
 - **The structure comes through.**
-  - DOCX and HTML produce exactly the same blocks as the Markdown source on all 8 documents: the same headings, paragraphs, lists, tables and code, with the same heading paths.
+  - DOCX and HTML produce the same block structure as the Markdown source on all 8 documents: the same number of headings, paragraphs, lists, tables and code blocks, in the same order, with the same heading paths. The text inside the blocks differs only in markup: Markdown blocks keep `**` and backticks, and the other formats don't.
   - PDF finds as many headings as the Markdown source has on all 8 documents, from font size alone. On the 5 documents where its block count also matches, every block has the same heading path as in Markdown.
   - PDF reads tables as paragraphs, by design.
   - In 3 PDF documents one block is split in two by the layout analysis. That doesn't change the chunks here, because StructureAware joins blocks within a section.

@@ -1,3 +1,4 @@
+using RagDotNet.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using CommunityToolkit.VectorData.InMemory;
 using Microsoft.Extensions.AI;
@@ -175,6 +176,14 @@ public class HtmlReaderTests
             """, "x.html");
 
         Assert.Equal(["- Term: Definition text.", "- Item\n  - Sub item"], doc.Blocks.Select(b => b.Text));
+    }
+
+    [Fact] // Final review minor: colspan shifted the cells of a row
+    public async Task Colspan_keeps_columns_aligned()
+    {
+        var doc = await ReadAsync(Reader, "<table><tr><th colspan='2'>Plan</th><th>Price</th></tr><tr><td>Team</td><td>Yearly</td><td>96</td></tr></table>", "t.html");
+
+        Assert.Equal("| Plan |  | Price |\n| Team | Yearly | 96 |", Assert.Single(doc.Blocks).Text);
     }
 
     [Fact]

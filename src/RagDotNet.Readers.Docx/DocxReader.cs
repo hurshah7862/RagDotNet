@@ -36,15 +36,28 @@ public sealed partial class DocxReader : IDocumentReader
         await stream.CopyToAsync(buffer, cancellationToken).ConfigureAwait(false);
         buffer.Position = 0;
 
+        WordprocessingDocument doc;
         try
         {
-            using var doc = WordprocessingDocument.Open(buffer, false);
-            return Read(doc, cancellationToken);
+            doc = WordprocessingDocument.Open(buffer, false);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException and not DocumentReadException)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // Corrupt, truncated and encrypted files all surface as packaging or format exceptions.
+            // Corrupt, truncated and encrypted files all fail here, as packaging or format exceptions.
             throw new DocumentReadException(context.FileName, "the file is not a readable DOCX document (it may be corrupt or password-protected)", ex);
+        }
+
+        using (doc)
+        {
+            try
+            {
+                return Read(doc, cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException and not DocumentReadException)
+            {
+                // The package opened, so this is content the reader did not expect, not a damaged file.
+                throw new DocumentReadException(context.FileName, $"unexpected content in the document: {ex.Message}", ex);
+            }
         }
     }
 
@@ -71,6 +84,9 @@ public sealed partial class DocxReader : IDocumentReader
             if (element is not Paragraph paragraph) continue;
             var text = ParagraphText(paragraph);
             var styleId = paragraph.ParagraphProperties?.ParagraphStyleId?.Val?.Value;
+
+            // Table-of-contents entries repeat the headings with page numbers; the headings themselves are read.
+            if (styles.IsTableOfContents(styleId)) continue;
 
             if (styles.HeadingLevel(paragraph, styleId) is { } level)
             {
@@ -137,6 +153,9 @@ public sealed partial class DocxReader : IDocumentReader
                 case TabChar:
                     sb.Append(' ');
                     break;
+                case NoBreakHyphen:
+                    sb.Append('-');
+                    break;
                 case Break or CarriageReturn:
                     sb.Append('\n');
                     break;
@@ -150,7 +169,8 @@ public sealed partial class DocxReader : IDocumentReader
 
     private static string TableText(Table table)
     {
-        var lines = table.Elements<TableRow>()
+        // Rows can sit inside content controls (w:sdt); rows of nested tables belong to those tables.
+        var lines = table.Descendants<TableRow>().Where(row => row.Ancestors<Table>().First() == table)
             .Select(row => row.Elements<TableCell>()
                 .Select(cell => string.Join(' ', cell.Descendants<Paragraph>().Where(p => !InTextBox(p)).Select(ParagraphText).Where(t => t.Length > 0)).Replace('\n', ' '))
                 .ToList())
@@ -192,21 +212,33 @@ public sealed partial class DocxReader : IDocumentReader
                 if (m.Success) return int.Parse(m.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
             }
 
+            // A document without a styles part can still name the built-in heading styles.
+            if (styleId is not null && !_byId.ContainsKey(styleId) && HeadingId().Match(styleId) is { Success: true } byId)
+                return int.Parse(byId.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
+
             return null;
         }
 
+        public bool IsTableOfContents(string? styleId) =>
+            styleId is not null && (TocId().IsMatch(styleId) || TocId().IsMatch((Name(styleId) ?? "").Replace(" ", "", StringComparison.Ordinal)));
+
+        /// <summary>
+        /// The list level, when the paragraph is numbered. The numbering id and the level can come from the paragraph, its
+        /// style chain, or one from each (a paragraph often sets only a level on a numbered style).
+        /// </summary>
         public int? ListLevel(Paragraph paragraph, string? styleId)
         {
-            var numbering = paragraph.ParagraphProperties?.NumberingProperties
-                ?? Chain(styleId).Select(s => s.StyleParagraphProperties?.NumberingProperties).FirstOrDefault(n => n is not null);
-            if (numbering?.NumberingId?.Val?.Value is not { } numId || numId == 0) return null;
-            return numbering.NumberingLevelReference?.Val?.Value ?? 0;
+            var own = paragraph.ParagraphProperties?.NumberingProperties;
+            var fromStyle = Chain(styleId).Select(s => s.StyleParagraphProperties?.NumberingProperties).FirstOrDefault(n => n is not null);
+            var numId = own?.NumberingId?.Val?.Value ?? fromStyle?.NumberingId?.Val?.Value;
+            if (numId is null or 0) return null;
+            return own?.NumberingLevelReference?.Val?.Value ?? fromStyle?.NumberingLevelReference?.Val?.Value ?? 0;
         }
 
         public bool IsCode(Paragraph paragraph, string? styleId)
         {
-            if (Chain(styleId).Any(s => (s.StyleId?.Value ?? "").Contains("Code", StringComparison.OrdinalIgnoreCase)
-                || (s.StyleName?.Val?.Value ?? "").Contains("Code", StringComparison.OrdinalIgnoreCase)))
+            // "Code" must be a whole word of the style id or name: "Source Code" and "HTMLCode" count, "Barcode" does not.
+            if (Chain(styleId).Any(s => HasWordCode(s.StyleId?.Value) || HasWordCode(s.StyleName?.Val?.Value)))
                 return true;
 
             var runs = paragraph.Descendants<Run>().Where(r => r.Descendants<Text>().Any(t => t.Text.Length > 0)).ToList();
@@ -216,6 +248,9 @@ public sealed partial class DocxReader : IDocumentReader
         private static bool IsMonospace(string? font) =>
             font is not null && (MonospaceFonts.Any(m => font.StartsWith(m, StringComparison.OrdinalIgnoreCase))
                 || font.Contains("Mono", StringComparison.OrdinalIgnoreCase));
+
+        private static bool HasWordCode(string? name) =>
+            name is not null && Words().Matches(name).Any(m => string.Equals(m.Value, "code", StringComparison.OrdinalIgnoreCase));
 
         private string? Name(string styleId) => _byId.TryGetValue(styleId, out var s) ? s.StyleName?.Val?.Value : null;
 
@@ -231,6 +266,13 @@ public sealed partial class DocxReader : IDocumentReader
 
         [GeneratedRegex(@"^(?i:heading)([1-9])$")]
         private static partial Regex HeadingId();
+
+        [GeneratedRegex(@"^(?i:toc)[1-9]$")]
+        private static partial Regex TocId();
+
+        /// <summary>Words of a style id or name: split at spaces, punctuation and lower-to-upper case changes.</summary>
+        [GeneratedRegex(@"[A-Z]+(?![a-z])|[A-Z]?[a-z]+|\d+")]
+        private static partial Regex Words();
     }
 
     /// <summary>Collects blocks, grouping consecutive list items and code lines, and keeps the heading path.</summary>

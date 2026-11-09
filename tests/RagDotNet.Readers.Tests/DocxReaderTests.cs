@@ -1,8 +1,10 @@
+using RagDotNet.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using RagDotNet.Documents;
 using RagDotNet.Ingestion;
 using RagDotNet.Readers.Docx;
 using static RagDotNet.Readers.Tests.ReaderTestKit;
+using W = DocumentFormat.OpenXml.Wordprocessing;
 
 namespace RagDotNet.Readers.Tests;
 
@@ -98,6 +100,96 @@ public class DocxReaderTests
         var parsed = await ReadAsync(Reader, ms.ToArray(), "boxes.docx");
 
         Assert.Equal(["Anchor text.", "| Cell text. |"], parsed.Blocks.Select(b => b.Text));
+    }
+
+    /// <summary>Builds a DOCX in memory; <paramref name="styles"/> is null for a document with no styles part.</summary>
+    private static byte[] Docx(W.Styles? styles, params DocumentFormat.OpenXml.OpenXmlElement[] body)
+    {
+        using var ms = new MemoryStream();
+        using (var doc = DocumentFormat.OpenXml.Packaging.WordprocessingDocument.Create(ms, DocumentFormat.OpenXml.WordprocessingDocumentType.Document))
+        {
+            var main = doc.AddMainDocumentPart();
+            main.Document = new W.Document(new W.Body(body));
+            if (styles is not null) main.AddNewPart<DocumentFormat.OpenXml.Packaging.StyleDefinitionsPart>().Styles = styles;
+        }
+
+        return ms.ToArray();
+    }
+
+    private static W.Paragraph P(string? style, params DocumentFormat.OpenXml.OpenXmlElement[] content)
+    {
+        var p = new W.Paragraph(content);
+        if (style is not null) p.PrependChild(new W.ParagraphProperties(new W.ParagraphStyleId { Val = style }));
+        return p;
+    }
+
+    private static W.Run R(string text) => new(new W.Text(text) { Space = DocumentFormat.OpenXml.SpaceProcessingModeValues.Preserve });
+
+    [Fact] // Final review minor: non-breaking hyphens were dropped (e‑mail → email)
+    public async Task Non_breaking_hyphens_are_kept_and_soft_hyphens_ignored()
+    {
+        var doc = await ReadAsync(Reader, Docx(null, P(null, new W.Run(new W.Text("e"), new W.NoBreakHyphen(), new W.Text("mail and syn"), new W.SoftHyphen(), new W.Text("chronise")))), "h.docx");
+
+        Assert.Equal("e-mail and synchronise", Assert.Single(doc.Blocks).Text);
+    }
+
+    [Fact] // Final review minor: numbering from the style with only a level on the paragraph was missed
+    public async Task Numbering_from_the_style_applies_when_the_paragraph_sets_only_a_level()
+    {
+        var styles = new W.Styles(new W.Style(
+            new W.StyleName { Val = "List Number" },
+            new W.StyleParagraphProperties(new W.NumberingProperties(new W.NumberingId { Val = 3 })))
+        { Type = W.StyleValues.Paragraph, StyleId = "ListNumber" });
+        var levelOnly = P("ListNumber", R("Second level"));
+        levelOnly.ParagraphProperties!.Append(new W.NumberingProperties(new W.NumberingLevelReference { Val = 1 }));
+
+        var doc = await ReadAsync(Reader, Docx(styles, P("ListNumber", R("First level")), levelOnly), "n.docx");
+
+        Assert.Equal("- First level\n  - Second level", Assert.Single(doc.Blocks).Text);
+    }
+
+    [Fact] // Final review minor: rows inside a content control in a table were dropped
+    public async Task Table_rows_inside_content_controls_are_read()
+    {
+        static W.TableRow Row(string a) => new(new W.TableCell(P(null, R(a))));
+        var table = new W.Table(Row("Plain row"), new W.SdtRow(new W.SdtContentRow(Row("Controlled row"))));
+
+        var doc = await ReadAsync(Reader, Docx(null, table), "t.docx");
+
+        Assert.Equal("| Plain row |\n| Controlled row |", Assert.Single(doc.Blocks).Text);
+    }
+
+    [Fact] // Final review minor: table-of-contents entries duplicated headings and added page numbers
+    public async Task Table_of_contents_entries_are_skipped()
+    {
+        var styles = new W.Styles(
+            new W.Style(new W.StyleName { Val = "toc 1" }) { Type = W.StyleValues.Paragraph, StyleId = "TOC1" },
+            new W.Style(new W.StyleName { Val = "heading 1" }, new W.StyleParagraphProperties(new W.OutlineLevel { Val = 0 })) { Type = W.StyleValues.Paragraph, StyleId = "Heading1" });
+
+        var doc = await ReadAsync(Reader, Docx(styles, P("TOC1", R("Introduction 3")), P("Heading1", R("Introduction")), P(null, R("Body text."))), "toc.docx");
+
+        Assert.Equal(["Introduction", "Body text."], doc.Blocks.Select(b => b.Text));
+    }
+
+    [Fact] // Final review minor: style names merely containing "code" (Barcode, Postcode) made code blocks
+    public async Task Only_code_styles_make_code_blocks()
+    {
+        var styles = new W.Styles(
+            new W.Style(new W.StyleName { Val = "Barcode label" }) { Type = W.StyleValues.Paragraph, StyleId = "BarcodeLabel" },
+            new W.Style(new W.StyleName { Val = "Source Code" }) { Type = W.StyleValues.Paragraph, StyleId = "SourceCode" });
+
+        var doc = await ReadAsync(Reader, Docx(styles, P("BarcodeLabel", R("SKU 12345")), P("SourceCode", R("quill sync"))), "c.docx");
+
+        Assert.Equal([BlockKind.Paragraph, BlockKind.Code], doc.Blocks.Select(b => b.Kind));
+    }
+
+    [Fact] // Final review minor: a heading style id with no styles part was read as a paragraph
+    public async Task Heading_style_ids_work_without_a_styles_part()
+    {
+        var doc = await ReadAsync(Reader, Docx(null, P("Heading2", R("Setup")), P(null, R("Steps."))), "s.docx");
+
+        Assert.Equal([BlockKind.Heading, BlockKind.Paragraph], doc.Blocks.Select(b => b.Kind));
+        Assert.Equal(["Setup"], doc.Blocks[1].HeadingPath);
     }
 
     [Fact]
