@@ -76,6 +76,42 @@ public class PdfReaderTests
         Assert.Equal("- Owners can invite and remove members.\n- Editors can change any note.\n- Viewers can read notes but not change them.", list.Text);
     }
 
+    private static byte[] OnePagePdf(params string[] lines)
+    {
+        var builder = new UglyToad.PdfPig.Writer.PdfDocumentBuilder();
+        var font = builder.AddStandard14Font(UglyToad.PdfPig.Fonts.Standard14Fonts.Standard14Font.Helvetica);
+        var page = builder.AddPage(595, 842);
+        var y = 760.0;
+        foreach (var line in lines)
+        {
+            if (line.Length == 0) { y -= 20; continue; }
+            page.AddText(line, 11, new UglyToad.PdfPig.Core.PdfPoint(72, y), font);
+            y -= 14.3;
+        }
+
+        return builder.Build();
+    }
+
+    [Fact] // Final review: a paragraph starting with a number and a full stop lost the number
+    public async Task A_paragraph_starting_with_a_number_keeps_it()
+    {
+        var doc = await ReadAsync(Reader, OnePagePdf("2026. was a good year for Quill, with three releases."), "year.pdf");
+
+        var block = Assert.Single(doc.Blocks);
+        Assert.Equal(BlockKind.Paragraph, block.Kind);
+        Assert.Equal("2026. was a good year for Quill, with three releases.", block.Text);
+    }
+
+    [Fact] // Final review: numbered list items keep their numbers
+    public async Task Numbered_list_items_keep_their_numbers()
+    {
+        var doc = await ReadAsync(Reader, OnePagePdf("1. Download the installer.", "2. Run it and follow the steps."), "steps.pdf");
+
+        var block = Assert.Single(doc.Blocks);
+        Assert.Equal(BlockKind.List, block.Kind);
+        Assert.Equal("1. Download the installer.\n2. Run it and follow the steps.", block.Text);
+    }
+
     [Fact]
     public async Task Ingest_through_the_pipeline_reports_the_page_warning_and_cites_pages()
     {

@@ -40,7 +40,7 @@ The reader is chosen by the document's content type when one is given, and other
 - **Text:** every block carries its page number, so citations show `p. 3` or `pp. 3–4`. Text is grouped into blocks and put in reading order with PdfPig's layout analysis.
 - **Headings:** recognised by font size. A block of at most two lines whose text is at least 1.15 times the document's most common size is a heading. The distinct heading sizes, largest first, give levels 1, 2, 3 and so on. A PDF whose headings are the same size as its body text gets no heading paths, but its citations still show pages.
 - **Code:** a block set entirely in a monospace font (Courier, Consolas, or any font with "Mono" in its name) keeps its line breaks.
-- **Lists:** a block whose first line starts with `•`, `-`, `–`, `*` or a number such as `1.` becomes a list. A line without a marker continues the previous item, so wrapped items stay whole.
+- **Lists:** a block whose first line starts with `•`, `-`, `–` or `*` becomes a list, with each item written as `- item`. A block counts as a numbered list only when at least two of its lines start with a number such as `1.`, and those items keep their numbers. A paragraph that merely begins with a number, such as "2026. was a good year", stays a paragraph with its text unchanged. A line without a marker continues the previous item, so wrapped items stay whole.
 - **Not read as structure:** tables become ordinary paragraph text. Text in images is not read (see warnings below).
 - **Title:** the PDF's own title if it has one, otherwise its first top-level heading.
 
@@ -50,23 +50,28 @@ The reader is chosen by the document's content type when one is given, and other
 - **Tables:** become table blocks with one line per row (`| cell | cell |`), so a chunk never splits a row. Nested tables are flattened into their cell.
 - **Code:** paragraphs in a style whose name contains "Code", or set entirely in a monospace font, become one code block.
 - **Also:** tabs become spaces and line breaks are kept. Tracked deletions are ignored; tracked insertions are read.
-- **Not read:** headers, footers, footnotes, endnotes, comments and text boxes.
+- **Not read:** headers, footers, footnotes, endnotes, comments and text boxes. Text boxes are skipped on purpose: Word stores each one twice inside the paragraph it is anchored to, so reading them would add duplicated text to that paragraph.
 
 **HTML**
-- **Boilerplate removed first:**
-  - the elements `script`, `style`, `noscript`, `template`, `svg`, `canvas`, `iframe`, `object`, `form`, `nav` and `aside`;
-  - `header` and `footer` elements outside an `article`;
-  - hidden elements: the `hidden` attribute, `aria-hidden="true"`, or `display: none`;
+- **Where the content is taken from:** the first `main` element, else the first element with `role="main"`, else the page's only `article`, else the whole `body`. Nothing outside it is read, so navigation, banners and footers around a `main` never reach the text. The root is chosen before anything is removed, so no rule can remove the content or what contains it.
+- **Removed inside the content:**
+  - `script`, `style`, `noscript`, `template`, `svg`, `canvas`, `iframe`, `object` and `nav`;
+  - form controls (`input`, `select`, `option`, `textarea`, `button`, `label`);
+  - hidden elements: the `hidden` attribute (except `hidden="until-found"`, which is findable on the page), `aria-hidden="true"`, or `display: none`;
   - the roles `navigation`, `banner`, `contentinfo`, `complementary` and `search`;
-  - any element whose `id` or `class` contains `cookie`, `consent`, `gdpr`, `newsletter`, `breadcrumb`, `sidebar`, `share` or `skip-link`.
-- **Where the content is taken from:** the first `main` element, else the first element with `role="main"`, else the page's only `article`, else the whole `body`.
+  - elements whose `id`, or one of whose class names, is exactly a common boilerplate name: `cookie-banner`, `cookie-consent`, `cookie-notice`, `cookie-bar`, `cookies`, `consent-banner`, `gdpr-banner`, `newsletter`, `newsletter-signup`, `breadcrumb`, `breadcrumbs`, `sidebar`, `share-buttons`, `social-share`, `sharing`, `skip-link`, `skip-to-content`. Only whole names match, so `has-sidebar`, `share-price` or `cookie-recipes` are kept.
+- **Also removed when the content is the whole `body`** (no `main` or single `article`):
+  - `aside`;
+  - `header` and `footer` that are not inside an `article`, `section` or `main`;
+  - a `form` that holds no headings, paragraphs or tables, such as a search box. A form wrapping the whole page, as ASP.NET WebForms and SharePoint pages do, is read.
 - **Blocks:**
   - `h1`–`h6` become headings;
   - `p`, `blockquote` and `figcaption` become paragraphs;
-  - `ul`, `ol` and `dl` become lists;
+  - `ul`, `ol` and `dl` become lists, including lists nested inside a `div` within an item and `dt`/`dd` pairs grouped in `div`s;
   - `table` becomes a table;
   - `pre` becomes code;
-  - loose text in a `div` or `section` becomes a paragraph.
+  - loose text in a `div` or `section` becomes a paragraph;
+  - an inline element that wraps blocks, such as a link around a card with a heading and text, is read as the blocks it holds.
 - **Encoding:** detected like a browser does: byte-order mark, then `<meta charset>`, then UTF-8. A damaged page still gives its readable text. Nothing on the page is run or fetched.
 - **Title:** the page `<title>`, otherwise its first `h1`.
 

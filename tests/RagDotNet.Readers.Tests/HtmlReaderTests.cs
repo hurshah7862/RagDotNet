@@ -91,6 +91,92 @@ public class HtmlReaderTests
         Assert.Equal(["Shortcuts"], doc.Blocks[1].HeadingPath);
     }
 
+    [Theory] // Final review, critical: substring class/id matching deleted real content
+    [InlineData("<main><h1>Prices</h1><table class='share-price'><tr><td>REAL_TABLE</td></tr></table><p class='shareholder-note'>REAL_P</p></main>")]
+    [InlineData("<body><div class='shared-notes'><p>REAL_P</p></div><div id='sidebar-toggle-help'><p>REAL_TABLE</p></div></body>")]
+    [InlineData("<body><div class='site-content has-sidebar'><main><p>REAL_P</p><p>REAL_TABLE</p></main></div></body>")]
+    [InlineData("<body><div class='layout no-sidebar'><article class='recipe cookie-recipes'><p>REAL_P</p><p>REAL_TABLE</p></article></div></body>")]
+    [InlineData("<body><div role='main' class='content with-sidebar'><div class='gdpr-guide-article'><p>REAL_P</p></div><div class='consentful-design'><p>REAL_TABLE</p></div></div></body>")]
+    public async Task Class_and_id_words_inside_real_content_never_remove_it(string html)
+    {
+        var text = AllText(await ReadAsync(Reader, html, "page.html"));
+
+        Assert.Contains("REAL_P", text, StringComparison.Ordinal);
+        Assert.Contains("REAL_TABLE", text, StringComparison.Ordinal);
+    }
+
+    [Fact] // Final review, critical: exact boilerplate names are still removed
+    public async Task Exact_boilerplate_class_names_are_still_removed()
+    {
+        var doc = await ReadAsync(Reader, """
+            <body>
+              <div class="cookie-banner">COOKIE_TEXT</div><div id="sidebar">SIDEBAR_TEXT</div>
+              <div class="social share-buttons">SHARE_TEXT</div><ol class="breadcrumbs"><li>CRUMB_TEXT</li></ol>
+              <p>Real paragraph.</p>
+            </body>
+            """, "x.html");
+
+        Assert.Equal(["Real paragraph."], doc.Blocks.Select(b => b.Text));
+    }
+
+    [Fact] // Final review: ASP.NET WebForms pages wrap the whole body in one form
+    public async Task A_form_wrapping_the_page_keeps_its_content_but_drops_controls()
+    {
+        var doc = await ReadAsync(Reader, """
+            <body><form id="form1" method="post" action="./policy.aspx">
+              <input type="hidden" name="__VIEWSTATE" value="VIEWSTATE_TEXT">
+              <div class="page"><h1>Intranet policy</h1><p>Laptops must be encrypted.</p></div>
+              <label>LABEL_TEXT</label><select><option>OPTION_TEXT</option></select><button>BUTTON_TEXT</button>
+            </form></body>
+            """, "policy.aspx.html");
+
+        Assert.Equal(["Intranet policy", "Laptops must be encrypted."], doc.Blocks.Select(b => b.Text));
+    }
+
+    [Fact] // Final review: a search form outside the content is still removed
+    public async Task A_small_form_outside_main_is_removed()
+    {
+        var doc = await ReadAsync(Reader, "<body><form class='search'><p>SEARCH_HINT</p><input name='q'></form><main><p>Body text.</p></main></body>", "x.html");
+
+        Assert.Equal(["Body text."], doc.Blocks.Select(b => b.Text));
+    }
+
+    [Fact] // Final review: header inside main or section holds the page's heading
+    public async Task Headers_inside_the_content_keep_their_headings()
+    {
+        var doc = await ReadAsync(Reader, """
+            <body><header>SITE_HEADER</header><main>
+              <header><h1>Post title</h1></header><p>Intro.</p>
+              <section><header><h2>Part one</h2></header><p>Details.</p></section>
+            </main></body>
+            """, "x.html");
+
+        Assert.Equal(["Post title", "Intro.", "Part one", "Details."], doc.Blocks.Select(b => b.Text));
+        Assert.Equal(["Post title", "Part one"], doc.Blocks[3].HeadingPath);
+    }
+
+    [Fact] // Final review: block content inside an inline wrapper (a card link) was flattened
+    public async Task Blocks_inside_inline_wrappers_stay_blocks()
+    {
+        var doc = await ReadAsync(Reader, "<main><a href='/card'><div><h2>Card title</h2><p>Card body text.</p></div></a></main>", "x.html");
+
+        Assert.Equal([BlockKind.Heading, BlockKind.Paragraph], doc.Blocks.Select(b => b.Kind));
+        Assert.Equal(["Card title"], doc.Blocks[1].HeadingPath);
+    }
+
+    [Fact] // Final review: valid HTML groups dt/dd in div, and nests lists inside divs in li
+    public async Task Definition_groups_and_lists_nested_in_divs_are_read()
+    {
+        var doc = await ReadAsync(Reader, """
+            <main>
+              <dl><div><dt>Term</dt><dd>Definition text.</dd></div></dl>
+              <ul><li><div>Item</div><div><ul><li>Sub item</li></ul></div></li></ul>
+            </main>
+            """, "x.html");
+
+        Assert.Equal(["- Term: Definition text.", "- Item\n  - Sub item"], doc.Blocks.Select(b => b.Text));
+    }
+
     [Fact]
     public async Task Data_uri_images_give_one_ImageNotRead_warning_and_remote_images_none()
     {

@@ -73,6 +73,33 @@ public class DocxReaderTests
         Assert.Contains(doc.Blocks, b => b.Text == "Quill works without a connection.");
     }
 
+    [Fact] // Final review: Word stores each text box twice (modern + VML fallback); both were glued onto the anchor paragraph
+    public async Task Text_boxes_are_not_read_and_do_not_leak_into_paragraphs()
+    {
+        using var ms = new MemoryStream();
+        using (var doc = DocumentFormat.OpenXml.Packaging.WordprocessingDocument.Create(ms, DocumentFormat.OpenXml.WordprocessingDocumentType.Document))
+        {
+            var box = () => new DocumentFormat.OpenXml.Wordprocessing.TextBoxContent(
+                new DocumentFormat.OpenXml.Wordprocessing.Paragraph(new DocumentFormat.OpenXml.Wordprocessing.Run(new DocumentFormat.OpenXml.Wordprocessing.Text("TEXTBOX text"))));
+            doc.AddMainDocumentPart().Document = new DocumentFormat.OpenXml.Wordprocessing.Document(new DocumentFormat.OpenXml.Wordprocessing.Body(
+                new DocumentFormat.OpenXml.Wordprocessing.Paragraph(
+                    new DocumentFormat.OpenXml.Wordprocessing.Run(new DocumentFormat.OpenXml.Wordprocessing.Text("Anchor text.")),
+                    new DocumentFormat.OpenXml.Wordprocessing.Run(new DocumentFormat.OpenXml.Wordprocessing.Picture(
+                        new DocumentFormat.OpenXml.Vml.Shape(new DocumentFormat.OpenXml.Vml.TextBox(box())))),
+                    new DocumentFormat.OpenXml.Wordprocessing.Run(new DocumentFormat.OpenXml.Wordprocessing.Picture(
+                        new DocumentFormat.OpenXml.Vml.Shape(new DocumentFormat.OpenXml.Vml.TextBox(box()))))),
+                new DocumentFormat.OpenXml.Wordprocessing.Table(new DocumentFormat.OpenXml.Wordprocessing.TableRow(new DocumentFormat.OpenXml.Wordprocessing.TableCell(
+                    new DocumentFormat.OpenXml.Wordprocessing.Paragraph(
+                        new DocumentFormat.OpenXml.Wordprocessing.Run(new DocumentFormat.OpenXml.Wordprocessing.Text("Cell text.")),
+                        new DocumentFormat.OpenXml.Wordprocessing.Run(new DocumentFormat.OpenXml.Wordprocessing.Picture(
+                            new DocumentFormat.OpenXml.Vml.Shape(new DocumentFormat.OpenXml.Vml.TextBox(box()))))))))));
+        }
+
+        var parsed = await ReadAsync(Reader, ms.ToArray(), "boxes.docx");
+
+        Assert.Equal(["Anchor text.", "| Cell text. |"], parsed.Blocks.Select(b => b.Text));
+    }
+
     [Fact]
     public async Task Embedded_image_gives_one_ImageNotRead_warning()
     {

@@ -118,12 +118,17 @@ public sealed partial class DocxReader : IDocumentReader
         element.Descendants<Drawing>().Count(d => d.Descendants<A.Blip>().Any())
         + element.Descendants<Picture>().Count(p => p.Descendants<V.ImageData>().Any());
 
-    /// <summary>Visible text: tabs as spaces, breaks as newlines; deleted text (w:delText) is never a <see cref="Text"/>.</summary>
+    /// <summary>
+    /// Visible text: tabs as spaces, breaks as newlines; deleted text (w:delText) is never a <see cref="Text"/>. Text
+    /// boxes are not read: Word stores each one twice (a modern copy and a VML fallback) inside the anchoring paragraph,
+    /// so including them would glue duplicated text onto that paragraph.
+    /// </summary>
     private static string ParagraphText(OpenXmlElement paragraph)
     {
         var sb = new StringBuilder();
         foreach (var e in paragraph.Descendants())
         {
+            if (InTextBox(e)) continue;
             switch (e)
             {
                 case Text t when t.Ancestors<DeletedRun>().FirstOrDefault() is null:
@@ -141,11 +146,13 @@ public sealed partial class DocxReader : IDocumentReader
         return SpacesAroundNewline().Replace(MultipleSpaces().Replace(sb.ToString(), " "), "\n").Trim();
     }
 
+    private static bool InTextBox(OpenXmlElement e) => e.Ancestors<TextBoxContent>().Any();
+
     private static string TableText(Table table)
     {
         var lines = table.Elements<TableRow>()
             .Select(row => row.Elements<TableCell>()
-                .Select(cell => string.Join(' ', cell.Descendants<Paragraph>().Select(ParagraphText).Where(t => t.Length > 0)).Replace('\n', ' '))
+                .Select(cell => string.Join(' ', cell.Descendants<Paragraph>().Where(p => !InTextBox(p)).Select(ParagraphText).Where(t => t.Length > 0)).Replace('\n', ' '))
                 .ToList())
             .Where(cells => cells.Count > 0 && cells.Any(c => c.Length > 0))
             .Select(cells => "| " + string.Join(" | ", cells) + " |");

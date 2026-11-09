@@ -16,9 +16,11 @@ public sealed partial class HtmlReader : IDocumentReader
     private static readonly string[] ContentTypes = ["text/html", "application/xhtml+xml"];
     private static readonly string[] Extensions = [".html", ".htm", ".xhtml"];
 
+    /// <summary>Never content: removed wherever they appear.</summary>
     private static readonly HashSet<string> RemovedTags = new(StringComparer.OrdinalIgnoreCase)
     {
-        "script", "style", "noscript", "template", "svg", "canvas", "iframe", "object", "form", "nav", "aside",
+        "script", "style", "noscript", "template", "svg", "canvas", "iframe", "object", "nav",
+        "input", "select", "option", "textarea", "button", "label",
     };
 
     private static readonly HashSet<string> RemovedRoles = new(StringComparer.OrdinalIgnoreCase)
@@ -26,7 +28,18 @@ public sealed partial class HtmlReader : IDocumentReader
         "navigation", "banner", "contentinfo", "complementary", "search",
     };
 
-    private static readonly string[] BoilerplateNames = ["cookie", "consent", "gdpr", "newsletter", "breadcrumb", "sidebar", "share", "skip-link"];
+    /// <summary>
+    /// Whole class names and ids that mark page furniture. Matching is on the exact name, never a substring, so that
+    /// names such as <c>has-sidebar</c>, <c>share-price</c> or <c>cookie-recipes</c> are not mistaken for boilerplate.
+    /// </summary>
+    private static readonly HashSet<string> BoilerplateNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "cookie-banner", "cookie-consent", "cookie-notice", "cookie-bar", "cookies", "consent-banner", "gdpr-banner",
+        "newsletter", "newsletter-signup", "breadcrumb", "breadcrumbs", "sidebar", "share-buttons", "social-share",
+        "sharing", "skip-link", "skip-to-content",
+    };
+
+    private const string BlockSelector = "h1, h2, h3, h4, h5, h6, p, div, section, article, ul, ol, dl, table, pre, blockquote, figure";
 
     /// <inheritdoc />
     public bool CanRead(string? contentType, string fileName)
@@ -58,8 +71,9 @@ public sealed partial class HtmlReader : IDocumentReader
             throw new DocumentReadException(context.FileName, ex.Message, ex);
         }
 
-        RemoveBoilerplate(document);
+        // Choose the content root before removing anything, so no rule can remove the root or what contains it.
         var root = ContentRoot(document);
+        if (root is not null) RemoveBoilerplate(root, pageLevel: root == document.Body);
         var walker = new Walker();
         if (root is not null) walker.WalkContainer(root);
 
@@ -75,28 +89,43 @@ public sealed partial class HtmlReader : IDocumentReader
         return new ParsedDocument(walker.Blocks, string.IsNullOrEmpty(title) ? null : title) { Warnings = warnings };
     }
 
-    private static void RemoveBoilerplate(IDocument document)
+    /// <summary>
+    /// Removes boilerplate inside <paramref name="root"/> (the root itself is never removed). Page-level furniture
+    /// (aside, header and footer, forms without content) only counts when the root is the whole body; inside a
+    /// <c>main</c> or <c>article</c>, those elements are content, such as an article's own header.
+    /// </summary>
+    private static void RemoveBoilerplate(IElement root, bool pageLevel)
     {
-        var doomed = document.All.Where(IsBoilerplate).ToList();
+        var doomed = root.Descendants<IElement>().Where(e => IsBoilerplate(e, pageLevel)).ToList();
         foreach (var element in doomed)
             element.Remove();
     }
 
-    private static bool IsBoilerplate(IElement e)
+    private static bool IsBoilerplate(IElement e, bool pageLevel)
     {
         var tag = e.LocalName;
-        if (tag is "html" or "head" or "body" or "main") return false;
+        if (tag is "main" or "article") return false;
         if (RemovedTags.Contains(tag)) return true;
-        if (tag is "header" or "footer" && e.Closest("article") is null) return true;
-        if (e.HasAttribute("hidden")) return true;
-        if (string.Equals(e.GetAttribute("aria-hidden"), "true", StringComparison.OrdinalIgnoreCase)) return true;
+        if (IsHidden(e)) return true;
         if (e.GetAttribute("role") is { } role && RemovedRoles.Contains(role.Trim())) return true;
+        if (BoilerplateNames.Contains(e.Id ?? "") || (e.GetAttribute("class") ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries).Any(BoilerplateNames.Contains))
+            return true;
 
+        if (!pageLevel) return false;
+        if (tag == "aside") return true;
+        if (tag is "header" or "footer") return e.Closest("article, section, main") is null;
+
+        // A form that holds headings or paragraphs is content: ASP.NET WebForms and SharePoint wrap the whole page in one.
+        return tag == "form" && e.QuerySelector("h1, h2, h3, h4, h5, h6, p, table, article, main, section") is null;
+    }
+
+    private static bool IsHidden(IElement e)
+    {
+        // hidden="until-found" content is findable on the page, so it counts as visible.
+        if (e.GetAttribute("hidden") is { } hidden && !string.Equals(hidden.Trim(), "until-found", StringComparison.OrdinalIgnoreCase)) return true;
+        if (string.Equals(e.GetAttribute("aria-hidden"), "true", StringComparison.OrdinalIgnoreCase)) return true;
         var style = e.GetAttribute("style");
-        if (style is not null && style.Replace(" ", "", StringComparison.Ordinal).Contains("display:none", StringComparison.OrdinalIgnoreCase)) return true;
-
-        var names = $"{e.Id} {e.GetAttribute("class")}";
-        return BoilerplateNames.Any(n => names.Contains(n, StringComparison.OrdinalIgnoreCase));
+        return style is not null && style.Replace(" ", "", StringComparison.Ordinal).Contains("display:none", StringComparison.OrdinalIgnoreCase);
     }
 
     private static IElement? ContentRoot(IDocument document)
@@ -159,12 +188,23 @@ public sealed partial class HtmlReader : IDocumentReader
                         break;
                     case "img":
                         break;
-                    case "div" or "section" or "article" or "header" or "footer" or "figure" or "main" or "details" or "summary" or "address" or "center":
+                    case "div" or "section" or "article" or "header" or "footer" or "figure" or "main" or "details" or "summary" or "address" or "center" or "aside" or "form":
                         Flush(loose);
                         WalkContainer(e);
                         break;
                     default:
-                        loose.Append(InlineText(e));
+                        // An inline element holding blocks (a card link around a heading and text) is walked as a
+                        // container, so its heading stays a heading.
+                        if (e.QuerySelector(BlockSelector) is not null)
+                        {
+                            Flush(loose);
+                            WalkContainer(e);
+                        }
+                        else
+                        {
+                            loose.Append(InlineText(e));
+                        }
+
                         break;
                 }
             }
@@ -202,7 +242,9 @@ public sealed partial class HtmlReader : IDocumentReader
         {
             var text = InlineText(item, skipLists: true).Replace('\n', ' ');
             if (text.Length > 0) lines.Add(new string(' ', depth * 2) + "- " + text);
-            foreach (var nested in item.Children.Where(c => c.LocalName is "ul" or "ol"))
+
+            // Nested lists can sit inside a div within the item; take those whose nearest item is this one.
+            foreach (var nested in item.QuerySelectorAll("ul, ol").Where(l => l.ParentElement?.Closest("li") == item))
                 ListLines(nested, depth + 1, lines);
         }
     }
@@ -211,7 +253,8 @@ public sealed partial class HtmlReader : IDocumentReader
     {
         var lines = new List<string>();
         string? term = null;
-        foreach (var child in list.Children)
+        // dt/dd pairs may be grouped in div elements, which HTML allows.
+        foreach (var child in list.Children.SelectMany(c => c.LocalName == "div" ? c.Children.AsEnumerable() : [c]))
         {
             var text = InlineText(child).Replace('\n', ' ');
             if (child.LocalName == "dt") term = text;

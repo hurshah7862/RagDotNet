@@ -158,24 +158,31 @@ public sealed partial class PdfReader : IDocumentReader
 
     /// <summary>
     /// A block whose first line starts with a list marker is a list: each marked line starts an item and an unmarked
-    /// line continues the previous item (a wrapped item). Items are rewritten as <c>- item</c>.
+    /// line continues the previous item (a wrapped item). Bullet items are rewritten as <c>- item</c>; numbered items
+    /// keep their number, as in Markdown. A number alone is not enough: a block counts as a numbered list only when at
+    /// least two lines start with a number, so a paragraph such as "2026. was a good year" stays a paragraph.
     /// </summary>
     private static string? ListText(TextBlock block)
     {
         var lines = block.TextLines.Select(l => l.Text.Trim()).Where(t => t.Length > 0).ToList();
-        if (lines.Count == 0 || !ListMarker().IsMatch(lines[0])) return null;
+        if (lines.Count == 0) return null;
+        if (BulletMarker().IsMatch(lines[0])) { }
+        else if (!NumberMarker().IsMatch(lines[0]) || lines.Count(l => NumberMarker().IsMatch(l)) < 2) return null;
 
         var items = new List<string>();
         foreach (var line in lines)
         {
-            var m = ListMarker().Match(line);
-            if (m.Success) items.Add(line[m.Length..].Trim());
+            if (BulletMarker().Match(line) is { Success: true } bullet) items.Add("- " + line[bullet.Length..].Trim());
+            else if (NumberMarker().IsMatch(line)) items.Add(line);
             else items[^1] += " " + line;
         }
 
-        return string.Join('\n', items.Select(i => "- " + i));
+        return string.Join('\n', items);
     }
 
-    [GeneratedRegex(@"^(?:[•\-–*]|\d+[.)])\s+")]
-    private static partial Regex ListMarker();
+    [GeneratedRegex(@"^[•\-–*]\s+")]
+    private static partial Regex BulletMarker();
+
+    [GeneratedRegex(@"^\d+[.)]\s+")]
+    private static partial Regex NumberMarker();
 }
