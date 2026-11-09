@@ -10,6 +10,9 @@ switch (command)
         var docx = Path.Combine(root, "tests", "TestAssets", "docx", "sample.docx");
         DocxWriter.WriteSample(docx);
         Console.WriteLine($"wrote {Path.GetRelativePath(root, docx)}");
+        var pdf = Path.Combine(root, "tests", "TestAssets", "pdf", "sample.pdf");
+        PdfWriter.WriteSample(pdf);
+        Console.WriteLine($"wrote {Path.GetRelativePath(root, pdf)}");
         return 0;
     default:
         Console.Error.WriteLine("Usage: RagDotNet.TestAssetGen samples");

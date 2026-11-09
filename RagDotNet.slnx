@@ -6,6 +6,7 @@
     <Project Path="src/RagDotNet.Core/RagDotNet.Core.csproj" />
     <Project Path="src/RagDotNet.Readers.Docx/RagDotNet.Readers.Docx.csproj" />
     <Project Path="src/RagDotNet.Readers.Html/RagDotNet.Readers.Html.csproj" />
+    <Project Path="src/RagDotNet.Readers.Pdf/RagDotNet.Readers.Pdf.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/RagDotNet.Core.Tests/RagDotNet.Core.Tests.csproj" />
