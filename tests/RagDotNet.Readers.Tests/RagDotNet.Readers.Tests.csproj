@@ -20,6 +20,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\RagDotNet.Core\RagDotNet.Core.csproj" />
+    <ProjectReference Include="..\..\src\RagDotNet.Readers.Docx\RagDotNet.Readers.Docx.csproj" />
     <ProjectReference Include="..\..\src\RagDotNet.Readers.Html\RagDotNet.Readers.Html.csproj" />
   </ItemGroup>
 </Project>

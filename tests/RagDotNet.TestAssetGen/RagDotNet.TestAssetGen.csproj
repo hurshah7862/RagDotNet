@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Writes the binary test files (sample PDF and DOCX, and the base Quill set rendered as PDF, DOCX and HTML).
+       Its output is committed, so tests never depend on running it. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="DocumentFormat.OpenXml" />
+    <PackageReference Include="Markdig" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\RagDotNet.Core\RagDotNet.Core.csproj" />
+  </ItemGroup>
+</Project>
