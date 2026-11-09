@@ -1,1 +1,6 @@
 tests/RagDotNet.Evaluation/Dataset/** text eol=lf
+
+# Binary formats: never convert line endings (later lines win over the text rule above).
+*.pdf binary
+*.docx binary
+*.png binary
