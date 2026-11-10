@@ -44,7 +44,7 @@ public sealed partial class DocxReader : IDocumentReader
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             // Corrupt, truncated and encrypted files all fail here, as packaging or format exceptions.
-            throw new DocumentReadException(context.FileName, "the file is not a readable DOCX document (it may be corrupt or password-protected)", ex);
+            throw new DocumentReadException(context.FileName, UnreadableReason, ex);
         }
 
         using (doc)
@@ -53,12 +53,27 @@ public sealed partial class DocxReader : IDocumentReader
             {
                 return Read(doc, cancellationToken);
             }
+            catch (Exception ex) when (IsDamage(ex))
+            {
+                // Part XML is parsed lazily, on first access, so a zip that opens can still hold damaged XML.
+                throw new DocumentReadException(context.FileName, UnreadableReason, ex);
+            }
             catch (Exception ex) when (ex is not OperationCanceledException and not DocumentReadException)
             {
-                // The package opened, so this is content the reader did not expect, not a damaged file.
+                // The package opened and its XML parsed, so this is content the reader did not expect.
                 throw new DocumentReadException(context.FileName, $"unexpected content in the document: {ex.Message}", ex);
             }
         }
+    }
+
+    private const string UnreadableReason = "the file is not a readable DOCX document (it may be corrupt or password-protected)";
+
+    /// <summary>Damaged XML or packaging anywhere in the exception chain.</summary>
+    private static bool IsDamage(Exception ex)
+    {
+        for (Exception? e = ex; e is not null; e = e.InnerException)
+            if (e is System.Xml.XmlException or DocumentFormat.OpenXml.Packaging.OpenXmlPackageException) return true;
+        return false;
     }
 
     private static ParsedDocument Read(WordprocessingDocument doc, CancellationToken ct)
@@ -85,7 +100,7 @@ public sealed partial class DocxReader : IDocumentReader
             var text = ParagraphText(paragraph);
             var styleId = paragraph.ParagraphProperties?.ParagraphStyleId?.Val?.Value;
 
-            // Table-of-contents entries repeat the headings with page numbers; the headings themselves are read.
+            // Table-of-contents entries and its "Contents" heading repeat the headings with page numbers; the headings themselves are read.
             if (styles.IsTableOfContents(styleId)) continue;
 
             if (styles.HeadingLevel(paragraph, styleId) is { } level)
@@ -267,7 +282,7 @@ public sealed partial class DocxReader : IDocumentReader
         [GeneratedRegex(@"^(?i:heading)([1-9])$")]
         private static partial Regex HeadingId();
 
-        [GeneratedRegex(@"^(?i:toc)[1-9]$")]
+        [GeneratedRegex(@"^(?i:toc)(?:[1-9]|(?i:heading))$")]
         private static partial Regex TocId();
 
         /// <summary>Words of a style id or name: split at spaces, punctuation and lower-to-upper case changes.</summary>

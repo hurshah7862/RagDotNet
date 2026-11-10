@@ -171,6 +171,39 @@ public class DocxReaderTests
         Assert.Equal(["Introduction", "Body text."], doc.Blocks.Select(b => b.Text));
     }
 
+    [Fact] // PR review: Word's "TOC Heading" ("Contents") was read as an empty heading
+    public async Task Table_of_contents_heading_is_skipped()
+    {
+        var styles = new W.Styles(
+            new W.Style(new W.StyleName { Val = "TOC Heading" }, new W.StyleParagraphProperties(new W.OutlineLevel { Val = 0 })) { Type = W.StyleValues.Paragraph, StyleId = "TOCHeading" },
+            new W.Style(new W.StyleName { Val = "heading 1" }, new W.StyleParagraphProperties(new W.OutlineLevel { Val = 0 })) { Type = W.StyleValues.Paragraph, StyleId = "Heading1" });
+
+        var doc = await ReadAsync(Reader, Docx(styles, P("TOCHeading", R("Contents")), P("Heading1", R("Introduction")), P(null, R("Body text."))), "toc.docx");
+
+        Assert.Equal(["Introduction", "Body text."], doc.Blocks.Select(b => b.Text));
+    }
+
+    [Fact] // PR review: a zip that opens but holds damaged XML was called "unexpected content", not a damaged file
+    public async Task Damaged_document_xml_is_reported_as_an_unreadable_file()
+    {
+        var bytes = Docx(null, P(null, R("Some text that will be cut off.")));
+        using var ms = new MemoryStream();
+        ms.Write(bytes);
+        using (var zip = new System.IO.Compression.ZipArchive(ms, System.IO.Compression.ZipArchiveMode.Update, leaveOpen: true))
+        {
+            var entry = zip.GetEntry("word/document.xml")!;
+            string xml;
+            using (var reader = new StreamReader(entry.Open())) xml = reader.ReadToEnd();
+            entry.Delete();
+            using var writer = new StreamWriter(zip.CreateEntry("word/document.xml").Open());
+            writer.Write(xml[..(xml.Length / 2)]);
+        }
+
+        var ex = await Assert.ThrowsAsync<DocumentReadException>(() => ReadAsync(Reader, ms.ToArray(), "cut.docx"));
+
+        Assert.Contains("not a readable DOCX", ex.Reason, StringComparison.Ordinal);
+    }
+
     [Fact] // Final review minor: style names merely containing "code" (Barcode, Postcode) made code blocks
     public async Task Only_code_styles_make_code_blocks()
     {

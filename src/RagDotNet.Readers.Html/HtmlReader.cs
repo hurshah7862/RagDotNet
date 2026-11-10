@@ -84,7 +84,7 @@ public sealed partial class HtmlReader : IDocumentReader
 
         var title = document.Title?.Trim();
         if (string.IsNullOrEmpty(title))
-            title = walker.Blocks.FirstOrDefault(b => b.Kind == BlockKind.Heading && b.HeadingPath.Count == 1)?.Text;
+            title = root is null ? null : HighestHeading(root);
 
         return new ParsedDocument(walker.Blocks, string.IsNullOrEmpty(title) ? null : title) { Warnings = warnings };
     }
@@ -107,16 +107,17 @@ public sealed partial class HtmlReader : IDocumentReader
         if (tag is "main" or "article") return false;
         if (RemovedTags.Contains(tag)) return true;
         if (IsHidden(e)) return true;
-        if (e.GetAttribute("role") is { } role && RemovedRoles.Contains(role.Trim())) return true;
-        if (BoilerplateNames.Contains(e.Id ?? "") || (e.GetAttribute("class") ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries).Any(BoilerplateNames.Contains))
-            return true;
+        if (HasRemovedRole(e) || HasBoilerplateName(e)) return true;
 
         if (!pageLevel) return false;
         if (tag == "aside") return true;
         if (tag is "header" or "footer") return e.Closest("article, section, main") is null;
 
-        // A form that holds headings or paragraphs is content: ASP.NET WebForms and SharePoint wrap the whole page in one.
-        return tag == "form" && e.QuerySelector("h1, h2, h3, h4, h5, h6, p, table, article, main, section") is null;
+        // A form holding headings, tables, sections or several paragraphs is content: ASP.NET WebForms and SharePoint
+        // wrap the whole page in one. A search or sign-up form with one hint paragraph is not.
+        return tag == "form"
+            && e.QuerySelector("h1, h2, h3, h4, h5, h6, table, article, main, section") is null
+            && e.QuerySelectorAll("p").Length < 2;
     }
 
     private static bool IsHidden(IElement e)
@@ -128,13 +129,38 @@ public sealed partial class HtmlReader : IDocumentReader
         return style is not null && style.Replace(" ", "", StringComparison.Ordinal).Contains("display:none", StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// The first visible <c>main</c>, else <c>[role=main]</c>, else the page's only <c>article</c>, else the body. A
+    /// candidate inside page furniture (a sidebar, navigation, a hidden view) never counts, so a teaser article in a
+    /// sidebar cannot replace the page.
+    /// </summary>
     private static IElement? ContentRoot(IDocument document)
     {
-        if (document.QuerySelector("main") is { } main) return main;
-        if (document.QuerySelector("[role=main]") is { } roleMain) return roleMain;
-        var articles = document.QuerySelectorAll("article");
-        return articles.Length == 1 ? articles[0] : document.Body;
+        static bool Usable(IElement e)
+        {
+            for (var a = e; a is not null; a = a.ParentElement)
+                if (IsFurniture(a)) return false;
+            return true;
+        }
+
+        if (document.QuerySelectorAll("main").FirstOrDefault(Usable) is { } main) return main;
+        if (document.QuerySelectorAll("[role=main]").FirstOrDefault(Usable) is { } roleMain) return roleMain;
+        var articles = document.QuerySelectorAll("article").Where(Usable).ToList();
+        return articles.Count == 1 ? articles[0] : document.Body;
     }
+
+    private static bool IsFurniture(IElement e) =>
+        e.LocalName is "aside" or "nav" || IsHidden(e) || HasRemovedRole(e) || HasBoilerplateName(e);
+
+    private static bool HasRemovedRole(IElement e) => e.GetAttribute("role") is { } role && RemovedRoles.Contains(role.Trim());
+
+    private static bool HasBoilerplateName(IElement e) => BoilerplateNames.Contains(e.Id ?? "") || e.ClassList.Any(BoilerplateNames.Contains);
+
+    /// <summary>The first heading of the highest level the content has, such as an <c>h1</c> after a tagline <c>h2</c>.</summary>
+    private static string? HighestHeading(IElement root) => root.QuerySelectorAll("h1, h2, h3, h4, h5, h6")
+        .OrderBy(h => h.LocalName[1])
+        .Select(h => Clean(InlineText(h).Replace('\n', ' ')))
+        .FirstOrDefault(t => t.Length > 0);
 
     /// <summary>Turns elements into blocks, keeping the heading path as it goes.</summary>
     private sealed class Walker

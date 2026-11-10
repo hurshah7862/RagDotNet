@@ -132,6 +132,16 @@ public class PdfReaderTests
         Assert.Equal("2026. was a good year for Quill, with three releases.", block.Text);
     }
 
+    [Fact] // PR review: numbered items spaced far apart each landed in their own block and became paragraphs
+    public async Task Numbered_items_in_separate_blocks_form_one_list()
+    {
+        var doc = await ReadAsync(Reader, OnePagePdf("1. Download the installer.", "", "", "", "2. Run it and follow the steps.", "", "", "", "3. Sign in."), "spaced.pdf");
+
+        var block = Assert.Single(doc.Blocks);
+        Assert.Equal(BlockKind.List, block.Kind);
+        Assert.Equal("1. Download the installer.\n2. Run it and follow the steps.\n3. Sign in.", block.Text);
+    }
+
     [Fact] // Final review: numbered list items keep their numbers
     public async Task Numbered_list_items_keep_their_numbers()
     {

@@ -112,6 +112,8 @@ public sealed partial class PdfReader : IDocumentReader
             }
         }
 
+        result = MergeNumberedRuns(result);
+
         var docTitle = pdf.Information.Title;
         if (string.IsNullOrWhiteSpace(docTitle))
             docTitle = result.FirstOrDefault(b => b.Kind == BlockKind.Heading && b.HeadingPath.Count == 1)?.Text;
@@ -232,6 +234,42 @@ public sealed partial class PdfReader : IDocumentReader
 
         return string.Join('\n', items);
     }
+
+    /// <summary>
+    /// Layout analysis puts numbered items spaced far apart into blocks of their own, each too short to count as a list.
+    /// Neighbouring numbered blocks on the same page under the same heading, numbered one after the other (1., 2., 3.),
+    /// become one list block.
+    /// </summary>
+    private static List<DocumentBlock> MergeNumberedRuns(List<DocumentBlock> blocks)
+    {
+        var merged = new List<DocumentBlock>();
+        foreach (var block in blocks)
+        {
+            if (merged.Count > 0 && merged[^1] is var previous
+                && previous.PageNumber == block.PageNumber && previous.HeadingPath.SequenceEqual(block.HeadingPath)
+                && NumberedLines(previous) is { } before && NumberedLines(block) is { } after
+                && after[0] == before[^1] + 1)
+            {
+                merged[^1] = previous with { Kind = BlockKind.List, Text = previous.Text + "\n" + block.Text };
+                continue;
+            }
+
+            merged.Add(block);
+        }
+
+        return merged;
+    }
+
+    /// <summary>The item numbers of a paragraph or list block whose every line is numbered; otherwise null.</summary>
+    private static List<int>? NumberedLines(DocumentBlock block)
+    {
+        if (block.Kind is not (BlockKind.Paragraph or BlockKind.List)) return null;
+        var numbers = block.Text.Split('\n').Select(Number).ToList();
+        return numbers.All(n => n is not null) ? numbers.Select(n => n!.Value).ToList() : null;
+    }
+
+    private static int? Number(string line) =>
+        NumberMarker().Match(line) is { Success: true } m && int.TryParse(m.Value.TrimEnd().TrimEnd('.', ')'), System.Globalization.CultureInfo.InvariantCulture, out var n) ? n : null;
 
     [GeneratedRegex(@"^[•\-–*]\s+")]
     private static partial Regex BulletMarker();

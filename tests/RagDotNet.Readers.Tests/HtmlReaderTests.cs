@@ -142,6 +142,63 @@ public class HtmlReaderTests
         Assert.Equal(["Body text."], doc.Blocks.Select(b => b.Text));
     }
 
+    [Fact] // PR review: on a body root, a search form with one hint paragraph leaked into the text
+    public async Task A_small_form_on_a_body_root_is_removed_even_with_a_hint_paragraph()
+    {
+        var doc = await ReadAsync(Reader, "<body><form class='search'><p>SEARCH_HINT</p><input name='q'></form><h1>Page</h1><p>Body text.</p></body>", "x.html");
+
+        Assert.Equal(["Page", "Body text."], doc.Blocks.Select(b => b.Text));
+    }
+
+    [Fact] // PR review: page-level rules on a body root had no test of their own
+    public async Task On_a_body_root_asides_and_page_headers_go_but_section_headers_and_until_found_stay()
+    {
+        var doc = await ReadAsync(Reader, """
+            <body><header>SITE_HEADER</header><aside>ASIDE_TEXT</aside>
+              <section><header><h2>Part one</h2></header><p>Details.</p></section>
+              <div hidden="until-found"><p>Findable text.</p></div>
+              <footer>SITE_FOOTER</footer></body>
+            """, "x.html");
+
+        Assert.Equal(["Part one", "Details.", "Findable text."], doc.Blocks.Select(b => b.Text));
+    }
+
+    [Theory] // PR review: an article in a sidebar, nav or hidden element became the content root and the page was lost
+    [InlineData("<aside><article>TEASER</article></aside>")]
+    [InlineData("<nav><article>TEASER</article></nav>")]
+    [InlineData("<div hidden><article>TEASER</article></div>")]
+    [InlineData("<div class='sidebar'><article>TEASER</article></div>")]
+    public async Task An_article_inside_page_furniture_is_never_the_content_root(string furniture)
+    {
+        var doc = await ReadAsync(Reader, $"<body><div id='content'><h1>Real page</h1><p>Real text.</p></div>{furniture}</body>", "x.html");
+
+        Assert.Equal(["Real page", "Real text."], doc.Blocks.Select(b => b.Text));
+    }
+
+    [Fact] // PR review: a hidden main (an inactive view) became the root ahead of the visible one
+    public async Task A_hidden_main_is_skipped_for_the_visible_one()
+    {
+        var doc = await ReadAsync(Reader, "<body><main hidden><p>OLD_VIEW</p></main><main><p>Visible text.</p></main></body>", "x.html");
+
+        Assert.Equal(["Visible text."], doc.Blocks.Select(b => b.Text));
+    }
+
+    [Fact] // PR review: class names separated by tabs or newlines were not matched
+    public async Task Boilerplate_class_names_match_across_any_whitespace()
+    {
+        var doc = await ReadAsync(Reader, "<main><div class=\"wide\tsidebar\">SIDEBAR_TEXT</div><div class=\"x\n  cookie-banner\">COOKIE_TEXT</div><p>Body.</p></main>", "x.html");
+
+        Assert.Equal(["Body."], doc.Blocks.Select(b => b.Text));
+    }
+
+    [Fact] // PR review: the title fallback took the first heading, not the highest one the docs promise
+    public async Task Without_a_title_element_the_highest_heading_is_the_title()
+    {
+        var doc = await ReadAsync(Reader, "<body><h2>Tagline</h2><h1>Real title</h1><p>Text.</p></body>", "x.html");
+
+        Assert.Equal("Real title", doc.Title);
+    }
+
     [Fact] // Final review: header inside main or section holds the page's heading
     public async Task Headers_inside_the_content_keep_their_headings()
     {
