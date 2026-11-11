@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Installing Quill | Quill Help Centre</title>
+<script>window.dataLayer = [];</script>
+</head>
+<body>
+<header><nav><a href="/">Quill</a> <a href="/help">Help Centre</a> <a href="/download">Download</a></nav></header>
+<div class="cookie-banner">We use cookies to understand how the help centre is used. <button>Accept</button></div>
+<main>
+<h1>Installing Quill</h1>
+<p>Quill is a local-first note-taking app. Your notes live as plain Markdown files on your own disk, and Quill adds fast search, linking, sync and plugins on top. This guide covers system requirements, installing on each platform, the first launch, and how to upgrade or remove the app.</p>
+<h2>System requirements</h2>
+<p>Quill runs on Windows, macOS and Linux. The desktop app needs about 400 MB of free disk space for the program itself, plus whatever space your notes take. A machine with 4 GB of memory is enough for vaults of up to roughly fifty thousand notes; larger vaults are fine but the first index build will take longer.</p>
+<h3>Supported operating systems</h3>
+<ul>
+<li>Windows 10 version 22H2 or later, 64-bit only.</li>
+<li>macOS 12 Monterey or later, on both Apple silicon and Intel Macs.</li>
+<li>Linux distributions with glibc 2.35 or newer, such as Ubuntu 22.04, Debian 12 and Fedora 38.</li>
+</ul>
+<p>Older systems may start the app, but they are not tested and bug reports from them are closed without investigation.</p>
+<h3>Graphics</h3>
+<p>Quill draws its editor with the GPU when one is available. On virtual machines or remote desktops without GPU acceleration, start Quill with the --disable-gpu flag, or set render.gpu = false in the configuration file.</p>
+<h2>Installing on Windows</h2>
+<p>Download the .msi installer from the Quill website and run it. The installer puts the app under C:\Program Files\Quill and adds a Start menu entry. No administrator rights are needed if you choose &quot;Install for me only&quot;, in which case the app goes under your user profile instead.</p>
+<p>If you prefer a package manager, Quill is published to winget:</p>
+<pre><code>winget install --id Quill.Quill --exact</code></pre>
+<p>Enterprise administrators can deploy the same .msi silently with msiexec /i quill.msi /qn ALLUSERS=1. Silent installs never open the welcome screen; each user sees it on their own first launch.</p>
+<h2>Installing on macOS</h2>
+<p>Download the .dmg disk image, open it, and drag Quill into the Applications folder. The app is signed and notarized, so Gatekeeper opens it without warnings. Homebrew users can run:</p>
+<pre><code>brew install --cask quill</code></pre>
+<p>On first launch macOS asks whether Quill may access your Documents folder. Allow it if your vault lives there; otherwise you can pick a different folder and grant access only to that one.</p>
+<h2>Installing on Linux</h2>
+<p>Quill ships three Linux packages. Choose the one that fits your distribution:</p>
+<ul>
+<li>A .deb package for Debian, Ubuntu and their derivatives.</li>
+<li>An .rpm package for Fedora, openSUSE and RHEL-compatible systems.</li>
+<li>A Flatpak on Flathub, which works on almost any distribution and updates through your software center.</li>
+</ul>
+<p>To install the Debian package from a terminal:</p>
+<pre><code>sudo apt install ./quill_3.2.0_amd64.deb</code></pre>
+<p>The Flatpak build runs in a sandbox. It can only see your home folder by default, so if your vault is on a second drive, grant access with flatpak override --user --filesystem=/mnt/notes app.quill.Quill.</p>
+<h2>First launch</h2>
+<p>The welcome screen asks you to create a vault or open an existing one. A vault is simply a folder: Quill keeps its own settings for that vault in a hidden .quill subfolder and never rewrites your Markdown files unless you edit them.</p>
+<p>When you open a vault for the first time, Quill builds a search index in the background. A progress bar in the status bar shows how far along it is. You can keep writing while indexing runs; search results simply fill in as the index grows.</p>
+<h3>Importing from other apps</h3>
+<p>The welcome screen also offers an importer. It reads exported folders of Markdown or HTML notes and converts internal links into Quill&#39;s [[wiki link]] style. Attachments are copied into an attachments folder inside the vault. The importer never deletes the source folder, so you can run it again if something goes wrong.</p>
+<h2>Command-line tool</h2>
+<p>The installer also adds a small command-line tool named quill. It can open a vault, create a note from standard input, or run a sync without the window being open. Run quill --help to see every command. On macOS the tool is not added to your path automatically; choose Install command-line tool from the Quill menu to create the link in /usr/local/bin.</p>
+<h2>Upgrading</h2>
+<p>Quill checks for updates once a day and downloads them in the background. When an update is ready, a small dot appears on the settings icon; restart the app to apply it. Updates never touch your notes. If you installed through winget, Homebrew, apt or Flatpak, the built-in updater is switched off and your package manager handles upgrades instead.</p>
+<p>To stay on a specific version, turn off Automatic updates under Settings → General. You can still check manually from the same page.</p>
+<h2>Uninstalling</h2>
+<p>Removing the app does not remove your vaults, because they are ordinary folders that you own. On Windows, uninstall from Settings → Apps. On macOS, drag Quill from Applications to the Trash. On Linux, remove the package with your package manager.</p>
+<p>Quill also keeps an application data folder with logs, the plugin cache and window positions. Delete it as well if you want a completely clean removal:</p>
+<table>
+<thead><tr><th>Platform</th><th>Application data folder</th></tr></thead>
+<tbody>
+<tr><td>Windows</td><td>%APPDATA%\Quill</td></tr>
+<tr><td>macOS</td><td>~/Library/Application Support/Quill</td></tr>
+<tr><td>Linux</td><td>~/.local/share/quill</td></tr>
+</tbody>
+</table>
+<p>Deleting the application data folder signs you out of Quill Cloud on that device but leaves your synced notes untouched on the server.</p>
+</main>
+<aside><h2>Related articles</h2><ul><li><a href="/help/start">Getting started</a></li></ul></aside>
+<footer>Copyright 2026 Quill Labs. All rights reserved.</footer>
+</body>
+</html>

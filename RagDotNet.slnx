@@ -4,11 +4,16 @@
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/RagDotNet.Core/RagDotNet.Core.csproj" />
+    <Project Path="src/RagDotNet.Readers.Docx/RagDotNet.Readers.Docx.csproj" />
+    <Project Path="src/RagDotNet.Readers.Html/RagDotNet.Readers.Html.csproj" />
+    <Project Path="src/RagDotNet.Readers.Pdf/RagDotNet.Readers.Pdf.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/RagDotNet.Core.Tests/RagDotNet.Core.Tests.csproj" />
     <Project Path="tests/RagDotNet.Evaluation/RagDotNet.Evaluation.csproj" />
     <Project Path="tests/RagDotNet.Evaluation.Tests/RagDotNet.Evaluation.Tests.csproj" />
     <Project Path="tests/RagDotNet.IntegrationTests/RagDotNet.IntegrationTests.csproj" />
+    <Project Path="tests/RagDotNet.Readers.Tests/RagDotNet.Readers.Tests.csproj" />
+    <Project Path="tests/RagDotNet.TestAssetGen/RagDotNet.TestAssetGen.csproj" />
   </Folder>
 </Solution>

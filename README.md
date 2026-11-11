@@ -4,7 +4,7 @@
 
 RagDotNet is a .NET library for retrieval-augmented generation (RAG). It ingests documents, chunks and embeds them into a vector store, and answers questions with cited sources, built on Microsoft.Extensions.AI and Microsoft.Extensions.VectorData.
 
-> **Under development.** RagDotNet is not released yet. The public API can still change between commits, stored data may need re-ingesting after an update, and no package is published to NuGet. Core ingestion, retrieval, cited answers, chat and query rewriting, and three chunkers work today; PDF/DOCX/HTML readers, OCR, hybrid search and reranking, more vector stores, and hosting adapters are still to come. Feedback and issues are welcome.
+> **Under development.** RagDotNet is not released yet. The public API can still change between commits, stored data may need re-ingesting after an update, and no package is published to NuGet. Core ingestion, retrieval, cited answers, chat and query rewriting, three chunkers, and PDF, DOCX and HTML readers work today; OCR, hybrid search and reranking, more vector stores, and hosting adapters are still to come. Feedback and issues are welcome.
 
 ## Why this exists
 
@@ -14,7 +14,7 @@ RagDotNet is for .NET developers who want an application to answer questions fro
 
 | Area | Status |
 |---|---|
-| Text and Markdown readers | Works |
+| Readers: text and Markdown built in; PDF (with pages), DOCX and HTML as separate packages | Works |
 | Chunking: structure-aware, fixed-size and semantic, with custom chunkers pluggable | Works |
 | Vector retrieval, cited answers, streaming | Works |
 | Conversations and query rewriting (Condense, multi-query, HyDE) | Works |
@@ -23,7 +23,6 @@ RagDotNet is for .NET developers who want an application to answer questions fro
 | Embedding-model tracking and reindex | Works |
 | External content store, dependency injection, OpenTelemetry tracing | Works |
 | Retrieval evaluation harness | Works |
-| PDF, DOCX and HTML readers | Planned |
 | OCR | Planned |
 | Hybrid search and reranking | Planned |
 | More vector stores | Planned |
@@ -88,7 +87,7 @@ foreach (var c in answer.Citations) Console.WriteLine($"[{c.Number}] {c.Chunk.So
 
 Add your own readers with `.AddReader(reader)` and metadata fields with `.Configure(o => o.Metadata.Add<string>("category"))`.
 
-`IRagPipeline` exposes `IngestAsync`, `IngestManyAsync`, `DeleteDocumentAsync`, `RetrieveAsync`, `AskAsync` and `AskStreamingAsync`. Text and Markdown readers are built in.
+`IRagPipeline` exposes `IngestAsync`, `IngestManyAsync`, `DeleteDocumentAsync`, `RetrieveAsync`, `AskAsync` and `AskStreamingAsync`. Text and Markdown readers are built in; PDF, DOCX and HTML readers come as separate packages (see [Readers](#readers)).
 
 The first `Build()` or `BuildAdmin()` freezes the builder: later `Use*`, `Configure`, `AddReader` or `AddChunker` calls throw `InvalidOperationException`, so configure everything first (or create a new builder). Repeated `Build()`/`BuildAdmin()` calls share one engine.
 
@@ -160,6 +159,22 @@ new AccessScope(
 
 **Custom transformers.** Implement `IQueryTransformer.TransformAsync(QueryContext, CancellationToken)`. `QueryContext` has the `Question`, the windowed `History`, the current `Queries` (the previous step's output) and the `ChatClient`, which is null when none is configured. Return the new list of queries; empty and duplicate entries are dropped, and an empty result keeps the previous queries.
 
+## Readers
+
+Text and Markdown are read by Core. PDF, DOCX and HTML each have their own package, so you only take the parser you need:
+
+| Package | Register with | Keeps |
+|---|---|---|
+| `RagDotNet.Readers.Pdf` | `.AddPdfReader()` | page numbers (citations show `p. 3`), headings by font size, lists, code |
+| `RagDotNet.Readers.Docx` | `.AddDocxReader()` | heading paths from heading styles and outline levels, lists, tables, code |
+| `RagDotNet.Readers.Html` | `.AddHtmlReader()` | heading paths, lists, tables, code; navigation, footers, sidebars, cookie banners and scripts are removed |
+
+The `Add…Reader()` methods work on both `services.AddRag(...)` and `RagPipelineBuilder`. Nothing is skipped silently:
+- a scanned PDF page with no text, or images the reader cannot read, become warnings in `IngestResult.Warnings` (OCR is planned);
+- a corrupt or password-protected PDF or DOCX raises `DocumentReadException`, naming the file.
+
+[docs/readers.md](docs/readers.md) has the details for each format.
+
 ## Chunking
 
 Three chunkers are built in:
@@ -221,6 +236,8 @@ RAGDOTNET_INTEGRATION=1 dotnet test --project tests/RagDotNet.IntegrationTests
 dotnet run --project tests/RagDotNet.Evaluation                            # fake mode, no model needed
 dotnet run --project tests/RagDotNet.Evaluation -- --embedder ollama      # real embeddings via Ollama
 ```
+
+A format check renders the 8 base documents as PDF, DOCX and HTML and runs the same 40 questions on each, to show the readers keep enough text and structure for retrieval (`--formats md,pdf,docx,html`).
 
 The harness's own tests are in `tests/RagDotNet.Evaluation.Tests`. [docs/evaluation.md](docs/evaluation.md) describes the method and its limits and records the latest real-mode results, and [docs/evaluation-results.md](docs/evaluation-results.md) holds the full report. [docs/chunking.md](docs/chunking.md) compares the three chunkers.
 

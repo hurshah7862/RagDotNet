@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Configuration reference | Quill Help Centre</title>
+<script>window.dataLayer = [];</script>
+</head>
+<body>
+<header><nav><a href="/">Quill</a> <a href="/help">Help Centre</a> <a href="/download">Download</a></nav></header>
+<div class="cookie-banner">We use cookies to understand how the help centre is used. <button>Accept</button></div>
+<main>
+<h1>Configuration reference</h1>
+<p>Most of Quill can be configured from the Settings window, but every setting is also stored in a plain text file that you can edit by hand, keep in version control, or copy between machines. This page explains where the file lives, how it is structured, and what each setting does.</p>
+<h2>The configuration file</h2>
+<p>Quill reads its settings from a file named quill.toml. There are two of them, and they are merged when the app starts:</p>
+<ul>
+<li>The global file applies to every vault on the machine. It lives in the application data folder, next to the logs.</li>
+<li>The vault file lives at .quill/quill.toml inside a vault and applies only to that vault.</li>
+</ul>
+<p>When a setting appears in both files, the vault file wins. This lets you keep a large font on your laptop while a shared team vault enforces its own sync rules.</p>
+<h3>File format</h3>
+<p>The file uses TOML. Settings are grouped into tables such as [editor] and [sync], and each line is a key and a value:</p>
+<pre><code>[editor]
+font_size = 15
+spell_check = true
+
+[sync]
+provider = &quot;quill-cloud&quot;
+interval_minutes = 10</code></pre>
+<p>Unknown keys are ignored with a warning in the log, so a file written for a newer version still loads in an older one. Invalid values are a different matter: if a value has the wrong type, Quill shows a banner naming the key and falls back to the default for that one setting.</p>
+<h3>Reloading</h3>
+<p>Changes made in the Settings window are written to the file immediately. Changes made by hand in a text editor are picked up within two seconds, because Quill watches both files for changes. There is no need to restart.</p>
+<h2>Settings</h2>
+<p>The table below lists the settings most people change. Every key belongs to the table named before the dot.</p>
+<table>
+<thead><tr><th>Key</th><th>Default</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>editor.font_size</td><td>14</td><td>Editor text size in points, from 8 to 32</td></tr>
+<tr><td>editor.line_width</td><td>80</td><td>Maximum characters per line before soft wrapping</td></tr>
+<tr><td>editor.spell_check</td><td>true</td><td>Underline misspelled words while typing</td></tr>
+<tr><td>editor.vim_mode</td><td>false</td><td>Enable modal editing with Vim key bindings</td></tr>
+<tr><td>appearance.theme</td><td>&quot;parchment&quot;</td><td>Colour theme; built-in themes are parchment, slate and midnight</td></tr>
+<tr><td>appearance.follow_system</td><td>true</td><td>Switch between light and dark themes with the operating system</td></tr>
+<tr><td>sync.provider</td><td>&quot;none&quot;</td><td>One of none, quill-cloud, webdav or folder</td></tr>
+<tr><td>sync.interval_minutes</td><td>5</td><td>Minutes between automatic syncs when changes are waiting</td></tr>
+<tr><td>search.index_attachments</td><td>false</td><td>Also index the text of PDF attachments for search</td></tr>
+<tr><td>backup.keep_snapshots</td><td>30</td><td>How many daily snapshots of the vault to retain</td></tr>
+<tr><td>render.gpu</td><td>true</td><td>Draw the editor with GPU acceleration</td></tr>
+</tbody>
+</table>
+<h3>Editor</h3>
+<p>The editor settings control how notes look while you write. editor.line_width only affects wrapping on screen; it never inserts line breaks into the file. Vim mode supports normal, insert and visual modes, plus the most common motions and text objects. Ex commands other than :w and :q are not supported.</p>
+<h3>Appearance</h3>
+<p>Themes change colours only, never layout. You can add your own theme by placing a CSS file in .quill/themes and selecting it by file name. When appearance.follow_system is true, Quill uses parchment in light mode and midnight in dark mode unless you pick different themes for each.</p>
+<h3>Search</h3>
+<p>The search index lives in the application data folder, not inside the vault, so it is never synced. Turning on attachment indexing makes the first index build noticeably slower on vaults with many PDFs, and roughly doubles the size of the index on disk.</p>
+<h3>Backups</h3>
+<p>Once a day, Quill takes a snapshot of the whole vault and stores it in compressed form in the application data folder. Snapshots older than the retention count are pruned automatically, oldest first. Snapshots are local only and are a safety net against accidental deletion, not a replacement for a real backup on another disk.</p>
+<h2>Environment variables</h2>
+<p>A few settings can be overridden for a single session with environment variables, which is useful for testing or for running Quill from scripts:</p>
+<ul>
+<li>QUILL_VAULT opens the given folder as the vault, ignoring the last vault you used.</li>
+<li>QUILL_LOG_LEVEL sets the log level to error, warn, info or debug.</li>
+<li>QUILL_CONFIG_DIR moves the global configuration file and the application data folder somewhere else, for example onto a portable drive.</li>
+</ul>
+<p>Environment variables take precedence over both configuration files.</p>
+<h2>Profiles</h2>
+<p>If you use one machine for different kinds of work, you can create profiles. A profile is a named copy of the global settings. Switch profiles from the account menu or start Quill with --profile writing. Profiles share installed plugins but each has its own theme, font and keyboard shortcuts.</p>
+<h2>Resetting</h2>
+<p>To return a setting to its default, delete its line from the file, or click the reset arrow next to it in the Settings window. To reset everything, close Quill and rename the global quill.toml; a fresh file with all defaults is written on the next start. Your notes are never affected by resetting settings.</p>
+</main>
+<aside><h2>Related articles</h2><ul><li><a href="/help/start">Getting started</a></li></ul></aside>
+<footer>Copyright 2026 Quill Labs. All rights reserved.</footer>
+</body>
+</html>

@@ -10,9 +10,12 @@
     <PackageReference Include="OllamaSharp" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="Dataset/**/*.md;Dataset/**/*.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Dataset/**/*.md;Dataset/**/*.json;Dataset/**/*.pdf;Dataset/**/*.docx;Dataset/**/*.html" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\RagDotNet.Core\RagDotNet.Core.csproj" />
+    <ProjectReference Include="..\..\src\RagDotNet.Readers.Docx\RagDotNet.Readers.Docx.csproj" />
+    <ProjectReference Include="..\..\src\RagDotNet.Readers.Html\RagDotNet.Readers.Html.csproj" />
+    <ProjectReference Include="..\..\src\RagDotNet.Readers.Pdf\RagDotNet.Readers.Pdf.csproj" />
   </ItemGroup>
 </Project>

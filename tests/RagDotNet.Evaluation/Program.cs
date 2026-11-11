@@ -72,11 +72,19 @@ public static class Program
         IReadOnlyList<DatasetSet> sets;
         try
         {
-            sets = await DatasetLoader.LoadSetsAsync(options.DatasetDirectory, ct).ConfigureAwait(false);
+            sets = await DatasetLoader.LoadSetsAsync(options.DatasetDirectory, options.Formats, ct).ConfigureAwait(false);
         }
         catch (DatasetValidationException ex)
         {
             await stderr.WriteLineAsync(ex.Message).ConfigureAwait(false);
+            return InvalidInput;
+        }
+
+        if (sets.Count == 0)
+        {
+            // Every requested format was one no set has a rendered copy of; an empty report would look like success.
+            await stderr.WriteLineAsync(
+                $"No dataset set has the requested format(s) {string.Join(", ", options.Formats)} in {options.DatasetDirectory}.").ConfigureAwait(false);
             return InvalidInput;
         }
 

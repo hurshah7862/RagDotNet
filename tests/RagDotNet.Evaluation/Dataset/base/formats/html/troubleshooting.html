@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Troubleshooting | Quill Help Centre</title>
+<script>window.dataLayer = [];</script>
+</head>
+<body>
+<header><nav><a href="/">Quill</a> <a href="/help">Help Centre</a> <a href="/download">Download</a></nav></header>
+<div class="cookie-banner">We use cookies to understand how the help centre is used. <button>Accept</button></div>
+<main>
+<h1>Troubleshooting</h1>
+<p>This page collects the problems people run into most often, with the quickest fix first. If none of these help, collect a diagnostic report as described at the end and contact support.</p>
+<h2>Startup problems</h2>
+<h3>Quill opens a blank white window</h3>
+<p>A blank window almost always means the graphics driver cannot handle hardware rendering. Close Quill and start it once with quill --disable-gpu. If the window now draws correctly, make the change permanent by setting render.gpu = false in your global configuration file, and consider updating your graphics driver.</p>
+<h3>Quill crashes immediately after the splash screen</h3>
+<p>Open the log file in the application data folder and look at the last lines. A message mentioning a plugin means a plugin failed to load; start Quill in safe mode by holding Shift while it launches, which skips all plugins, and then disable the plugin that crashed. A message about a locked database means another copy of Quill is already running, possibly hidden in the system tray.</p>
+<h3>&quot;Vault folder is not accessible&quot;</h3>
+<p>The vault was moved, renamed, or is on a drive that is not connected. Reconnect the drive or open the vault from its new location using the vault switcher. On macOS, this message can also mean that Quill lost permission to the folder after a system update; grant it again under System Settings → Privacy &amp; Security → Files and Folders.</p>
+<h2>Sync problems</h2>
+<h3>Notes are not syncing</h3>
+<p>First look at the status bar. A spinning arrow means sync is running; a cloud with a slash means you are offline; a red exclamation mark means the last sync failed. Click the icon to see the error.</p>
+<p>The most common cause of failed syncs is an expired sign-in. Sign out and back in under Settings → Sync. For WebDAV, check that your app password has not been revoked on the server.</p>
+<h3>Sync is slow on the first run</h3>
+<p>The first sync uploads every note and attachment, which can take a while on large vaults. Later syncs send only what changed. You can watch progress in Settings → Sync, which shows how many files remain. Leaving the app open overnight is the simplest way to finish a big initial upload.</p>
+<h3>I see files ending in &quot;conflict copy&quot;</h3>
+<p>These are created when the same note was edited on two devices before either synced. They are deliberate, not a bug. Open the original note, compare it with the copy using the banner at the top, and delete whichever version you do not need.</p>
+<h3>Notes I deleted came back</h3>
+<p>This happens when a device that was offline for a long time still had the old notes and synced them back. Quill Cloud protects against it by remembering deletions for 60 days; devices offline for longer than that may resurrect deleted notes. Delete them again, and remove old devices you no longer use from your account page.</p>
+<h2>Search problems</h2>
+<h3>Search does not find a note I know exists</h3>
+<p>The index may be out of date. Choose Rebuild search index from the Help menu; this deletes the index and builds it again from your files without touching the notes. Rebuilding a large vault can take several minutes, during which results are incomplete.</p>
+<p>Also check that the note is not in an excluded folder. Folders listed under Settings → Search → Excluded folders are skipped entirely, and by default that list contains the attachments folder and any folder whose name starts with a dot.</p>
+<h3>Search results show old text</h3>
+<p>Quill updates the index a moment after you stop typing. If results stay stale for more than a minute, the file watcher may have stopped, which can happen when the vault is on a network share. Restart Quill, or move the vault to a local disk for the best experience.</p>
+<h2>Editor problems</h2>
+<h3>Typing feels laggy in long notes</h3>
+<p>Notes longer than about twenty thousand words can slow down live preview. Switch the note to source mode with the toggle in the top right corner, or split the note into several smaller notes linked together. Disabling spell check for that vault also helps noticeably.</p>
+<h3>Pasted text loses its formatting</h3>
+<p>Quill converts pasted rich text into Markdown. Tables, bold, italics, links and lists survive the conversion; colours, fonts and text sizes do not, because Markdown has no way to express them. To paste text exactly as plain characters without any conversion, use Ctrl+Shift+V.</p>
+<h2>Plugin problems</h2>
+<p>A misbehaving plugin can cause almost any symptom. The fastest way to find out is safe mode: if the problem disappears in safe mode, a plugin is responsible. Re-enable plugins one at a time until the problem returns. Plugin errors are also written to the log with the plugin&#39;s identifier at the start of the line.</p>
+<h2>Collecting a diagnostic report</h2>
+<p>Choose Create diagnostic report from the Help menu. Quill writes a zip file to your desktop that contains the logs from the last seven days, your settings with any passwords and tokens removed, the list of installed plugins and their versions, and basic system information. The report never includes the content of your notes. Attach the zip file when you contact support at the address shown on the Help page.</p>
+</main>
+<aside><h2>Related articles</h2><ul><li><a href="/help/start">Getting started</a></li></ul></aside>
+<footer>Copyright 2026 Quill Labs. All rights reserved.</footer>
+</body>
+</html>

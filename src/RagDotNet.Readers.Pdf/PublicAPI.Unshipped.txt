@@ -1,0 +1,9 @@
+#nullable enable
+Microsoft.Extensions.DependencyInjection.PdfReaderExtensions
+RagDotNet.Readers.Pdf.PdfReader
+RagDotNet.Readers.Pdf.PdfReader.CanRead(string? contentType, string! fileName) -> bool
+RagDotNet.Readers.Pdf.PdfReader.PdfReader() -> void
+RagDotNet.Readers.Pdf.PdfReader.ReadAsync(System.IO.Stream! stream, RagDotNet.Documents.DocumentReadContext! context, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<RagDotNet.Documents.ParsedDocument!>!
+static Microsoft.Extensions.DependencyInjection.PdfReaderExtensions.AddPdfReader(this RagDotNet.Configuration.IRagBuilder! builder) -> RagDotNet.Configuration.IRagBuilder!
+static RagDotNet.Configuration.PdfReaderBuilderExtensions.AddPdfReader(this RagDotNet.Configuration.RagPipelineBuilder! builder) -> RagDotNet.Configuration.RagPipelineBuilder!
+RagDotNet.Configuration.PdfReaderBuilderExtensions

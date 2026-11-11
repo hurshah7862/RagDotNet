@@ -104,3 +104,58 @@
 | semantic | 256 | n/a | vector | 178 | 0.683 | 0.883 | 0.883 | 0.786 |
 | semantic | 512 | n/a | vector | 160 | 0.717 | 0.883 | 0.883 | 0.805 |
 | semantic | 1024 | n/a | vector | 155 | 0.717 | 0.867 | 0.883 | 0.800 |
+
+## Format check (stage 5)
+
+The 8 `base` documents rendered as PDF, DOCX and HTML and read back with the stage 5 readers, at the library defaults (structure-aware, 512 tokens, 0.1 overlap). Method and discussion: [evaluation.md](evaluation.md#format-check).
+
+- Embedder: ollama (nomic-embed-text)
+- Chat model: none
+- Set `base`: 8 documents, 40 questions, hash cb1f2ea1af73
+- Set `base` · pdf: 8 documents, 40 questions, hash f0a5e009f7e5
+- Set `base` · docx: 8 documents, 40 questions, hash 589b9f114c4c
+- Set `base` · html: 8 documents, 40 questions, hash 36ba9218060e
+- Set `long-sections`: 4 documents, 20 questions, hash b51efdaa25f2
+- Date: 2026-11-09
+
+### base
+
+| Chunker | MaxTokens | Overlap | Mode | Chunks | R@1 | R@3 | R@5 | MRR |
+|---|---:|---:|---|---:|---:|---:|---:|---:|
+| structure-aware | 512 | 0.1 | vector | 108 | 0.800 | 0.850 | 0.900 | 0.836 |
+
+### base · pdf
+
+- Unscorable questions: 0
+
+| Chunker | MaxTokens | Overlap | Mode | Chunks | R@1 | R@3 | R@5 | MRR |
+|---|---:|---:|---|---:|---:|---:|---:|---:|
+| structure-aware | 512 | 0.1 | vector | 108 | 0.825 | 0.850 | 0.900 | 0.849 |
+
+### base · docx
+
+- Unscorable questions: 0
+
+| Chunker | MaxTokens | Overlap | Mode | Chunks | R@1 | R@3 | R@5 | MRR |
+|---|---:|---:|---|---:|---:|---:|---:|---:|
+| structure-aware | 512 | 0.1 | vector | 108 | 0.825 | 0.875 | 0.900 | 0.855 |
+
+### base · html
+
+- Unscorable questions: 0
+
+| Chunker | MaxTokens | Overlap | Mode | Chunks | R@1 | R@3 | R@5 | MRR |
+|---|---:|---:|---|---:|---:|---:|---:|---:|
+| structure-aware | 512 | 0.1 | vector | 108 | 0.825 | 0.875 | 0.900 | 0.855 |
+
+### long-sections
+
+| Chunker | MaxTokens | Overlap | Mode | Chunks | R@1 | R@3 | R@5 | MRR |
+|---|---:|---:|---|---:|---:|---:|---:|---:|
+| structure-aware | 512 | 0.1 | vector | 28 | 0.650 | 0.950 | 0.950 | 0.783 |
+
+### all
+
+| Chunker | MaxTokens | Overlap | Mode | Chunks | R@1 | R@3 | R@5 | MRR |
+|---|---:|---:|---|---:|---:|---:|---:|---:|
+| structure-aware | 512 | 0.1 | vector | 136 | 0.750 | 0.883 | 0.917 | 0.819 |
