@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="CommunityToolkit.VectorData.InMemory" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+  </ItemGroup>
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="../TestAssets/**" CopyToOutputDirectory="PreserveNewest" LinkBase="TestAssets" />
+    <Compile Include="..\RagDotNet.TestAssetGen\Png.cs" Link="Shared\Png.cs" />
+    <Compile Include="..\RagDotNet.Readers.Tests\ReaderTestKit.cs" Link="Shared\ReaderTestKit.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\RagDotNet.Core\RagDotNet.Core.csproj" />
+    <ProjectReference Include="..\..\src\RagDotNet.Readers.Pdf\RagDotNet.Readers.Pdf.csproj" />
+    <ProjectReference Include="..\..\src\RagDotNet.Readers.Pdf.Rendering\RagDotNet.Readers.Pdf.Rendering.csproj" />
+  </ItemGroup>
+</Project>
