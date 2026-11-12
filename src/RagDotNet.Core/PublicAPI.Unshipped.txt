@@ -724,3 +724,87 @@ RagDotNet.Documents.DocumentReadException.DocumentReadException(string! fileName
 RagDotNet.Documents.DocumentReadException.FileName.get -> string!
 RagDotNet.Documents.DocumentReadException.Reason.get -> string!
 RagDotNet.Documents.IngestWarningCodes
+const RagDotNet.Documents.IngestWarningCodes.OcrFailed = "OcrFailed" -> string!
+const RagDotNet.Documents.IngestWarningCodes.OcrLowConfidence = "OcrLowConfidence" -> string!
+Microsoft.Extensions.DependencyInjection.RagOcrBuilderExtensions
+override RagDotNet.Ocr.DocumentOcrResult.Equals(object? obj) -> bool
+override RagDotNet.Ocr.DocumentOcrResult.GetHashCode() -> int
+override RagDotNet.Ocr.DocumentOcrResult.ToString() -> string!
+override RagDotNet.Ocr.ImageInput.Equals(object? obj) -> bool
+override RagDotNet.Ocr.ImageInput.GetHashCode() -> int
+override RagDotNet.Ocr.ImageInput.ToString() -> string!
+override RagDotNet.Ocr.OcrResult.Equals(object? obj) -> bool
+override RagDotNet.Ocr.OcrResult.GetHashCode() -> int
+override RagDotNet.Ocr.OcrResult.ToString() -> string!
+RagDotNet.Configuration.RagOptions.Ocr.get -> RagDotNet.Ocr.OcrOptions!
+RagDotNet.Configuration.RagOptions.Ocr.set -> void
+RagDotNet.Configuration.RagPipelineBuilder.AddPageRenderer(RagDotNet.Ocr.IPageRenderer! renderer) -> RagDotNet.Configuration.RagPipelineBuilder!
+RagDotNet.Configuration.RagPipelineBuilder.UseDocumentOcrProvider(RagDotNet.Ocr.IDocumentOcrProvider! provider) -> RagDotNet.Configuration.RagPipelineBuilder!
+RagDotNet.Configuration.RagPipelineBuilder.UseOcrProvider(RagDotNet.Ocr.IOcrProvider! provider) -> RagDotNet.Configuration.RagPipelineBuilder!
+RagDotNet.Ocr.DocumentOcrMode
+RagDotNet.Ocr.DocumentOcrMode.FillMissingPages = 0 -> RagDotNet.Ocr.DocumentOcrMode
+RagDotNet.Ocr.DocumentOcrMode.ReplaceReader = 1 -> RagDotNet.Ocr.DocumentOcrMode
+RagDotNet.Ocr.DocumentOcrResult
+RagDotNet.Ocr.DocumentOcrResult.<Clone>$() -> RagDotNet.Ocr.DocumentOcrResult!
+RagDotNet.Ocr.DocumentOcrResult.Blocks.get -> System.Collections.Generic.IReadOnlyList<RagDotNet.Documents.DocumentBlock!>!
+RagDotNet.Ocr.DocumentOcrResult.Blocks.init -> void
+RagDotNet.Ocr.DocumentOcrResult.Deconstruct(out System.Collections.Generic.IReadOnlyList<RagDotNet.Documents.DocumentBlock!>! Blocks) -> void
+RagDotNet.Ocr.DocumentOcrResult.DocumentOcrResult(System.Collections.Generic.IReadOnlyList<RagDotNet.Documents.DocumentBlock!>! Blocks) -> void
+RagDotNet.Ocr.DocumentOcrResult.Equals(RagDotNet.Ocr.DocumentOcrResult? other) -> bool
+RagDotNet.Ocr.DocumentOcrResult.Warnings.get -> System.Collections.Generic.IReadOnlyList<RagDotNet.Documents.IngestWarning!>!
+RagDotNet.Ocr.DocumentOcrResult.Warnings.init -> void
+RagDotNet.Ocr.IDocumentOcrProvider
+RagDotNet.Ocr.IDocumentOcrProvider.CanProcess(string? contentType, string! fileName) -> bool
+RagDotNet.Ocr.IDocumentOcrProvider.Id.get -> string!
+RagDotNet.Ocr.IDocumentOcrProvider.ProcessAsync(System.ReadOnlyMemory<byte> document, RagDotNet.Documents.DocumentReadContext! context, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<RagDotNet.Ocr.DocumentOcrResult!>!
+RagDotNet.Ocr.ImageInput
+RagDotNet.Ocr.ImageInput.<Clone>$() -> RagDotNet.Ocr.ImageInput!
+RagDotNet.Ocr.ImageInput.Bytes.get -> System.ReadOnlyMemory<byte>
+RagDotNet.Ocr.ImageInput.Bytes.init -> void
+RagDotNet.Ocr.ImageInput.Deconstruct(out System.ReadOnlyMemory<byte> Bytes, out string! MediaType, out int? Width, out int? Height) -> void
+RagDotNet.Ocr.ImageInput.Equals(RagDotNet.Ocr.ImageInput? other) -> bool
+RagDotNet.Ocr.ImageInput.Height.get -> int?
+RagDotNet.Ocr.ImageInput.Height.init -> void
+RagDotNet.Ocr.ImageInput.ImageInput(System.ReadOnlyMemory<byte> Bytes, string! MediaType, int? Width = null, int? Height = null) -> void
+RagDotNet.Ocr.ImageInput.MediaType.get -> string!
+RagDotNet.Ocr.ImageInput.MediaType.init -> void
+RagDotNet.Ocr.ImageInput.Width.get -> int?
+RagDotNet.Ocr.ImageInput.Width.init -> void
+RagDotNet.Ocr.IOcrProvider
+RagDotNet.Ocr.IOcrProvider.Id.get -> string!
+RagDotNet.Ocr.IOcrProvider.RecognizeAsync(RagDotNet.Ocr.ImageInput! image, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<RagDotNet.Ocr.OcrResult!>!
+RagDotNet.Ocr.IPageRenderer
+RagDotNet.Ocr.IPageRenderer.CanRender(string? contentType, string! fileName) -> bool
+RagDotNet.Ocr.IPageRenderer.RenderPageAsync(System.ReadOnlyMemory<byte> document, int pageNumber, int dpi, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<RagDotNet.Ocr.ImageInput!>!
+RagDotNet.Ocr.OcrOptions
+RagDotNet.Ocr.OcrOptions.DocumentProviderMode.get -> RagDotNet.Ocr.DocumentOcrMode
+RagDotNet.Ocr.OcrOptions.DocumentProviderMode.set -> void
+RagDotNet.Ocr.OcrOptions.MinConfidence.get -> double
+RagDotNet.Ocr.OcrOptions.MinConfidence.set -> void
+RagDotNet.Ocr.OcrOptions.MinImageSize.get -> int
+RagDotNet.Ocr.OcrOptions.MinImageSize.set -> void
+RagDotNet.Ocr.OcrOptions.OcrEmbeddedImages.get -> bool
+RagDotNet.Ocr.OcrOptions.OcrEmbeddedImages.set -> void
+RagDotNet.Ocr.OcrOptions.OcrOptions() -> void
+RagDotNet.Ocr.OcrOptions.PageDpi.get -> int
+RagDotNet.Ocr.OcrOptions.PageDpi.set -> void
+RagDotNet.Ocr.OcrResult
+RagDotNet.Ocr.OcrResult.<Clone>$() -> RagDotNet.Ocr.OcrResult!
+RagDotNet.Ocr.OcrResult.Confidence.get -> double
+RagDotNet.Ocr.OcrResult.Confidence.init -> void
+RagDotNet.Ocr.OcrResult.Deconstruct(out string! Text, out double Confidence) -> void
+RagDotNet.Ocr.OcrResult.Equals(RagDotNet.Ocr.OcrResult? other) -> bool
+RagDotNet.Ocr.OcrResult.OcrResult(string! Text, double Confidence) -> void
+RagDotNet.Ocr.OcrResult.Text.get -> string!
+RagDotNet.Ocr.OcrResult.Text.init -> void
+RagDotNet.Ocr.OcrUnavailableException
+RagDotNet.Ocr.OcrUnavailableException.OcrUnavailableException(string! message, System.Exception? innerException = null) -> void
+static Microsoft.Extensions.DependencyInjection.RagOcrBuilderExtensions.AddDocumentOcrProvider<TProvider>(this RagDotNet.Configuration.IRagBuilder! builder) -> RagDotNet.Configuration.IRagBuilder!
+static Microsoft.Extensions.DependencyInjection.RagOcrBuilderExtensions.AddOcrProvider<TProvider>(this RagDotNet.Configuration.IRagBuilder! builder) -> RagDotNet.Configuration.IRagBuilder!
+static Microsoft.Extensions.DependencyInjection.RagOcrBuilderExtensions.AddPageRenderer<TRenderer>(this RagDotNet.Configuration.IRagBuilder! builder) -> RagDotNet.Configuration.IRagBuilder!
+static RagDotNet.Ocr.DocumentOcrResult.operator !=(RagDotNet.Ocr.DocumentOcrResult? left, RagDotNet.Ocr.DocumentOcrResult? right) -> bool
+static RagDotNet.Ocr.DocumentOcrResult.operator ==(RagDotNet.Ocr.DocumentOcrResult? left, RagDotNet.Ocr.DocumentOcrResult? right) -> bool
+static RagDotNet.Ocr.ImageInput.operator !=(RagDotNet.Ocr.ImageInput? left, RagDotNet.Ocr.ImageInput? right) -> bool
+static RagDotNet.Ocr.ImageInput.operator ==(RagDotNet.Ocr.ImageInput? left, RagDotNet.Ocr.ImageInput? right) -> bool
+static RagDotNet.Ocr.OcrResult.operator !=(RagDotNet.Ocr.OcrResult? left, RagDotNet.Ocr.OcrResult? right) -> bool
+static RagDotNet.Ocr.OcrResult.operator ==(RagDotNet.Ocr.OcrResult? left, RagDotNet.Ocr.OcrResult? right) -> bool

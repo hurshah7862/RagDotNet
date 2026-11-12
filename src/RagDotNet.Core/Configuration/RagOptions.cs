@@ -74,4 +74,7 @@ public sealed class RagOptions
 
     /// <summary>Query transformers applied, in order, to every question. Empty by default. <see cref="Retrieval.RetrievalOptions.QueryTransformers"/> overrides this per call.</summary>
     public IList<Retrieval.IQueryTransformer> QueryTransformers { get; set; } = [];
+
+    /// <summary>How ingest uses a registered OCR provider; ignored when none is registered.</summary>
+    public Ocr.OcrOptions Ocr { get; set; } = new();
 }

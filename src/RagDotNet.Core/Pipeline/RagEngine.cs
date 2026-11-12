@@ -56,6 +56,15 @@ internal sealed class RagEngine
 
     public QueryPlanner QueryPlanner { get; }
 
+    /// <summary>The per-image OCR provider, if one is registered.</summary>
+    public Ocr.IOcrProvider? OcrProvider { get; init; }
+
+    /// <summary>The whole-document OCR provider, if one is registered.</summary>
+    public Ocr.IDocumentOcrProvider? DocumentOcrProvider { get; init; }
+
+    /// <summary>Page renderers for scanned pages.</summary>
+    public IReadOnlyList<Ocr.IPageRenderer> PageRenderers { get; init; } = [];
+
     public EmbeddingModelGuard ModelGuard { get; }
 
     /// <summary>The clock for model check expiry and reindex heartbeats.</summary>

@@ -6,6 +6,7 @@ using RagDotNet.Access;
 using RagDotNet.Chunking;
 using RagDotNet.Content;
 using RagDotNet.Documents;
+using RagDotNet.Ocr;
 using RagDotNet.Pipeline;
 using RagDotNet.Readers;
 using RagDotNet.Storage;
@@ -29,6 +30,9 @@ public sealed class RagPipelineBuilder
     private RagEngine? _engine;
     private IChunkContentStore? _contentStore;
     private TimeProvider? _time;
+    private IOcrProvider? _ocr;
+    private IDocumentOcrProvider? _documentOcr;
+    private readonly List<IPageRenderer> _renderers = [];
     private bool _frozen;
 
     /// <summary>Sets the chat client used to generate answers.</summary>
@@ -91,6 +95,42 @@ public sealed class RagPipelineBuilder
     {
         ThrowIfFrozen();
         _readers.Add(reader ?? throw new ArgumentNullException(nameof(reader)));
+        return this;
+    }
+
+    /// <summary>Sets the per-image OCR provider, which reads scanned pages and embedded images. Replaces an earlier one.</summary>
+    /// <param name="provider">The provider.</param>
+    /// <returns>This builder.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="provider"/> is null.</exception>
+    /// <exception cref="InvalidOperationException">The builder has already built a pipeline or admin interface.</exception>
+    public RagPipelineBuilder UseOcrProvider(IOcrProvider provider)
+    {
+        ThrowIfFrozen();
+        _ocr = provider ?? throw new ArgumentNullException(nameof(provider));
+        return this;
+    }
+
+    /// <summary>Sets the whole-document OCR provider; see <see cref="OcrOptions.DocumentProviderMode"/>. Replaces an earlier one.</summary>
+    /// <param name="provider">The provider.</param>
+    /// <returns>This builder.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="provider"/> is null.</exception>
+    /// <exception cref="InvalidOperationException">The builder has already built a pipeline or admin interface.</exception>
+    public RagPipelineBuilder UseDocumentOcrProvider(IDocumentOcrProvider provider)
+    {
+        ThrowIfFrozen();
+        _documentOcr = provider ?? throw new ArgumentNullException(nameof(provider));
+        return this;
+    }
+
+    /// <summary>Adds a page renderer, so scanned pages can be handed to the per-image OCR provider.</summary>
+    /// <param name="renderer">The renderer.</param>
+    /// <returns>This builder.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="renderer"/> is null.</exception>
+    /// <exception cref="InvalidOperationException">The builder has already built a pipeline or admin interface.</exception>
+    public RagPipelineBuilder AddPageRenderer(IPageRenderer renderer)
+    {
+        ThrowIfFrozen();
+        _renderers.Add(renderer ?? throw new ArgumentNullException(nameof(renderer)));
         return this;
     }
 
@@ -171,7 +211,7 @@ public sealed class RagPipelineBuilder
     internal IChatClient? ChatClient => _chat;
 
     private RagEngine CreateEngine(IEmbeddingGenerator<string, Embedding<float>> embedder, VectorStore store) =>
-        RagEngineFactory.Create(_options, _readers, _chunkers, embedder, store, _loggerFactory, _contentStore, _time);
+        RagEngineFactory.Create(_options, _readers, _chunkers, embedder, store, _loggerFactory, _contentStore, _time, _ocr, _documentOcr, _renderers);
 
     /// <summary>Sets the clock used for model check expiry and reindex heartbeats; tests use a manual clock.</summary>
     internal RagPipelineBuilder UseTimeProvider(TimeProvider time)
