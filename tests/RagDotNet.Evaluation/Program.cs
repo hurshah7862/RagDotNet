@@ -3,6 +3,9 @@ using RagDotNet.Evaluation.Cli;
 using RagDotNet.Evaluation.Datasets;
 using RagDotNet.Evaluation.Providers;
 using RagDotNet.Evaluation.Running;
+using RagDotNet.Ocr;
+using RagDotNet.Ocr.Tesseract;
+using RagDotNet.Readers.Pdf.Rendering;
 
 namespace RagDotNet.Evaluation;
 
@@ -69,10 +72,28 @@ public static class Program
 
     private static async Task<int> RunCoreAsync(Options options, TextWriter stdout, TextWriter stderr, CancellationToken ct)
     {
+        // The scanned check reads image-only PDFs with Tesseract; a missing install is a clear error before any work.
+        TesseractOcrProvider? tesseract = null;
+        if (options.Formats.Contains(DatasetSet.Scanned))
+        {
+            try
+            {
+                tesseract = new TesseractOcrProvider(new TesseractOcrOptions { DataPath = options.TessData });
+            }
+            catch (OcrUnavailableException ex)
+            {
+                await stderr.WriteLineAsync($"The scanned format needs Tesseract: {ex.Message}").ConfigureAwait(false);
+                return InvalidInput;
+            }
+        }
+
+        using var ownedTesseract = tesseract;
+        var ocr = tesseract is null ? null : new OcrSetup(new CachingOcrProvider(tesseract), new PdfPageRenderer());
+
         IReadOnlyList<DatasetSet> sets;
         try
         {
-            sets = await DatasetLoader.LoadSetsAsync(options.DatasetDirectory, options.Formats, ct).ConfigureAwait(false);
+            sets = await DatasetLoader.LoadSetsAsync(options.DatasetDirectory, options.Formats, ocr, ct).ConfigureAwait(false);
         }
         catch (DatasetValidationException ex)
         {
@@ -124,7 +145,7 @@ public static class Program
         using var ownedChat = chat;
 
         var configs = EvaluationConfig.Matrix(options.Chunkers, options.MaxTokens, options.Overlaps, options.Modes);
-        var results = await new EvaluationRunner(embedder, options.Dimensions, chat).RunAsync(sets, configs, ct).ConfigureAwait(false);
+        var results = await new EvaluationRunner(embedder, options.Dimensions, chat, ocr).RunAsync(sets, configs, ct).ConfigureAwait(false);
         var report = ReportWriter.Write(meta, sets, results);
 
         await stdout.WriteAsync(report).ConfigureAwait(false);

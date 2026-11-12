@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using RagDotNet.Documents;
 using RagDotNet.Evaluation.Scoring;
+using RagDotNet.Ocr;
 using RagDotNet.Readers;
 
 namespace RagDotNet.Evaluation.Datasets;
@@ -33,7 +34,15 @@ public static class DatasetLoader
     /// <c>pdf</c>, <c>docx</c> and <c>html</c> are the rendered copies in <c>formats/&lt;format&gt;/</c>, when the set has them.
     /// </summary>
     /// <exception cref="DatasetValidationException">Any set breaks a rule, or ids repeat across sets; every problem is listed.</exception>
-    public static async Task<IReadOnlyList<DatasetSet>> LoadSetsAsync(string root, IReadOnlyList<string> formats, CancellationToken ct)
+    public static Task<IReadOnlyList<DatasetSet>> LoadSetsAsync(string root, IReadOnlyList<string> formats, CancellationToken ct) =>
+        LoadSetsAsync(root, formats, ocr: null, ct);
+
+    /// <summary>
+    /// As <see cref="LoadSetsAsync(string, IReadOnlyList{string}, CancellationToken)"/>; <paramref name="ocr"/> reads the
+    /// <c>scanned</c> format, image-only PDFs, the same way ingest does. Loading <c>scanned</c> without it is an error.
+    /// </summary>
+    /// <exception cref="DatasetValidationException">Any set breaks a rule, or ids repeat across sets; every problem is listed.</exception>
+    public static async Task<IReadOnlyList<DatasetSet>> LoadSetsAsync(string root, IReadOnlyList<string> formats, OcrSetup? ocr, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(formats);
         ArgumentException.ThrowIfNullOrWhiteSpace(root);
@@ -75,7 +84,9 @@ public static class DatasetLoader
                     else if (Directory.Exists(Path.Combine(dir, "formats", format)))
                     {
                         // A set without this rendered format is simply not part of the format check.
-                        var (dataset, unscorable) = await LoadVariantAsync(dir, format, ct).ConfigureAwait(false);
+                        if (format == DatasetSet.Scanned && ocr is null)
+                            throw new DatasetValidationException(["the scanned format needs OCR; the harness reads it with Tesseract (see --tessdata)"]);
+                        var (dataset, unscorable) = await LoadVariantAsync(dir, format, format == DatasetSet.Scanned ? ocr!.Stage() : null, ct).ConfigureAwait(false);
                         sets.Add(new DatasetSet(name, dataset, format, unscorable));
                     }
                 }
@@ -104,10 +115,10 @@ public static class DatasetLoader
     /// Loads a set's rendered copy in <paramref name="format"/>. It shares the set's questions; a question whose evidence
     /// the format's reader did not keep intact in one body block is counted as unscorable instead of failing the load.
     /// </summary>
-    private static async Task<(Dataset Dataset, IReadOnlyList<string> Unscorable)> LoadVariantAsync(string setDir, string format, CancellationToken ct)
+    private static async Task<(Dataset Dataset, IReadOnlyList<string> Unscorable)> LoadVariantAsync(string setDir, string format, OcrStage? ocr, CancellationToken ct)
     {
         var expected = Directory.GetFiles(Path.Combine(setDir, "corpus"), "*.md").Select(Path.GetFileNameWithoutExtension).ToHashSet(StringComparer.Ordinal);
-        var files = Directory.GetFiles(Path.Combine(setDir, "formats", format), "*." + format).Order(StringComparer.Ordinal).ToList();
+        var files = Directory.GetFiles(Path.Combine(setDir, "formats", format), "*." + DatasetSet.Extension(format)).Order(StringComparer.Ordinal).ToList();
         var found = files.Select(Path.GetFileNameWithoutExtension).ToHashSet(StringComparer.Ordinal);
         var errors = expected.Except(found).Order(StringComparer.Ordinal).Select(id => $"document '{id}' has no {format} copy in formats/{format}")
             .Concat(found.Except(expected).Order(StringComparer.Ordinal).Select(id => $"formats/{format} has document '{id}', which the set's corpus lacks"))
@@ -115,7 +126,7 @@ public static class DatasetLoader
         if (errors.Count > 0) throw new DatasetValidationException(errors);
 
         var unscorable = new List<string>();
-        var dataset = await LoadFilesAsync(files, Path.Combine(setDir, "questions.json"), $"formats/{format}/", unscorable, ct).ConfigureAwait(false);
+        var dataset = await LoadFilesAsync(files, Path.Combine(setDir, "questions.json"), $"formats/{format}/", unscorable, ocr, ct).ConfigureAwait(false);
         return (dataset, unscorable);
     }
 
@@ -141,7 +152,7 @@ public static class DatasetLoader
         }
 
         var files = Directory.GetFiles(corpusDir, "*.md").Order(StringComparer.Ordinal).ToList();
-        return await LoadFilesAsync(files, questionsPath, "corpus/", unscorable: null, ct).ConfigureAwait(false);
+        return await LoadFilesAsync(files, questionsPath, "corpus/", unscorable: null, ocr: null, ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -149,7 +160,7 @@ public static class DatasetLoader
     /// <paramref name="unscorable"/> set, evidence problems add the question id there instead of failing the load.
     /// </summary>
     private static async Task<Dataset> LoadFilesAsync(
-        List<string> files, string questionsPath, string hashPrefix, List<string>? unscorable, CancellationToken ct)
+        List<string> files, string questionsPath, string hashPrefix, List<string>? unscorable, OcrStage? ocr, CancellationToken ct)
     {
         var documents = new List<CorpusDocument>();
         var blocks = new Dictionary<string, string[]>(StringComparer.Ordinal);
@@ -157,8 +168,19 @@ public static class DatasetLoader
         foreach (var file in files)
         {
             var reader = ReadersByExtension[Path.GetExtension(file)];
-            await using var stream = File.OpenRead(file);
-            var parsed = await reader.ReadAsync(stream, new DocumentReadContext(Path.GetFileName(file), null), ct).ConfigureAwait(false);
+            var context = new DocumentReadContext(Path.GetFileName(file), null);
+            ParsedDocument parsed;
+            if (ocr is not null)
+            {
+                // Scanned copies are read exactly as ingest reads them, OCR text included, so evidence is checked against it.
+                parsed = await ocr.ReadAsync(reader, await File.ReadAllBytesAsync(file, ct).ConfigureAwait(false), context, ct).ConfigureAwait(false);
+            }
+            else
+            {
+                await using var stream = File.OpenRead(file);
+                parsed = await reader.ReadAsync(stream, context, ct).ConfigureAwait(false);
+            }
+
             var text = TextNormalizer.Normalize(string.Join(' ', parsed.Blocks.Select(b => b.Text)));
             var id = Path.GetFileNameWithoutExtension(file);
             documents.Add(new CorpusDocument(id, file, text));

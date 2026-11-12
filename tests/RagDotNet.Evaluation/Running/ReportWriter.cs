@@ -53,6 +53,13 @@ public static class ReportWriter
         foreach (var set in sets)
         {
             var note = set.Format == DatasetSet.Markdown ? null : string.Create(inv, $"- Unscorable questions: {set.Unscorable}");
+            if (set.Format == DatasetSet.Scanned)
+            {
+                // Under strict matching, a question is unscorable exactly when OCR damaged its evidence.
+                var total = set.Dataset.Questions.Count;
+                note += string.Create(inv, $"\n- Evidence intact after OCR: {total - set.Unscorable} of {total}");
+            }
+
             Table(set.Label, [.. results.Where(r => r.Set == set.Label)], note);
         }
 

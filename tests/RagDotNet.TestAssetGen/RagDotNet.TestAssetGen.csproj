@@ -10,6 +10,7 @@
     <PackageReference Include="DocumentFormat.OpenXml" />
     <PackageReference Include="Markdig" />
     <PackageReference Include="PdfPig" />
+    <PackageReference Include="PDFtoImage" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\RagDotNet.Core\RagDotNet.Core.csproj" />

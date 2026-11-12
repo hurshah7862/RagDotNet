@@ -17,5 +17,6 @@
     <ProjectReference Include="..\..\src\RagDotNet.Readers.Docx\RagDotNet.Readers.Docx.csproj" />
     <ProjectReference Include="..\..\src\RagDotNet.Readers.Html\RagDotNet.Readers.Html.csproj" />
     <ProjectReference Include="..\..\src\RagDotNet.Readers.Pdf\RagDotNet.Readers.Pdf.csproj" />
+    <ProjectReference Include="..\..\src\RagDotNet.Ocr.Tesseract\RagDotNet.Ocr.Tesseract.csproj" />
   </ItemGroup>
 </Project>

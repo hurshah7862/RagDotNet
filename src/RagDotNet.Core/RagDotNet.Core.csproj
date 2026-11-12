@@ -15,5 +15,7 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="RagDotNet.Core.Tests" />
+    <!-- The evaluation harness reads scanned datasets through the same OCR stage as ingest. -->
+    <InternalsVisibleTo Include="RagDotNet.Evaluation" />
   </ItemGroup>
 </Project>

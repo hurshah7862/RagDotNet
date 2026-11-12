@@ -11,7 +11,7 @@ using RagDotNet.Retrieval;
 namespace RagDotNet.Evaluation.Running;
 
 /// <summary>Runs every question of a dataset through each configuration using RagDotNet's public API.</summary>
-public sealed class EvaluationRunner(IEmbeddingGenerator<string, Embedding<float>> embedder, int dimensions, IChatClient? chat)
+public sealed class EvaluationRunner(IEmbeddingGenerator<string, Embedding<float>> embedder, int dimensions, IChatClient? chat, OcrSetup? ocr = null)
 {
     /// <summary>Chunks retrieved per question.</summary>
     public const int TopK = 10;
@@ -33,13 +33,15 @@ public sealed class EvaluationRunner(IEmbeddingGenerator<string, Embedding<float
         var all = new List<ConfigResult>();
         foreach (var set in sets)
         {
-            all.AddRange(await RunSetAsync(set.Label, set.Dataset, set.UnscorableIds ?? [], configs, ct).ConfigureAwait(false));
+            // Only the scanned check reads with OCR, so the other formats score exactly as they did before OCR existed.
+            all.AddRange(await RunSetAsync(set.Label, set.Dataset, set.UnscorableIds ?? [], configs, set.Format == DatasetSet.Scanned ? ocr : null, ct).ConfigureAwait(false));
         }
 
         return all;
     }
 
-    private async Task<IReadOnlyList<ConfigResult>> RunSetAsync(string setName, Dataset dataset, IReadOnlyList<string> unscorable, IReadOnlyList<EvaluationConfig> configs, CancellationToken ct)
+    private async Task<IReadOnlyList<ConfigResult>> RunSetAsync(
+        string setName, Dataset dataset, IReadOnlyList<string> unscorable, IReadOnlyList<EvaluationConfig> configs, OcrSetup? setOcr, CancellationToken ct)
     {
         var results = new List<ConfigResult>(configs.Count);
         foreach (var group in configs.GroupBy(c => (c.Chunker, c.MaxTokens, c.Overlap)))
@@ -59,6 +61,11 @@ public sealed class EvaluationRunner(IEmbeddingGenerator<string, Embedding<float
             if (chat is not null)
             {
                 builder.UseChatClient(chat);
+            }
+
+            if (setOcr is not null)
+            {
+                builder.UseOcrProvider(setOcr.Provider).AddPageRenderer(setOcr.Renderer);
             }
 
             var pipeline = builder.Build();
