@@ -16,6 +16,8 @@ jobs:
     env:
       DOTNET_NOLOGO: true
       DOTNET_CLI_TELEMETRY_OPTOUT: true
+      # The OCR tests read English with the distribution's Tesseract; on CI they fail rather than skip without it.
+      RAGDOTNET_TESSDATA: /usr/share/tesseract-ocr/5/tessdata
     steps:
       - uses: actions/checkout@v4
 
@@ -24,6 +26,9 @@ jobs:
         with:
           global-json-file: global.json
           dotnet-version: 8.0.x
+
+      - name: Install Tesseract
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng
 
       - name: Restore
         run: dotnet restore
@@ -37,3 +42,45 @@ jobs:
 
       - name: Test readers (net8.0)
         run: dotnet test --project tests/RagDotNet.Readers.Tests --no-build --configuration Release --framework net8.0
+
+      - name: Test OCR (net8.0)
+        run: dotnet test --project tests/RagDotNet.Ocr.Tests --no-build --configuration Release --framework net8.0
+
+  windows:
+    name: Windows unit and OCR tests (net8.0)
+    runs-on: windows-latest
+    timeout-minutes: 25
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+          dotnet-version: 8.0.x
+
+      # Tesseract itself is included in the package on Windows; only the language data is downloaded.
+      - name: Download English language data
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP 'tessdata'
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          Invoke-WebRequest https://github.com/tesseract-ocr/tessdata_fast/raw/main/eng.traineddata -OutFile (Join-Path $dir 'eng.traineddata')
+          "RAGDOTNET_TESSDATA=$dir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Test Core (net8.0)
+        run: dotnet test --project tests/RagDotNet.Core.Tests --no-build --configuration Release --framework net8.0
+
+      - name: Test readers (net8.0)
+        run: dotnet test --project tests/RagDotNet.Readers.Tests --no-build --configuration Release --framework net8.0
+
+      - name: Test OCR (net8.0)
+        run: dotnet test --project tests/RagDotNet.Ocr.Tests --no-build --configuration Release --framework net8.0

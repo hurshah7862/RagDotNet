@@ -4,7 +4,7 @@
 
 RagDotNet is a .NET library for retrieval-augmented generation (RAG). It ingests documents, chunks and embeds them into a vector store, and answers questions with cited sources, built on Microsoft.Extensions.AI and Microsoft.Extensions.VectorData.
 
-> **Under development.** RagDotNet is not released yet. The public API can still change between commits, stored data may need re-ingesting after an update, and no package is published to NuGet. Core ingestion, retrieval, cited answers, chat and query rewriting, three chunkers, and PDF, DOCX and HTML readers work today; OCR, hybrid search and reranking, more vector stores, and hosting adapters are still to come. Feedback and issues are welcome.
+> **Under development.** RagDotNet is not released yet. The public API can still change between commits, stored data may need re-ingesting after an update, and no package is published to NuGet. Core ingestion, retrieval, cited answers, chat and query rewriting, three chunkers, PDF, DOCX and HTML readers, and OCR work today; hybrid search and reranking, more vector stores, and hosting adapters are still to come. Feedback and issues are welcome.
 
 ## Why this exists
 
@@ -23,7 +23,7 @@ RagDotNet is for .NET developers who want an application to answer questions fro
 | Embedding-model tracking and reindex | Works |
 | External content store, dependency injection, OpenTelemetry tracing | Works |
 | Retrieval evaluation harness | Works |
-| OCR | Planned |
+| OCR: Tesseract package, or your own provider (per image or whole document) | Works |
 | Hybrid search and reranking | Planned |
 | More vector stores | Planned |
 | Hosting adapters | Planned |
@@ -170,10 +170,26 @@ Text and Markdown are read by Core. PDF, DOCX and HTML each have their own packa
 | `RagDotNet.Readers.Html` | `.AddHtmlReader()` | heading paths, lists, tables, code; navigation, footers, sidebars, cookie banners and scripts are removed |
 
 The `Add…Reader()` methods work on both `services.AddRag(...)` and `RagPipelineBuilder`. Nothing is skipped silently:
-- a scanned PDF page with no text, or images the reader cannot read, become warnings in `IngestResult.Warnings` (OCR is planned);
+- a scanned PDF page with no text, or images the reader cannot read, become warnings in `IngestResult.Warnings`, unless an OCR provider reads them (see [OCR](#ocr));
 - a corrupt or password-protected PDF or DOCX raises `DocumentReadException`, naming the file.
 
 [docs/readers.md](docs/readers.md) has the details for each format.
+
+## OCR
+
+With an OCR provider registered, scanned PDF pages and images embedded in PDF, DOCX and HTML are read, and their text is placed where they were, with page numbers and heading paths, so it is searched and cited like any other text.
+
+```csharp
+services.AddRag(o => { /* ... */ })
+    .AddPdfReader()
+    .AddTesseractOcr(o => o.DataPath = "/srv/tessdata"); // folder holding eng.traineddata
+```
+
+- **Tesseract** (`RagDotNet.Ocr.Tesseract`) works as installed on Windows; Linux and macOS need Tesseract installed (`sudo apt install tesseract-ocr`, `brew install tesseract`), and a missing install or language file is a clear error at startup. Language data is not included.
+- **Your own OCR** (a cloud service or an in-house engine) plugs in through `IOcrProvider` (one image at a time) or `IDocumentOcrProvider` (whole documents), without installing Tesseract. Scanned PDF pages reach a per-image provider through `RagDotNet.Readers.Pdf.Rendering` (`.AddPdfPageRendering()`).
+- Documents that had unread pages or images are read again on their next ingest once OCR is turned on; other documents stay unchanged.
+
+[docs/ocr.md](docs/ocr.md) covers installation per OS, options, warnings and writing a provider.
 
 ## Chunking
 
@@ -237,7 +253,7 @@ dotnet run --project tests/RagDotNet.Evaluation                            # fak
 dotnet run --project tests/RagDotNet.Evaluation -- --embedder ollama      # real embeddings via Ollama
 ```
 
-A format check renders the 8 base documents as PDF, DOCX and HTML and runs the same 40 questions on each, to show the readers keep enough text and structure for retrieval (`--formats md,pdf,docx,html`).
+A format check renders the 8 base documents as PDF, DOCX and HTML and runs the same 40 questions on each, to show the readers keep enough text and structure for retrieval (`--formats md,pdf,docx,html`). A scanned check does the same with image-only PDFs read by Tesseract (`--formats md,scanned`).
 
 The harness's own tests are in `tests/RagDotNet.Evaluation.Tests`. [docs/evaluation.md](docs/evaluation.md) describes the method and its limits and records the latest real-mode results, and [docs/evaluation-results.md](docs/evaluation-results.md) holds the full report. [docs/chunking.md](docs/chunking.md) compares the three chunkers.
 
