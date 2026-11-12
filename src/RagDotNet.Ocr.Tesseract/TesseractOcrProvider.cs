@@ -11,6 +11,9 @@ public sealed class TesseractOcrProvider : IOcrProvider, IDisposable
 {
     private readonly Engine _engine;
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private int _disposed; // 1 once Dispose has started
+
+    private bool IsDisposed => Volatile.Read(ref _disposed) == 1;
 
     /// <summary>Creates the engine.</summary>
     /// <param name="options">The language data folder and languages.</param>
@@ -58,10 +61,13 @@ public sealed class TesseractOcrProvider : IOcrProvider, IDisposable
     public async Task<OcrResult> RecognizeAsync(ImageInput image, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(image);
+        ObjectDisposedException.ThrowIf(IsDisposed, this);
         var bytes = image.Bytes.ToArray();
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            // Dispose may have run while this call waited for the gate.
+            ObjectDisposedException.ThrowIf(IsDisposed, this);
             return await Task.Run(() =>
             {
                 using var pix = TesseractOCR.Pix.Image.LoadFromMemory(bytes)
@@ -76,11 +82,23 @@ public sealed class TesseractOcrProvider : IOcrProvider, IDisposable
         }
     }
 
-    /// <inheritdoc />
+    /// <summary>
+    /// Frees the engine once the recognition running now has finished. Calls still waiting, and calls made afterwards, throw
+    /// <see cref="ObjectDisposedException"/>.
+    /// </summary>
     public void Dispose()
     {
-        _engine.Dispose();
-        _gate.Dispose();
+        if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
+        // The gate is not disposed: calls still waiting on it must wake up and see that the provider is disposed.
+        _gate.Wait();
+        try
+        {
+            _engine.Dispose();
+        }
+        finally
+        {
+            _gate.Release();
+        }
     }
 
     /// <summary>The first missing language file, as a message naming its full path and where to get it; null when all exist.</summary>

@@ -110,6 +110,28 @@ public class TesseractOcrProviderTests
         Assert.Matches("^tesseract/eng/[0-9a-f]{8}$", ocr.Id);
     }
 
+    [Fact] // Final review minor 14: Dispose freed the engine under a running recognition
+    public async Task Dispose_waits_for_running_recognitions_and_later_calls_throw_ObjectDisposed()
+    {
+        var ocr = new TesseractOcrProvider(new TesseractOcrOptions { DataPath = TessData });
+        var image = await PageImage("Quill sync keeps notes current");
+
+        var running = Enumerable.Range(0, 3).Select(_ => ocr.RecognizeAsync(image, Ct)).ToList();
+        await Task.Delay(50, Ct);
+        await Task.Run(ocr.Dispose, Ct).WaitAsync(TimeSpan.FromSeconds(60), Ct);
+
+        var first = await running[0].WaitAsync(TimeSpan.FromSeconds(60), Ct);
+        Assert.Contains("Quill sync keeps notes current", first.Text, StringComparison.Ordinal);
+        foreach (var queued in running.Skip(1))
+        {
+            var ex = await Record.ExceptionAsync(() => queued.WaitAsync(TimeSpan.FromSeconds(60), Ct));
+            Assert.True(ex is null or ObjectDisposedException, $"queued call failed with {ex}");
+        }
+
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => ocr.RecognizeAsync(image, Ct));
+        ocr.Dispose(); // a second Dispose does nothing
+    }
+
     [Fact] // Final review Important 4: the link folder was a predictable shared /tmp path another user could plant
     public void Native_links_live_in_a_private_folder_of_this_process()
     {

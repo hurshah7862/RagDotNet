@@ -363,8 +363,11 @@ public sealed partial class DocxReader : IDocumentReader
             if (!string.IsNullOrWhiteSpace(text)) _blocks.Add(new DocumentBlock(kind, text, Snapshot()));
         }
 
-        /// <summary>The index just after the block being built: after a pending list or code group, else at the end.</summary>
-        public int PositionAfterCurrent => _blocks.Count + (_list.Count > 0 || _code.Count > 0 ? 1 : 0);
+        /// <summary>
+        /// The index just after the block being built: after a pending list or code group that will become a block, else at
+        /// the end. A code group of only empty lines (such as a picture alone in a code-styled paragraph) becomes no block.
+        /// </summary>
+        public int PositionAfterCurrent => _blocks.Count + (_list.Count > 0 || CodeText().Length > 0 ? 1 : 0);
 
         public List<DocumentBlock> Finish()
         {
@@ -388,10 +391,12 @@ public sealed partial class DocxReader : IDocumentReader
         private void FlushCode()
         {
             if (_code.Count == 0) return;
-            var text = string.Join('\n', _code).Trim('\n');
+            var text = CodeText();
             if (text.Length > 0) _blocks.Add(new DocumentBlock(BlockKind.Code, text, Snapshot()));
             _code.Clear();
         }
+
+        private string CodeText() => string.Join('\n', _code).Trim('\n');
 
         private string[] Snapshot() => [.. _path.Select(h => h.Title)];
     }

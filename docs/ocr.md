@@ -26,6 +26,15 @@ services.AddRag(o => { /* ... */ })
 
 With the pipeline builder, call `.AddTesseractOcr(...)` the same way. `AddTesseractOcr` also adds PDF page rendering (below), so scanned pages work without anything else.
 
+The engine holds the language data in memory. With dependency injection it is freed when the container is disposed. With the pipeline builder, `AddTesseractOcr` keeps it for the life of the process; to free it earlier, create it yourself and dispose it once the pipeline is no longer used:
+
+```csharp
+using var ocr = new TesseractOcrProvider(new TesseractOcrOptions { DataPath = "/srv/tessdata" });
+var rag = builder.UseOcrProvider(ocr).AddPdfPageRendering().Build();
+```
+
+Disposing waits for a recognition already running; calls after that throw `ObjectDisposedException`.
+
 **Language data** is not included in the package. Download the `.traineddata` files for your languages from [tessdata_fast](https://github.com/tesseract-ocr/tessdata_fast) (or `tessdata_best` for better accuracy at lower speed) and set `DataPath` to their folder. The default is `./tessdata`.
 
 **Installing Tesseract:**

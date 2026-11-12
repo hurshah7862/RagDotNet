@@ -1,9 +1,13 @@
+using DocumentFormat.OpenXml.Packaging;
 using RagDotNet.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using RagDotNet.Documents;
 using RagDotNet.Ingestion;
 using RagDotNet.Readers.Docx;
 using static RagDotNet.Readers.Tests.ReaderTestKit;
+using A = DocumentFormat.OpenXml.Drawing;
+using DW = DocumentFormat.OpenXml.Drawing.Wordprocessing;
+using PIC = DocumentFormat.OpenXml.Drawing.Pictures;
 using W = DocumentFormat.OpenXml.Wordprocessing;
 
 namespace RagDotNet.Readers.Tests;
@@ -214,6 +218,37 @@ public class DocxReaderTests
         var doc = await ReadAsync(Reader, Docx(styles, P("BarcodeLabel", R("SKU 12345")), P("SourceCode", R("quill sync"))), "c.docx");
 
         Assert.Equal([BlockKind.Paragraph, BlockKind.Code], doc.Blocks.Select(b => b.Kind));
+    }
+
+    [Fact] // Final review minor 10: a picture alone in a code-styled paragraph was placed one block too late
+    public async Task Picture_alone_in_a_code_paragraph_goes_where_the_picture_was()
+    {
+        var styles = new W.Styles(new W.Style(new W.StyleName { Val = "Code" }) { Type = W.StyleValues.Paragraph, StyleId = "Code" });
+        using var ms = new MemoryStream();
+        using (var doc = DocumentFormat.OpenXml.Packaging.WordprocessingDocument.Create(ms, DocumentFormat.OpenXml.WordprocessingDocumentType.Document))
+        {
+            var main = doc.AddMainDocumentPart();
+            main.AddNewPart<DocumentFormat.OpenXml.Packaging.StyleDefinitionsPart>().Styles = styles;
+            var part = main.AddImagePart(DocumentFormat.OpenXml.Packaging.ImagePartType.Png);
+            using (var png = new MemoryStream(RagDotNet.TestAssetGen.Png.Solid(200, 100, 0))) part.FeedData(png);
+            var picture = new W.Drawing(new DW.Inline(
+                new DW.Extent { Cx = 1905000, Cy = 952500 },
+                new DW.DocProperties { Id = 1U, Name = "Picture 1" },
+                new A.Graphic(new A.GraphicData(
+                    new PIC.Picture(
+                        new PIC.NonVisualPictureProperties(
+                            new PIC.NonVisualDrawingProperties { Id = 0U, Name = "image.png" },
+                            new PIC.NonVisualPictureDrawingProperties()),
+                        new PIC.BlipFill(new A.Blip { Embed = main.GetIdOfPart(part) }, new A.Stretch(new A.FillRectangle())),
+                        new PIC.ShapeProperties()))
+                { Uri = "http://schemas.openxmlformats.org/drawingml/2006/picture" })));
+            main.Document = new W.Document(new W.Body(P(null, R("Intro.")), P("Code", new W.Run(picture)), P(null, R("After."))));
+        }
+
+        var parsed = await ReadAsync(Reader, ms.ToArray(), "pic.docx");
+
+        Assert.Equal(["Intro.", "After."], parsed.Blocks.Select(b => b.Text));
+        Assert.Equal(1, Assert.Single(parsed.OcrCandidates).InsertAt);
     }
 
     [Fact] // Final review minor: a heading style id with no styles part was read as a paragraph
