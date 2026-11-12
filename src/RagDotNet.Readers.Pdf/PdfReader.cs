@@ -46,7 +46,7 @@ public sealed partial class PdfReader : IDocumentReader
         try
         {
             using var pdf = PdfDocument.Open(buffer);
-            return Read(pdf, cancellationToken);
+            return Read(pdf, context.ExtractImages, cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException and not DocumentReadException)
         {
@@ -54,7 +54,7 @@ public sealed partial class PdfReader : IDocumentReader
         }
     }
 
-    private static ParsedDocument Read(PdfDocument pdf, CancellationToken ct)
+    private static ParsedDocument Read(PdfDocument pdf, bool extractImages, CancellationToken ct)
     {
         var pages = new List<(int Number, IReadOnlyList<Lines> Blocks)>();
         var pageImages = new List<PageImages>();
@@ -71,7 +71,7 @@ public sealed partial class PdfReader : IDocumentReader
 
             var pageArea = page.Width * page.Height;
             var images = page.GetImages()
-                .Select(i => (Extract(i), i.BoundingBox.Top, i.BoundingBox.Width * i.BoundingBox.Height >= BackgroundShare * pageArea))
+                .Select(i => (extractImages ? Extract(i) : null, i.BoundingBox.Top, i.BoundingBox.Width * i.BoundingBox.Height >= BackgroundShare * pageArea))
                 .ToList();
             if (images.Count > 0)
             {

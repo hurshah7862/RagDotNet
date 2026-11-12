@@ -835,3 +835,5 @@ RagDotNet.Documents.ParsedDocument.OcrCandidates.get -> System.Collections.Gener
 RagDotNet.Documents.ParsedDocument.OcrCandidates.init -> void
 static RagDotNet.Documents.OcrCandidate.operator !=(RagDotNet.Documents.OcrCandidate? left, RagDotNet.Documents.OcrCandidate? right) -> bool
 static RagDotNet.Documents.OcrCandidate.operator ==(RagDotNet.Documents.OcrCandidate? left, RagDotNet.Documents.OcrCandidate? right) -> bool
+RagDotNet.Documents.DocumentReadContext.ExtractImages.get -> bool
+RagDotNet.Documents.DocumentReadContext.ExtractImages.init -> void

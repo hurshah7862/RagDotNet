@@ -102,11 +102,25 @@ public class TesseractOcrProviderTests
         Assert.Equal(Ingestion.IngestStatus.Created, result.Status);
     }
 
-    [Fact]
-    public void Id_names_the_languages()
+    [Fact] // Final review minor 13: switching tessdata_fast for tessdata_best changed output but not the Id
+    public void Id_names_the_languages_and_the_language_data()
     {
         using var ocr = new TesseractOcrProvider(new TesseractOcrOptions { DataPath = TessData });
 
-        Assert.Equal("tesseract/eng", ocr.Id);
+        Assert.Matches("^tesseract/eng/[0-9a-f]{8}$", ocr.Id);
+    }
+
+    [Fact] // Final review Important 4: the link folder was a predictable shared /tmp path another user could plant
+    public void Native_links_live_in_a_private_folder_of_this_process()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows loads the included binaries; no links are made.");
+        using var ocr = new TesseractOcrProvider(new TesseractOcrOptions { DataPath = TessData });
+
+        var root = TesseractNative.LinkRoot!;
+
+        Assert.NotEqual(Path.Combine(Path.GetTempPath(), "ragdotnet-tesseract-" + Environment.UserName), root);
+        Assert.StartsWith("ragdotnet-tesseract-", Path.GetFileName(root), StringComparison.Ordinal);
+        if (!OperatingSystem.IsWindows())
+            Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute, File.GetUnixFileMode(root));
     }
 }

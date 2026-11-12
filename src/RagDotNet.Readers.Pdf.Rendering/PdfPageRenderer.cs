@@ -20,7 +20,11 @@ public sealed class PdfPageRenderer : IPageRenderer
     public Task<ImageInput> RenderPageAsync(ReadOnlyMemory<byte> document, int pageNumber, int dpi, CancellationToken cancellationToken)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(dpi);
-        return Task.Run(() => Render(document.ToArray(), pageNumber, dpi), cancellationToken);
+        // Ingest hands over the whole file as one array: use it as is rather than copying it for every page.
+        var pdf = System.Runtime.InteropServices.MemoryMarshal.TryGetArray(document, out var segment) && segment.Offset == 0 && segment.Count == segment.Array!.Length
+            ? segment.Array
+            : document.ToArray();
+        return Task.Run(() => Render(pdf, pageNumber, dpi), cancellationToken);
     }
 
     // PDFtoImage marks its API with the platforms it ships native PDFium for: Windows, Linux, macOS (and mobile).

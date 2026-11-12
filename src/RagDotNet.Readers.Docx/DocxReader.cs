@@ -53,7 +53,7 @@ public sealed partial class DocxReader : IDocumentReader
         {
             try
             {
-                return Read(doc, cancellationToken);
+                return Read(doc, context.ExtractImages, cancellationToken);
             }
             catch (Exception ex) when (IsDamage(ex))
             {
@@ -78,7 +78,7 @@ public sealed partial class DocxReader : IDocumentReader
         return false;
     }
 
-    private static ParsedDocument Read(WordprocessingDocument doc, CancellationToken ct)
+    private static ParsedDocument Read(WordprocessingDocument doc, bool extractImages, CancellationToken ct)
     {
         var body = doc.MainDocumentPart?.Document?.Body
             ?? throw new InvalidDataException("The document has no body.");
@@ -90,7 +90,7 @@ public sealed partial class DocxReader : IDocumentReader
         foreach (var element in BodyElements(body))
         {
             ct.ThrowIfCancellationRequested();
-            var images = Images(doc.MainDocumentPart!, element);
+            var images = Images(doc.MainDocumentPart!, element, extractImages);
             Read(element);
 
             // The images' text goes after the block their paragraph or table became.
@@ -156,20 +156,20 @@ public sealed partial class DocxReader : IDocumentReader
     /// The images in a paragraph or table, from DrawingML pictures and VML image data, with the bytes of their image parts.
     /// An image whose part cannot be found (a linked picture, a broken relationship) is returned as null.
     /// </summary>
-    private static List<ImageInput?> Images(MainDocumentPart main, OpenXmlElement element)
+    private static List<ImageInput?> Images(MainDocumentPart main, OpenXmlElement element, bool extract)
     {
         var images = new List<ImageInput?>();
         foreach (var drawing in element.Descendants<Drawing>())
         {
             if (drawing.Descendants<A.Blip>().FirstOrDefault() is not { } blip) continue;
             var extent = drawing.Descendants<DW.Extent>().FirstOrDefault();
-            images.Add(Part(main, blip.Embed?.Value, Pixels(extent?.Cx?.Value), Pixels(extent?.Cy?.Value)));
+            images.Add(!extract ? null : Part(main, blip.Embed?.Value, Pixels(extent?.Cx?.Value), Pixels(extent?.Cy?.Value)));
         }
 
         foreach (var picture in element.Descendants<Picture>())
         {
             if (picture.Descendants<V.ImageData>().FirstOrDefault() is not { } data) continue;
-            images.Add(Part(main, data.RelationshipId?.Value, null, null));
+            images.Add(!extract ? null : Part(main, data.RelationshipId?.Value, null, null));
         }
 
         return images;

@@ -29,7 +29,18 @@ internal sealed class OcrStage(IOcrProvider? images, IDocumentOcrProvider? docum
 
     public async Task<ParsedDocument> ReadAsync(IDocumentReader reader, byte[] bytes, DocumentReadContext context, CancellationToken ct)
     {
+        // Readers decode embedded images only when something will read them; they report every image either way.
+        context = context with { ExtractImages = images is not null && options.OcrEmbeddedImages };
         if (images is null && documents is null) return WithoutProviders(await ReadWithReaderAsync(reader, bytes, context, ct).ConfigureAwait(false));
+        var result = await ReadWithProvidersAsync(reader, bytes, context, ct).ConfigureAwait(false);
+
+        // A provider that ignores the token must not let a cancelled ingest carry on to storing chunks.
+        ct.ThrowIfCancellationRequested();
+        return result;
+    }
+
+    private async Task<ParsedDocument> ReadWithProvidersAsync(IDocumentReader reader, byte[] bytes, DocumentReadContext context, CancellationToken ct)
+    {
 
         using var activity = RagTelemetry.ActivitySource.StartActivity("rag.ocr");
         var warnings = new List<IngestWarning>();
@@ -41,7 +52,7 @@ internal sealed class OcrStage(IOcrProvider? images, IDocumentOcrProvider? docum
                 var replaced = await documents.ProcessAsync(bytes, context, ct).ConfigureAwait(false);
                 return new ParsedDocument(replaced.Blocks) { Warnings = replaced.Warnings };
             }
-            catch (Exception ex) when (IsItemFailure(ex))
+            catch (Exception ex) when (IsItemFailure(ex, ct))
             {
                 warnings.Add(new IngestWarning(IngestWarningCodes.OcrFailed,
                     $"The document OCR provider failed on '{context.FileName}'; read with the built-in reader instead: {ex.Message}"));
@@ -65,7 +76,7 @@ internal sealed class OcrStage(IOcrProvider? images, IDocumentOcrProvider? docum
                 foreach (var page in pages)
                 {
                     var path = PathAt(parsed.Blocks, page.InsertAt);
-                    var blocks = filled.Blocks.Where(b => b.PageNumber == page.PageNumber && b.Text.Length > 0)
+                    var blocks = filled.Blocks.Where(b => b.PageNumber == page.PageNumber && !string.IsNullOrWhiteSpace(b.Text))
                         .Select(b => b with { HeadingPath = path }).ToList();
                     inserts.Add((page.InsertAt, Order(parsed, page), blocks));
                 }
@@ -73,7 +84,7 @@ internal sealed class OcrStage(IOcrProvider? images, IDocumentOcrProvider? docum
                 warnings.AddRange(filled.Warnings);
                 pending.Clear();
             }
-            catch (Exception ex) when (IsItemFailure(ex))
+            catch (Exception ex) when (IsItemFailure(ex, ct))
             {
                 warnings.Add(new IngestWarning(IngestWarningCodes.OcrFailed, $"The document OCR provider failed on '{context.FileName}': {ex.Message}"));
             }
@@ -89,9 +100,20 @@ internal sealed class OcrStage(IOcrProvider? images, IDocumentOcrProvider? docum
             }
             else if (renderer is null)
             {
-                if (!page.HasTextLayer)
+                // A stamped scan carries its page as a background image the reader already extracted: read that instead.
+                var scan = page.HasTextLayer
+                    ? parsed.OcrCandidates.FirstOrDefault(c => c.Kind == OcrCandidateKind.Image && c.PageNumber == page.PageNumber && c.IsPageBackground && c.Image is not null)
+                    : null;
+                if (scan?.Image is { } scanImage)
+                {
+                    var text = await RecognizeAsync(page, () => Task.FromResult(scanImage), warnings, ct).ConfigureAwait(false);
+                    if (text is not null) inserts.Add((page.InsertAt, Order(parsed, page), [Block(parsed.Blocks, page, text)]));
+                }
+                else
+                {
                     warnings.Add(new IngestWarning(IngestWarningCodes.PageWithoutText,
                         $"Page {page.PageNumber} has no extractable text; add RagDotNet.Readers.Pdf.Rendering (AddPdfPageRendering) so the OCR provider can read it.", page.PageNumber));
+                }
             }
             else if (page.PageNumber is { } number)
             {
@@ -101,6 +123,7 @@ internal sealed class OcrStage(IOcrProvider? images, IDocumentOcrProvider? docum
         }
 
         var recognised = new HashSet<string>(StringComparer.Ordinal);
+        var vectors = 0;
         foreach (var image in parsed.OcrCandidates.Where(c => c.Kind == OcrCandidateKind.Image))
         {
             if (images is null)
@@ -116,6 +139,12 @@ internal sealed class OcrStage(IOcrProvider? images, IDocumentOcrProvider? docum
                 continue;
             }
 
+            if (IsVector(input.MediaType))
+            {
+                vectors++;
+                continue;
+            }
+
             if (TooSmall(input)) continue;
             if (!recognised.Add(Convert.ToHexString(SHA256.HashData(input.Bytes.Span)))) continue; // read once, placed at its first position
 
@@ -124,6 +153,8 @@ internal sealed class OcrStage(IOcrProvider? images, IDocumentOcrProvider? docum
         }
 
         warnings.AddRange(Unread(unread, documents is not null && images is null ? RegisterImageOcr : RegisterOcr));
+        if (vectors > 0)
+            warnings.Add(new IngestWarning(IngestWarningCodes.ImageNotRead, $"{vectors} vector image(s) (SVG, EMF or WMF) were not read; OCR reads raster images only."));
 
         // Insert from the end so earlier positions stay valid; candidates at one position keep their document order.
         var blocksOut = parsed.Blocks.ToList();
@@ -154,18 +185,25 @@ internal sealed class OcrStage(IOcrProvider? images, IDocumentOcrProvider? docum
                     $"{PagePrefix(candidate, capital: false)}OCR text has low confidence ({result.Confidence.ToString("0.00", CultureInfo.InvariantCulture)}); it was kept.", candidate.PageNumber));
             return text;
         }
-        catch (Exception ex) when (IsItemFailure(ex))
+        catch (Exception ex) when (IsItemFailure(ex, ct))
         {
             warnings.Add(new IngestWarning(IngestWarningCodes.OcrFailed, $"{PagePrefix(candidate, capital: false)}OCR failed: {ex.Message}", candidate.PageNumber));
             return null;
         }
     }
 
-    private static bool IsItemFailure(Exception ex) => ex is not (OperationCanceledException or OcrUnavailableException);
+    // A provider's own timeout surfaces as OperationCanceledException without our token being cancelled: that is a failed item.
+    private static bool IsItemFailure(Exception ex, CancellationToken ct) =>
+        ex is not OcrUnavailableException && !(ex is OperationCanceledException && ct.IsCancellationRequested);
 
     /// <summary>"Page 3: " before a message about a paged candidate; for an unpaged one, nothing (or "A" to start "An image…").</summary>
     private static string PagePrefix(OcrCandidate candidate, bool capital) =>
         candidate.PageNumber is { } page ? $"Page {page}: " + (capital ? "a" : "") : capital ? "A" : "";
+
+    /// <summary>Drawings rather than pixels: SVG, EMF and WMF, which OCR engines cannot decode.</summary>
+    private static bool IsVector(string mediaType) =>
+        mediaType.Split(';')[0].Trim().ToLowerInvariant() is "image/svg+xml" or "image/x-emf" or "image/emf" or "image/x-wmf" or "image/wmf"
+            or "image/x-msmetafile" or "application/x-msmetafile";
 
     private bool TooSmall(ImageInput image)
     {

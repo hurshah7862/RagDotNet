@@ -36,21 +36,21 @@ With the pipeline builder, call `.AddTesseractOcr(...)` the same way. `AddTesser
 | Linux | `sudo apt install tesseract-ocr` (Debian, Ubuntu), `sudo dnf install tesseract` (Fedora), or your distribution's package. The package finds the installed library itself; nothing needs to be copied or linked by hand. |
 | macOS | `brew install tesseract`. Expected to work the same way as Linux, but not tested yet. |
 
-On Linux the package finds the system's `libtesseract` and `liblept`/`libleptonica` in the usual library folders, and makes them visible to the TesseractOCR wrapper through links in a private folder under the temp directory. On a Linux distribution's own package the language data is usually in `/usr/share/tesseract-ocr/5/tessdata`.
+On Linux the package finds the system's `libtesseract` and `liblept`/`libleptonica` in the usual library folders, and makes them visible to the TesseractOCR wrapper through links in a new folder under the temp directory, created for each process with owner-only permissions and removed when the process exits. On a Linux distribution's own package the language data is usually in `/usr/share/tesseract-ocr/5/tessdata`.
 
 **When something is missing,** the error says what to install:
 
 - With dependency injection, the host fails at start with an `OptionsValidationException` naming the missing language file or the install command.
 - With the pipeline builder, `AddTesseractOcr` throws `OcrUnavailableException` with the same message.
 
-Tested on Ubuntu 24.04 (Tesseract 5.3) in this project's Docker image and in CI, and on Windows in CI.
+Tested on Ubuntu 24.04 (Tesseract 5.3) in this project's Docker image and in CI on Linux and Windows.
 
 ## PDF page rendering
 
 A scanned PDF page has to be turned into an image before a per-image OCR provider can read it. `RagDotNet.Readers.Pdf.Rendering` does that with PDFium (through PDFtoImage), at 300 DPI by default. It is a separate package so that apps reading only text PDFs never install PDFium's native libraries.
 
 - Tesseract users get it automatically.
-- With your own per-image provider, add it with `.AddPdfPageRendering()`. Without it, scanned pages stay `PageWithoutText` warnings, and the message names the package.
+- With your own per-image provider, add it with `.AddPdfPageRendering()`. Without it, scanned pages stay `PageWithoutText` warnings, and the message names the package. (A scan with a short stamp is still read without it, from the page image the PDF already holds.)
 - A whole-document provider does not need it: it receives the PDF itself.
 
 ## Your own OCR provider
@@ -102,6 +102,8 @@ Other rules:
 - An image that appears more than once in a document, such as a logo on every page, is read once and its text placed only at its first position.
 - On a PDF page that has a text layer, an image covering most of the page is not read, because it is the scan under that text (a "searchable PDF"). A page whose only text is a short stamp (up to 30 characters, such as a page or Bates number) over a full-page image is treated as a scanned page and read.
 - Recognised text that is empty adds nothing.
+- Vector images (SVG, EMF, WMF), which OCR engines cannot decode, are not sent to the provider; one `ImageNotRead` warning counts them.
+- With OCR on, readers extract image bytes only when a per-image provider will read them, so ingest without OCR (or with `OcrEmbeddedImages` off) does not decode images.
 
 ## Warnings
 
@@ -115,6 +117,8 @@ Other rules:
 ## Documents ingested before OCR was turned on
 
 Re-ingesting an unchanged document normally returns `Unchanged`. A document that had scanned pages or images is read again automatically when the OCR setup changes: a provider is added, removed or replaced (its `Id` changes), or `OcrEmbeddedImages`, `MinImageSize`, `PageDpi` or `DocumentProviderMode` change. Documents without scanned pages or images stay `Unchanged`, so turning OCR on does not re-embed a whole library.
+
+A document where OCR failed on a page or image (an `OcrFailed` warning, for example a cloud service's rate limit or timeout) is read again on its next ingest, until it goes through without failures. A file whose image fails every time is therefore re-read on every ingest; the warning names the page. For Tesseract, `Id` includes a fingerprint of the language files, so switching between `tessdata_fast` and `tessdata_best` also reads affected documents again.
 
 Two cases need the document deleted (`DeleteDocumentAsync`) and ingested again, once:
 

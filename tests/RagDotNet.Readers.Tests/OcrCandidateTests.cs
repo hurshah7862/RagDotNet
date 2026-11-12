@@ -129,6 +129,34 @@ public class OcrCandidateTests
         Assert.Equal((200, 100), (doc.OcrCandidates[0].Image!.Width, doc.OcrCandidates[0].Image!.Height));
     }
 
+    [Theory] // Final review Important 2: images were decoded even when nothing would read them
+    [InlineData("pdf", "sample.pdf")]
+    [InlineData("docx", "sample.docx")]
+    [InlineData("html", "sample.html")]
+    public async Task Without_ExtractImages_images_are_candidates_without_bytes(string folder, string file)
+    {
+        IDocumentReader reader = folder switch { "pdf" => new PdfReader(), "docx" => new DocxReader(), _ => new HtmlReader() };
+        using var stream = File.OpenRead(Asset(folder, file));
+
+        var doc = await reader.ReadAsync(stream, new DocumentReadContext(file, null) { ExtractImages = false }, Ct);
+
+        var images = doc.OcrCandidates.Where(c => c.Kind == OcrCandidateKind.Image).ToList();
+        Assert.NotEmpty(images);
+        Assert.All(images, c => Assert.Null(c.Image));
+    }
+
+    [Fact] // Final review minor 9: an image in loose text was placed before its own paragraph
+    public async Task Html_image_in_loose_text_goes_after_that_text()
+    {
+        const string png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+        var html = $"<main><div>Intro text <img src=\"data:image/png;base64,{png}\"> more text.</div><p>After.</p></main>";
+
+        var doc = await ReadAsync(new HtmlReader(), html, "loose.html");
+
+        Assert.Equal(["Intro text more text.", "After."], doc.Blocks.Select(b => b.Text));
+        Assert.Equal(1, Assert.Single(doc.OcrCandidates).InsertAt);
+    }
+
     private static byte[] OnePage(Action<PageWriter> draw)
     {
         var builder = new PdfDocumentBuilder();

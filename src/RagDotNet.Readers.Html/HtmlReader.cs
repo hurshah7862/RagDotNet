@@ -82,7 +82,7 @@ public sealed partial class HtmlReader : IDocumentReader
         if (root is not null)
             foreach (var img in root.QuerySelectorAll("img").Where(IsEmbedded))
                 walker.NoteImage(img, walker.Blocks.Count); // only adds images the walk did not place
-        var candidates = walker.Images.Select(i => new OcrCandidate(OcrCandidateKind.Image, i.InsertAt, null, DataImage(i.Img))).ToList();
+        var candidates = walker.Images.Select(i => new OcrCandidate(OcrCandidateKind.Image, i.InsertAt, null, context.ExtractImages ? DataImage(i.Img) : null)).ToList();
 
         var title = document.Title?.Trim();
         if (string.IsNullOrEmpty(title))
@@ -214,6 +214,7 @@ public sealed partial class HtmlReader : IDocumentReader
                 }
 
                 if (node is not IElement e) continue;
+                var inLoose = false;
                 switch (e.LocalName)
                 {
                     case "h1" or "h2" or "h3" or "h4" or "h5" or "h6":
@@ -246,6 +247,7 @@ public sealed partial class HtmlReader : IDocumentReader
                         loose.Append('\n');
                         break;
                     case "img":
+                        inLoose = true;
                         break;
                     case "div" or "section" or "article" or "header" or "footer" or "figure" or "main" or "details" or "summary" or "address" or "center" or "aside" or "form":
                         Flush(loose);
@@ -262,14 +264,20 @@ public sealed partial class HtmlReader : IDocumentReader
                         else
                         {
                             loose.Append(InlineText(e));
+                            inLoose = true;
                         }
 
                         break;
                 }
 
                 // Embedded images go after the block that holds them; a container's children have placed theirs already.
-                if (e.LocalName == "img") NoteImage(e, Blocks.Count);
-                else foreach (var img in e.QuerySelectorAll("img")) NoteImage(img, Blocks.Count);
+                // An image in loose text waits for that text's paragraph, so it lands after it.
+                IEnumerable<IElement> held = e.LocalName == "img" ? [e] : e.QuerySelectorAll("img");
+                foreach (var img in held)
+                {
+                    if (inLoose) DeferImage(img);
+                    else NoteImage(img, Blocks.Count);
+                }
             }
 
             Flush(loose);
@@ -289,6 +297,15 @@ public sealed partial class HtmlReader : IDocumentReader
         {
             Add(BlockKind.Paragraph, Clean(loose.ToString()));
             loose.Clear();
+            foreach (var img in _pending) NoteImage(img, Blocks.Count);
+            _pending.Clear();
+        }
+
+        private readonly List<IElement> _pending = [];
+
+        private void DeferImage(IElement img)
+        {
+            if (IsEmbedded(img) && !_placed.Contains(img) && !_pending.Contains(img)) _pending.Add(img);
         }
 
         private void AddHeading(int level, string title)

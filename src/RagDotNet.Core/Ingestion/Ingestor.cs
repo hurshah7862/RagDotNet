@@ -95,6 +95,8 @@ internal sealed class Ingestor(RagEngine engine)
         }
 
         var storedChunkingHash = StoredChunkingHash(chunkingHash, parsed.OcrCandidates.Count > 0, engine.Ocr.Fingerprint);
+        // A page or image OCR failed on (a timeout, a rate limit) is retried: a marker that never matches makes the next ingest read again.
+        if (parsed.OcrCandidates.Count > 0 && parsed.Warnings.Any(w => w.Code == IngestWarningCodes.OcrFailed)) storedChunkingHash += ":incomplete";
         p?.Report(new IngestProgress(s.DocumentId, IngestStage.Chunking, 0, 0));
         IReadOnlyList<Chunk> chunks;
         using (RagTelemetry.ActivitySource.StartActivity("rag.chunk"))

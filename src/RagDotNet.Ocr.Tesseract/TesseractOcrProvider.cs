@@ -37,7 +37,18 @@ public sealed class TesseractOcrProvider : IOcrProvider, IDisposable
             throw new OcrUnavailableException($"Tesseract could not start with the language data in '{options.DataPath}' ({options.Languages}): {ex.Message}", ex);
         }
 
-        Id = "tesseract/" + options.Languages;
+        Id = $"tesseract/{options.Languages}/{DataFingerprint(options)}";
+    }
+
+    /// <summary>
+    /// A short fingerprint of the language files' sizes, so switching between tessdata_fast and tessdata_best (or updating
+    /// them) changes <see cref="Id"/> and documents with scanned pages are read again. Moving the folder does not.
+    /// </summary>
+    private static string DataFingerprint(TesseractOcrOptions options)
+    {
+        var sizes = string.Join(";", options.Languages.Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(l => $"{l}:{new FileInfo(Path.Combine(options.DataPath, l + ".traineddata")).Length}"));
+        return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(sizes)))[..8].ToLowerInvariant();
     }
 
     /// <inheritdoc />
