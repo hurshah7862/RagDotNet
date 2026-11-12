@@ -4,7 +4,9 @@ using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
 using RagDotNet.Documents;
+using RagDotNet.Ocr;
 using A = DocumentFormat.OpenXml.Drawing;
+using DW = DocumentFormat.OpenXml.Drawing.Wordprocessing;
 using V = DocumentFormat.OpenXml.Vml;
 
 namespace RagDotNet.Readers.Docx;
@@ -82,26 +84,37 @@ public sealed partial class DocxReader : IDocumentReader
             ?? throw new InvalidDataException("The document has no body.");
         var styles = new StyleIndex(doc.MainDocumentPart!.StyleDefinitionsPart?.Styles);
         var builder = new BlockBuilder();
-        var images = 0;
+        var candidates = new List<OcrCandidate>();
         string? title = null;
 
         foreach (var element in BodyElements(body))
         {
             ct.ThrowIfCancellationRequested();
-            images += CountImages(element);
+            var images = Images(doc.MainDocumentPart!, element);
+            Read(element);
 
+            // The images' text goes after the block their paragraph or table became.
+            foreach (var image in images)
+                candidates.Add(new OcrCandidate(OcrCandidateKind.Image, builder.PositionAfterCurrent, null, image));
+        }
+
+        title ??= string.IsNullOrWhiteSpace(doc.PackageProperties.Title) ? null : doc.PackageProperties.Title!.Trim();
+        return new ParsedDocument(builder.Finish(), title) { OcrCandidates = candidates };
+
+        void Read(OpenXmlElement element)
+        {
             if (element is Table table)
             {
                 builder.Add(BlockKind.Table, TableText(table));
-                continue;
+                return;
             }
 
-            if (element is not Paragraph paragraph) continue;
+            if (element is not Paragraph paragraph) return;
             var text = ParagraphText(paragraph);
             var styleId = paragraph.ParagraphProperties?.ParagraphStyleId?.Val?.Value;
 
             // Table-of-contents entries and its "Contents" heading repeat the headings with page numbers; the headings themselves are read.
-            if (styles.IsTableOfContents(styleId)) continue;
+            if (styles.IsTableOfContents(styleId)) return;
 
             if (styles.HeadingLevel(paragraph, styleId) is { } level)
             {
@@ -121,12 +134,6 @@ public sealed partial class DocxReader : IDocumentReader
                 builder.Add(BlockKind.Paragraph, text);
             }
         }
-
-        title ??= string.IsNullOrWhiteSpace(doc.PackageProperties.Title) ? null : doc.PackageProperties.Title!.Trim();
-        var warnings = new List<IngestWarning>();
-        if (images > 0)
-            warnings.Add(new IngestWarning(IngestWarningCodes.ImageNotRead, $"{images} embedded image(s) were not read; register an OCR provider to read them."));
-        return new ParsedDocument(builder.Finish(), title) { Warnings = warnings };
     }
 
     /// <summary>Body paragraphs and tables in order, looking inside content controls.</summary>
@@ -145,9 +152,40 @@ public sealed partial class DocxReader : IDocumentReader
         }
     }
 
-    private static int CountImages(OpenXmlElement element) =>
-        element.Descendants<Drawing>().Count(d => d.Descendants<A.Blip>().Any())
-        + element.Descendants<Picture>().Count(p => p.Descendants<V.ImageData>().Any());
+    /// <summary>
+    /// The images in a paragraph or table, from DrawingML pictures and VML image data, with the bytes of their image parts.
+    /// An image whose part cannot be found (a linked picture, a broken relationship) is returned as null.
+    /// </summary>
+    private static List<ImageInput?> Images(MainDocumentPart main, OpenXmlElement element)
+    {
+        var images = new List<ImageInput?>();
+        foreach (var drawing in element.Descendants<Drawing>())
+        {
+            if (drawing.Descendants<A.Blip>().FirstOrDefault() is not { } blip) continue;
+            var extent = drawing.Descendants<DW.Extent>().FirstOrDefault();
+            images.Add(Part(main, blip.Embed?.Value, Pixels(extent?.Cx?.Value), Pixels(extent?.Cy?.Value)));
+        }
+
+        foreach (var picture in element.Descendants<Picture>())
+        {
+            if (picture.Descendants<V.ImageData>().FirstOrDefault() is not { } data) continue;
+            images.Add(Part(main, data.RelationshipId?.Value, null, null));
+        }
+
+        return images;
+    }
+
+    private static ImageInput? Part(MainDocumentPart main, string? relationshipId, int? width, int? height)
+    {
+        if (relationshipId is null || !main.TryGetPartById(relationshipId, out var found) || found is not ImagePart part) return null;
+        using var stream = part.GetStream();
+        using var ms = new MemoryStream();
+        stream.CopyTo(ms);
+        return new ImageInput(ms.ToArray(), part.ContentType, width, height);
+    }
+
+    /// <summary>EMUs to pixels at 96 dpi.</summary>
+    private static int? Pixels(long? emu) => emu is > 0 ? (int)Math.Round(emu.Value / 9525.0) : null;
 
     /// <summary>
     /// Visible text: tabs as spaces, breaks as newlines; deleted text (w:delText) is never a <see cref="Text"/>. Text
@@ -324,6 +362,9 @@ public sealed partial class DocxReader : IDocumentReader
             FlushGroups();
             if (!string.IsNullOrWhiteSpace(text)) _blocks.Add(new DocumentBlock(kind, text, Snapshot()));
         }
+
+        /// <summary>The index just after the block being built: after a pending list or code group, else at the end.</summary>
+        public int PositionAfterCurrent => _blocks.Count + (_list.Count > 0 || _code.Count > 0 ? 1 : 0);
 
         public List<DocumentBlock> Finish()
         {

@@ -226,13 +226,12 @@ public class DocxReaderTests
     }
 
     [Fact]
-    public async Task Embedded_image_gives_one_ImageNotRead_warning()
+    public async Task Embedded_image_is_one_ocr_candidate_and_no_warning()
     {
-        var warning = Assert.Single((await Sample()).Warnings);
+        var doc = await Sample();
 
-        Assert.Equal(IngestWarningCodes.ImageNotRead, warning.Code);
-        Assert.Equal("1 embedded image(s) were not read; register an OCR provider to read them.", warning.Message);
-        Assert.Null(warning.PageNumber);
+        Assert.Equal(OcrCandidateKind.Image, Assert.Single(doc.OcrCandidates).Kind);
+        Assert.Empty(doc.Warnings);
     }
 
     [Fact] // Review Focus 2

@@ -65,6 +65,11 @@ internal sealed class RagEngine
     /// <summary>Page renderers for scanned pages.</summary>
     public IReadOnlyList<Ocr.IPageRenderer> PageRenderers { get; init; } = [];
 
+    /// <summary>Reads documents and resolves their OCR candidates with the registered providers.</summary>
+    public Ocr.OcrStage Ocr => _ocr ??= new Ocr.OcrStage(OcrProvider, DocumentOcrProvider, PageRenderers, Options.Ocr);
+
+    private Ocr.OcrStage? _ocr;
+
     public EmbeddingModelGuard ModelGuard { get; }
 
     /// <summary>The clock for model check expiry and reindex heartbeats.</summary>

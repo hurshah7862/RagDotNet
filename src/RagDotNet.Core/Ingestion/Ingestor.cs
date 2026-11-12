@@ -90,8 +90,7 @@ internal sealed class Ingestor(RagEngine engine)
         using (RagTelemetry.ActivitySource.StartActivity("rag.read"))
         {
             var reader = engine.Readers.Select(s.ContentType, s.FileName);
-            using var ms = new MemoryStream(bytes, writable: false);
-            parsed = await reader.ReadAsync(ms, new DocumentReadContext(s.FileName, s.ContentType), ct).ConfigureAwait(false);
+            parsed = await engine.Ocr.ReadAsync(reader, bytes, new DocumentReadContext(s.FileName, s.ContentType), ct).ConfigureAwait(false);
         }
 
         p?.Report(new IngestProgress(s.DocumentId, IngestStage.Chunking, 0, 0));

@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using AngleSharp.Dom;
 using AngleSharp.Html.Parser;
 using RagDotNet.Documents;
+using RagDotNet.Ocr;
 
 namespace RagDotNet.Readers.Html;
 
@@ -77,16 +78,17 @@ public sealed partial class HtmlReader : IDocumentReader
         var walker = new Walker();
         if (root is not null) walker.WalkContainer(root);
 
-        var warnings = new List<IngestWarning>();
-        var images = root?.QuerySelectorAll("img").Count(i => (i.GetAttribute("src") ?? "").TrimStart().StartsWith("data:", StringComparison.OrdinalIgnoreCase)) ?? 0;
-        if (images > 0)
-            warnings.Add(new IngestWarning(IngestWarningCodes.ImageNotRead, $"{images} embedded image(s) were not read; register an OCR provider to read them."));
+        // Images carried in the page as data: URIs; linked images are not part of the document and are never fetched.
+        if (root is not null)
+            foreach (var img in root.QuerySelectorAll("img").Where(IsEmbedded))
+                walker.NoteImage(img, walker.Blocks.Count); // only adds images the walk did not place
+        var candidates = walker.Images.Select(i => new OcrCandidate(OcrCandidateKind.Image, i.InsertAt, null, DataImage(i.Img))).ToList();
 
         var title = document.Title?.Trim();
         if (string.IsNullOrEmpty(title))
             title = root is null ? null : HighestHeading(root);
 
-        return new ParsedDocument(walker.Blocks, string.IsNullOrEmpty(title) ? null : title) { Warnings = warnings };
+        return new ParsedDocument(walker.Blocks, string.IsNullOrEmpty(title) ? null : title) { OcrCandidates = candidates };
     }
 
     /// <summary>
@@ -162,6 +164,37 @@ public sealed partial class HtmlReader : IDocumentReader
         .Select(h => Clean(InlineText(h).Replace('\n', ' ')))
         .FirstOrDefault(t => t.Length > 0);
 
+    private static bool IsEmbedded(IElement img) =>
+        (img.GetAttribute("src") ?? "").TrimStart().StartsWith("data:", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The image a <c>data:</c> URI carries, with the size from its width and height attributes; null when it cannot be decoded.</summary>
+    private static ImageInput? DataImage(IElement img)
+    {
+        var src = (img.GetAttribute("src") ?? "").Trim();
+        var comma = src.IndexOf(',', StringComparison.Ordinal);
+        if (comma < 5) return null;
+        var header = src[5..comma];
+        var data = src[(comma + 1)..];
+        var parts = header.Split(';');
+        var mediaType = parts[0].Length > 0 ? parts[0].Trim() : "text/plain";
+        byte[] bytes;
+        try
+        {
+            bytes = parts.Skip(1).Any(p => p.Trim().Equals("base64", StringComparison.OrdinalIgnoreCase))
+                ? Convert.FromBase64String(Whitespace().Replace(data, ""))
+                : Encoding.UTF8.GetBytes(Uri.UnescapeDataString(data));
+        }
+        catch (FormatException)
+        {
+            return null;
+        }
+
+        return new ImageInput(bytes, mediaType, Dimension(img, "width"), Dimension(img, "height"));
+    }
+
+    private static int? Dimension(IElement img, string name) =>
+        int.TryParse(img.GetAttribute(name), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var n) && n > 0 ? n : null;
+
     /// <summary>Turns elements into blocks, keeping the heading path as it goes.</summary>
     private sealed class Walker
     {
@@ -233,9 +266,23 @@ public sealed partial class HtmlReader : IDocumentReader
 
                         break;
                 }
+
+                // Embedded images go after the block that holds them; a container's children have placed theirs already.
+                if (e.LocalName == "img") NoteImage(e, Blocks.Count);
+                else foreach (var img in e.QuerySelectorAll("img")) NoteImage(img, Blocks.Count);
             }
 
             Flush(loose);
+        }
+
+        /// <summary>Embedded images in document order with where their text goes; each image once.</summary>
+        public List<(IElement Img, int InsertAt)> Images { get; } = [];
+
+        private readonly HashSet<IElement> _placed = [];
+
+        public void NoteImage(IElement img, int insertAt)
+        {
+            if (IsEmbedded(img) && _placed.Add(img)) Images.Add((img, insertAt));
         }
 
         private void Flush(StringBuilder loose)

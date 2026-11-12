@@ -808,3 +808,30 @@ static RagDotNet.Ocr.ImageInput.operator !=(RagDotNet.Ocr.ImageInput? left, RagD
 static RagDotNet.Ocr.ImageInput.operator ==(RagDotNet.Ocr.ImageInput? left, RagDotNet.Ocr.ImageInput? right) -> bool
 static RagDotNet.Ocr.OcrResult.operator !=(RagDotNet.Ocr.OcrResult? left, RagDotNet.Ocr.OcrResult? right) -> bool
 static RagDotNet.Ocr.OcrResult.operator ==(RagDotNet.Ocr.OcrResult? left, RagDotNet.Ocr.OcrResult? right) -> bool
+override RagDotNet.Documents.OcrCandidate.Equals(object? obj) -> bool
+override RagDotNet.Documents.OcrCandidate.GetHashCode() -> int
+override RagDotNet.Documents.OcrCandidate.ToString() -> string!
+RagDotNet.Documents.OcrCandidate
+RagDotNet.Documents.OcrCandidate.<Clone>$() -> RagDotNet.Documents.OcrCandidate!
+RagDotNet.Documents.OcrCandidate.Deconstruct(out RagDotNet.Documents.OcrCandidateKind Kind, out int InsertAt, out int? PageNumber, out RagDotNet.Ocr.ImageInput? Image) -> void
+RagDotNet.Documents.OcrCandidate.Equals(RagDotNet.Documents.OcrCandidate? other) -> bool
+RagDotNet.Documents.OcrCandidate.HasTextLayer.get -> bool
+RagDotNet.Documents.OcrCandidate.HasTextLayer.init -> void
+RagDotNet.Documents.OcrCandidate.Image.get -> RagDotNet.Ocr.ImageInput?
+RagDotNet.Documents.OcrCandidate.Image.init -> void
+RagDotNet.Documents.OcrCandidate.InsertAt.get -> int
+RagDotNet.Documents.OcrCandidate.InsertAt.init -> void
+RagDotNet.Documents.OcrCandidate.IsPageBackground.get -> bool
+RagDotNet.Documents.OcrCandidate.IsPageBackground.init -> void
+RagDotNet.Documents.OcrCandidate.Kind.get -> RagDotNet.Documents.OcrCandidateKind
+RagDotNet.Documents.OcrCandidate.Kind.init -> void
+RagDotNet.Documents.OcrCandidate.OcrCandidate(RagDotNet.Documents.OcrCandidateKind Kind, int InsertAt, int? PageNumber, RagDotNet.Ocr.ImageInput? Image = null) -> void
+RagDotNet.Documents.OcrCandidate.PageNumber.get -> int?
+RagDotNet.Documents.OcrCandidate.PageNumber.init -> void
+RagDotNet.Documents.OcrCandidateKind
+RagDotNet.Documents.OcrCandidateKind.Image = 1 -> RagDotNet.Documents.OcrCandidateKind
+RagDotNet.Documents.OcrCandidateKind.ScannedPage = 0 -> RagDotNet.Documents.OcrCandidateKind
+RagDotNet.Documents.ParsedDocument.OcrCandidates.get -> System.Collections.Generic.IReadOnlyList<RagDotNet.Documents.OcrCandidate!>!
+RagDotNet.Documents.ParsedDocument.OcrCandidates.init -> void
+static RagDotNet.Documents.OcrCandidate.operator !=(RagDotNet.Documents.OcrCandidate? left, RagDotNet.Documents.OcrCandidate? right) -> bool
+static RagDotNet.Documents.OcrCandidate.operator ==(RagDotNet.Documents.OcrCandidate? left, RagDotNet.Documents.OcrCandidate? right) -> bool
