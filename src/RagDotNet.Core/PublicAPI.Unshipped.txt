@@ -941,3 +941,4 @@ RagDotNet.Configuration.RagPipelineBuilder.UseReranker(RagDotNet.Retrieval.IRera
 static Microsoft.Extensions.DependencyInjection.RagHybridBuilderExtensions.AddInMemoryKeywordIndex(this RagDotNet.Configuration.IRagBuilder! builder) -> RagDotNet.Configuration.IRagBuilder!
 static Microsoft.Extensions.DependencyInjection.RagHybridBuilderExtensions.AddKeywordIndex<TIndex>(this RagDotNet.Configuration.IRagBuilder! builder) -> RagDotNet.Configuration.IRagBuilder!
 static Microsoft.Extensions.DependencyInjection.RagHybridBuilderExtensions.AddReranker<TReranker>(this RagDotNet.Configuration.IRagBuilder! builder) -> RagDotNet.Configuration.IRagBuilder!
+RagDotNet.Pipeline.IRagAdmin.RebuildKeywordIndexAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!

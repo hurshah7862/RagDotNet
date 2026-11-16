@@ -30,6 +30,8 @@ public static class RagTelemetry
 
     internal static readonly Counter<long> ContentMissing = Meter.CreateCounter<long>("rag.content.missing", "{chunk}", "Chunks dropped because the content store had no text.");
 
+    internal static readonly Counter<long> KeywordDrift = Meter.CreateCounter<long>("rag.keyword.drift", "{chunk}", "Keyword hits dropped because the vector store no longer has the chunk.");
+
     /// <summary>Marks the activity failed with the exception type only; messages may contain document text.</summary>
     internal static void Fail(Activity? activity, Exception ex) =>
         activity?.SetStatus(ActivityStatusCode.Error, ex.GetType().Name);

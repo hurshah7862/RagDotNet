@@ -291,6 +291,8 @@ internal sealed class RagAdmin(RagEngine engine, IChatClient? chat = null) : IRa
         return new RagStats(partitions, models.ToList());
     }
 
+    public Task RebuildKeywordIndexAsync(CancellationToken cancellationToken = default) => engine.RebuildKeywordIndexAsync(cancellationToken);
+
     private async Task ProbeAsync(CancellationToken ct)
     {
         var probe = await engine.Embedder.GenerateAsync([ProbeText], cancellationToken: ct).ConfigureAwait(false);

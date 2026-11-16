@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using RagDotNet.Access;
@@ -75,9 +77,10 @@ internal sealed class RagEngine
     /// <summary>The reranker, if one is registered.</summary>
     public IReranker? Reranker { get; init; }
 
-    /// <summary>Which keyword search runs with vector search.</summary>
-    public KeywordPath KeywordPath =>
-        Options.Hybrid != HybridMode.Off && KeywordIndex is not null ? KeywordPath.Index : KeywordPath.None;
+    private volatile KeywordPath _keywordPath;
+
+    /// <summary>Which keyword search runs with vector search; decided by <see cref="EnsureReadyAsync"/>.</summary>
+    public KeywordPath KeywordPath => _keywordPath;
 
     /// <summary>True when ingest and delete keep the keyword index in step.</summary>
     public bool WritesKeywordIndex => KeywordPath == KeywordPath.Index;
@@ -164,11 +167,143 @@ internal sealed class RagEngine
             if (_initialized) return;
             await Chunks.EnsureExistsAsync(cancellationToken).ConfigureAwait(false);
             await Manifests.EnsureExistsAsync(cancellationToken).ConfigureAwait(false);
+            var (path, detail) = ChooseKeywordPath();
+            Logger.LogInformation("Keyword search: {Path} ({Detail})", path.ToString().ToLowerInvariant(), detail);
+            if (path == KeywordPath.Index) await CheckKeywordIndexAsync(cancellationToken).ConfigureAwait(false);
+            _keywordPath = path;
             _initialized = true;
         }
         finally
         {
             _initLock.Release();
         }
+    }
+
+    /// <summary>
+    /// The native hybrid call threw <see cref="NotSupportedException"/>: switches to the keyword index (building it, since
+    /// nothing was written to it) or to vector-only, for the rest of the process. Logs a warning once.
+    /// </summary>
+    public async Task SwitchFromNativeAsync(Exception error, CancellationToken ct)
+    {
+        await _initLock.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            if (_keywordPath != KeywordPath.Native) return;
+            var next = KeywordIndex is null ? KeywordPath.None : KeywordPath.Index;
+            Logger.LogWarning(
+                "The vector store's hybrid search failed with NotSupportedException ({Message}); keyword search now uses {Path} for the rest of this process.",
+                error.Message, next == KeywordPath.Index ? $"the {KeywordIndex!.Name} keyword index" : "nothing (vector-only)");
+            if (next == KeywordPath.Index) await RebuildKeywordIndexCoreAsync(ct).ConfigureAwait(false);
+            _keywordPath = next;
+        }
+        finally
+        {
+            _initLock.Release();
+        }
+    }
+
+    private (KeywordPath Path, string Detail) ChooseKeywordPath()
+    {
+        if (Options.Hybrid == HybridMode.Off) return (KeywordPath.None, "Hybrid is Off");
+        if (ContentStore is null && Chunks.Hybrid is not null)
+            return (KeywordPath.Native, KeywordIndex is null
+                ? "the vector store's hybrid search"
+                : $"the vector store's hybrid search; the {KeywordIndex.Name} keyword index is not used");
+        if (KeywordIndex is not null) return (KeywordPath.Index, $"the {KeywordIndex.Name} keyword index");
+        return (KeywordPath.None, "the vector store has no native hybrid search and no keyword index is registered");
+    }
+
+    /// <summary>Rebuilds the keyword index from the store when its chunk count differs from the manifests'.</summary>
+    private async Task CheckKeywordIndexAsync(CancellationToken ct)
+    {
+        var index = KeywordIndex!;
+        long expected = 0;
+        await foreach (var m in Manifests.ListAsync(r => (int)r["ChunkCount"]! >= 0, ct).ConfigureAwait(false))
+            expected += m.ChunkCount;
+        var actual = await index.CountAsync(ct).ConfigureAwait(false);
+        if (actual == expected) return;
+
+        // The in-memory index always starts empty; building it is expected, not a sign of drift.
+        if (index is not Keyword.InMemoryKeywordIndex || actual != 0)
+            Logger.LogWarning(
+                "The {Index} keyword index holds {IndexCount} chunks but the documents have {ChunkCount}; rebuilding it.", index.Name, actual, expected);
+        await RebuildKeywordIndexCoreAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Rebuilds the keyword index from the vector store (or the content store, for text). For IRagAdmin.</summary>
+    public async Task RebuildKeywordIndexAsync(CancellationToken ct)
+    {
+        await EnsureReadyAsync(ct).ConfigureAwait(false);
+        if (KeywordPath != KeywordPath.Index)
+            throw new InvalidOperationException(
+                $"The keyword index is not in use: keyword search is '{KeywordPath.ToString().ToLowerInvariant()}' ({ChooseKeywordPath().Detail}).");
+        await RebuildKeywordIndexCoreAsync(ct).ConfigureAwait(false);
+    }
+
+    private async Task RebuildKeywordIndexCoreAsync(CancellationToken ct)
+    {
+        var index = KeywordIndex!;
+        var started = Stopwatch.GetTimestamp();
+        var count = 0;
+        await index.RebuildAsync(Counted(KeywordSourceAsync(ct)), ct).ConfigureAwait(false);
+        Logger.LogInformation(
+            "Built the {Index} keyword index: {ChunkCount} chunks in {ElapsedMs} ms.", index.Name, count, (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+
+        async IAsyncEnumerable<Keyword.KeywordChunk> Counted(IAsyncEnumerable<Keyword.KeywordChunk> source)
+        {
+            await foreach (var c in source.ConfigureAwait(false))
+            {
+                count++;
+                yield return c;
+            }
+        }
+    }
+
+    /// <summary>Every chunk the manifests list, with its text from the record or the content store, in batches of 100 keys.</summary>
+    private async IAsyncEnumerable<Keyword.KeywordChunk> KeywordSourceAsync([EnumeratorCancellation] CancellationToken ct)
+    {
+        var batch = new List<(ManifestRecord Manifest, string Key)>(KeywordBatchSize);
+        await foreach (var m in Manifests.ListAsync(r => (int)r["ChunkCount"]! >= 0, ct).ConfigureAwait(false))
+        {
+            for (var i = 0; i < m.ChunkCount; i++)
+            {
+                batch.Add((m, ChunkKeys.Chunk(m.Partition, m.DocumentId, i)));
+                if (batch.Count < KeywordBatchSize) continue;
+                foreach (var c in await FetchKeywordChunksAsync(batch, ct).ConfigureAwait(false)) yield return c;
+                batch.Clear();
+            }
+        }
+
+        if (batch.Count > 0)
+            foreach (var c in await FetchKeywordChunksAsync(batch, ct).ConfigureAwait(false)) yield return c;
+    }
+
+    private const int KeywordBatchSize = 100;
+
+    private async Task<List<Keyword.KeywordChunk>> FetchKeywordChunksAsync(List<(ManifestRecord Manifest, string Key)> batch, CancellationToken ct)
+    {
+        var keys = batch.Select(b => b.Key).ToList();
+        IReadOnlyDictionary<string, string> texts;
+        if (ContentStore is { } contentStore)
+        {
+            texts = await contentStore.GetAsync(keys, ct).ConfigureAwait(false);
+        }
+        else
+        {
+            var found = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var r in await Chunks.GetAsync(keys, includeVectors: false, ct).ConfigureAwait(false))
+            {
+                var key = ChunkKeys.Chunk((string)r["Partition"]!, (string)r["DocumentId"]!, Convert.ToInt32(r["ChunkIndex"], System.Globalization.CultureInfo.InvariantCulture));
+                if (r.TryGetValue("Text", out var t) && t is string text) found[key] = text;
+            }
+
+            texts = found;
+        }
+
+        var result = new List<Keyword.KeywordChunk>(batch.Count);
+        foreach (var (m, key) in batch)
+            if (texts.TryGetValue(key, out var text))
+                result.Add(new Keyword.KeywordChunk(key, m.DocumentId, m.Partition, text, m.Metadata));
+        return result;
     }
 }
