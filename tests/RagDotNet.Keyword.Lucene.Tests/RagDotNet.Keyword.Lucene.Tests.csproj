@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="CommunityToolkit.VectorData.InMemory" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+  </ItemGroup>
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\RagDotNet.Core.Tests\Fakes\FakeEmbeddingGenerator.cs" Link="Shared\FakeEmbeddingGenerator.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\RagDotNet.Core\RagDotNet.Core.csproj" />
+    <ProjectReference Include="..\..\src\RagDotNet.Keyword.Lucene\RagDotNet.Keyword.Lucene.csproj" />
+  </ItemGroup>
+</Project>

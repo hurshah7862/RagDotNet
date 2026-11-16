@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <Description>Lucene.NET keyword index for RagDotNet hybrid search: a persisted BM25 index on disk, for large corpora or when the in-memory index's startup build is too slow. Built on Lucene.NET 4.8 (prerelease), so this package is a preview.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Lucene.Net" />
+    <PackageReference Include="Lucene.Net.Analysis.Common" />
+    <PackageReference Include="Microsoft.Extensions.Options" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="RagDotNet.Keyword.Lucene.Tests" />
+    <None Include="README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\RagDotNet.Core\RagDotNet.Core.csproj" />
+  </ItemGroup>
+
+  <!-- Lucene.NET 4.8 is a prerelease, so this package always is too: the version MinVer computes gets a -preview label. -->
+  <Target Name="LucenePreviewVersion" AfterTargets="MinVer">
+    <PropertyGroup>
+      <LucenePreRelease Condition="'$(MinVerPreRelease)' == ''">preview</LucenePreRelease>
+      <LucenePreRelease Condition="'$(MinVerPreRelease)' != '' And !$(MinVerPreRelease.StartsWith('preview'))">preview.$(MinVerPreRelease)</LucenePreRelease>
+      <LucenePreRelease Condition="'$(LucenePreRelease)' == ''">$(MinVerPreRelease)</LucenePreRelease>
+      <PackageVersion>$(MinVerMajor).$(MinVerMinor).$(MinVerPatch)-$(LucenePreRelease)</PackageVersion>
+      <PackageVersion Condition="'$(MinVerBuildMetadata)' != ''">$(PackageVersion)+$(MinVerBuildMetadata)</PackageVersion>
+      <Version>$(PackageVersion)</Version>
+    </PropertyGroup>
+  </Target>
+</Project>

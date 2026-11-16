@@ -46,6 +46,9 @@ jobs:
       - name: Test OCR (net8.0)
         run: dotnet test --project tests/RagDotNet.Ocr.Tests --no-build --configuration Release --framework net8.0
 
+      - name: Test Lucene keyword index (net8.0)
+        run: dotnet test --project tests/RagDotNet.Keyword.Lucene.Tests --no-build --configuration Release --framework net8.0
+
   windows:
     name: Windows unit and OCR tests (net8.0)
     runs-on: windows-latest
@@ -84,3 +87,6 @@ jobs:
 
       - name: Test OCR (net8.0)
         run: dotnet test --project tests/RagDotNet.Ocr.Tests --no-build --configuration Release --framework net8.0
+
+      - name: Test Lucene keyword index (net8.0)
+        run: dotnet test --project tests/RagDotNet.Keyword.Lucene.Tests --no-build --configuration Release --framework net8.0
