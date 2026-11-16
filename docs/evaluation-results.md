@@ -159,3 +159,28 @@ The 8 `base` documents rendered as PDF, DOCX and HTML and read back with the sta
 | Chunker | MaxTokens | Overlap | Mode | Chunks | R@1 | R@3 | R@5 | MRR |
 |---|---:|---:|---|---:|---:|---:|---:|---:|
 | structure-aware | 512 | 0.1 | vector | 136 | 0.750 | 0.883 | 0.917 | 0.819 |
+
+## Scanned check (stage 6)
+
+The 8 `base` documents as image-only PDFs (each page rendered from the stage 5 PDF at 200 DPI and stored as a JPEG, with no text layer), read with Tesseract 5.3 (`eng`, Ubuntu 24.04) through `RagDotNet.Ocr.Tesseract`, at the library defaults (structure-aware, 512 tokens, 0.1 overlap). Method and discussion: [evaluation.md](evaluation.md#scanned-check).
+
+- Embedder: ollama (nomic-embed-text)
+- Chat model: none
+- Set `base`: 8 documents, 40 questions, hash cb1f2ea1af73
+- Set `base` · scanned: 8 documents, 40 questions, hash bb1339c1bbd2
+- Date: 2026-11-12
+
+### base
+
+| Chunker | MaxTokens | Overlap | Mode | Chunks | R@1 | R@3 | R@5 | MRR |
+|---|---:|---:|---|---:|---:|---:|---:|---:|
+| structure-aware | 512 | 0.1 | vector | 108 | 0.800 | 0.850 | 0.900 | 0.836 |
+
+### base · scanned
+
+- Unscorable questions: 1
+- Evidence intact after OCR: 39 of 40
+
+| Chunker | MaxTokens | Overlap | Mode | Chunks | R@1 | R@3 | R@5 | MRR |
+|---|---:|---:|---|---:|---:|---:|---:|---:|
+| structure-aware | 512 | 0.1 | vector | 24 | 0.600 | 0.800 | 0.850 | 0.710 |

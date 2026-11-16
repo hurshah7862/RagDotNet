@@ -7,4 +7,7 @@ public sealed record ParsedDocument(IReadOnlyList<DocumentBlock> Blocks, string?
 {
     /// <summary>Warnings raised while reading.</summary>
     public IReadOnlyList<IngestWarning> Warnings { get; init; } = [];
+
+    /// <summary>Scanned pages and embedded images that only OCR can read, in document order.</summary>
+    public IReadOnlyList<OcrCandidate> OcrCandidates { get; init; } = [];
 }

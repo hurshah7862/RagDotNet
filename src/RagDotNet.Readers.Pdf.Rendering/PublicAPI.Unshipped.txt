@@ -1,0 +1,9 @@
+#nullable enable
+Microsoft.Extensions.DependencyInjection.PdfPageRenderingExtensions
+RagDotNet.Configuration.PdfPageRenderingBuilderExtensions
+RagDotNet.Readers.Pdf.Rendering.PdfPageRenderer
+RagDotNet.Readers.Pdf.Rendering.PdfPageRenderer.CanRender(string? contentType, string! fileName) -> bool
+RagDotNet.Readers.Pdf.Rendering.PdfPageRenderer.PdfPageRenderer() -> void
+RagDotNet.Readers.Pdf.Rendering.PdfPageRenderer.RenderPageAsync(System.ReadOnlyMemory<byte> document, int pageNumber, int dpi, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<RagDotNet.Ocr.ImageInput!>!
+static Microsoft.Extensions.DependencyInjection.PdfPageRenderingExtensions.AddPdfPageRendering(this RagDotNet.Configuration.IRagBuilder! builder) -> RagDotNet.Configuration.IRagBuilder!
+static RagDotNet.Configuration.PdfPageRenderingBuilderExtensions.AddPdfPageRendering(this RagDotNet.Configuration.RagPipelineBuilder! builder) -> RagDotNet.Configuration.RagPipelineBuilder!

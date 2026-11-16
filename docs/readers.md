@@ -87,7 +87,7 @@ A reader never drops content silently. Anything it cannot read becomes an entry 
 | `ImageNotRead` | Images were not read: on a PDF page that has text, in a DOCX, or embedded in an HTML page as a `data:` URI. Images an HTML page links to elsewhere are not counted, because their bytes are not part of the document. | The page for PDF, otherwise none |
 | `EmptyDocument` | The document produced no text to index. | None |
 
-Reading text in images needs an OCR provider, which is planned as the separate `RagDotNet.Ocr.Tesseract` package.
+These are the warnings when no OCR provider is registered. With one, scanned pages and images are read and their text is placed where they were; see [OCR](ocr.md), including the `OcrFailed` and `OcrLowConfidence` warnings. Readers return scanned pages and images as `ParsedDocument.OcrCandidates`, and ingest turns them into text or into these warnings.
 
 ## Errors
 

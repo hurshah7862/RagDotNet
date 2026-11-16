@@ -27,24 +27,21 @@ public class PdfReaderTests
         Assert.Contains(doc.Blocks, b => b.PageNumber == 3 && b.Text.Contains("cached for thirty days", StringComparison.Ordinal));
     }
 
-    [Fact] // Review Focus 1
-    public async Task Scanned_page_gives_a_PageWithoutText_warning_and_other_pages_are_read()
+    [Fact] // Review Focus 1 (stage 5); the warning text itself is pinned by Stage5WarningParityTests
+    public async Task Scanned_page_is_an_ocr_candidate_and_other_pages_are_read()
     {
         var doc = await Sample();
 
-        var warning = Assert.Single(doc.Warnings, w => w.Code == IngestWarningCodes.PageWithoutText);
-        Assert.Equal(2, warning.PageNumber);
-        Assert.Equal("Page 2 has no extractable text; register an OCR provider to read it.", warning.Message);
+        Assert.Equal(2, Assert.Single(doc.OcrCandidates, c => c.Kind == OcrCandidateKind.ScannedPage).PageNumber);
         Assert.DoesNotContain(doc.Blocks, b => b.PageNumber == 2);
     }
 
     [Fact]
-    public async Task Image_on_a_text_page_gives_an_ImageNotRead_warning_with_its_page()
+    public async Task Image_on_a_text_page_is_an_ocr_candidate_with_its_page()
     {
-        var warning = Assert.Single((await Sample()).Warnings, w => w.Code == IngestWarningCodes.ImageNotRead);
+        var image = Assert.Single((await Sample()).OcrCandidates, c => c.Kind == OcrCandidateKind.Image);
 
-        Assert.Equal(3, warning.PageNumber);
-        Assert.Equal("Page 3 has 1 image(s) that were not read; register an OCR provider to read them.", warning.Message);
+        Assert.Equal(3, image.PageNumber);
     }
 
     [Fact]

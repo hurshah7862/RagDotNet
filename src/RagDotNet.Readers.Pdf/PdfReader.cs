@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using RagDotNet.Documents;
+using RagDotNet.Ocr;
 using UglyToad.PdfPig;
 using UglyToad.PdfPig.Content;
 using UglyToad.PdfPig.DocumentLayoutAnalysis;
@@ -12,12 +13,18 @@ namespace RagDotNet.Readers.Pdf;
 /// <summary>
 /// Reads PDF text into blocks that carry their page number. Headings are recognised by font size (at least 1.15× the
 /// document's most common size, at most two lines), code by a monospace font, and lists by bullet or number markers.
-/// Tables are read as plain text. A page with no text, or images on a page with text, are reported as warnings so that
-/// nothing is skipped silently.
+/// Tables are read as plain text. Pages with no text and images on pages with text are returned as
+/// <see cref="ParsedDocument.OcrCandidates"/>, which ingest reads with an OCR provider or reports as warnings.
 /// </summary>
 public sealed partial class PdfReader : IDocumentReader
 {
     private const double HeadingRatio = 1.15;
+
+    /// <summary>An image covering at least this share of a page with a text layer is the scan under that text.</summary>
+    private const double BackgroundShare = 0.8;
+
+    /// <summary>A page with a background image and at most this many characters is a scan with a stamp, such as a page number.</summary>
+    private const int StampLetters = 30;
 
     /// <inheritdoc />
     public bool CanRead(string? contentType, string fileName) =>
@@ -39,7 +46,7 @@ public sealed partial class PdfReader : IDocumentReader
         try
         {
             using var pdf = PdfDocument.Open(buffer);
-            return Read(pdf, cancellationToken);
+            return Read(pdf, context.ExtractImages, cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException and not DocumentReadException)
         {
@@ -47,10 +54,10 @@ public sealed partial class PdfReader : IDocumentReader
         }
     }
 
-    private static ParsedDocument Read(PdfDocument pdf, CancellationToken ct)
+    private static ParsedDocument Read(PdfDocument pdf, bool extractImages, CancellationToken ct)
     {
-        var warnings = new List<IngestWarning>();
         var pages = new List<(int Number, IReadOnlyList<Lines> Blocks)>();
+        var pageImages = new List<PageImages>();
 
         foreach (var page in pdf.GetPages())
         {
@@ -58,16 +65,19 @@ public sealed partial class PdfReader : IDocumentReader
             var letters = page.Letters.Where(l => !string.IsNullOrWhiteSpace(l.Value)).ToList();
             if (letters.Count == 0)
             {
-                warnings.Add(new IngestWarning(IngestWarningCodes.PageWithoutText,
-                    $"Page {page.Number} has no extractable text; register an OCR provider to read it.", page.Number));
+                pageImages.Add(new PageImages(page.Number, Scanned: true, Stamp: false, []));
                 continue;
             }
 
-            var images = page.GetImages().Count();
-            if (images > 0)
+            var pageArea = page.Width * page.Height;
+            var images = page.GetImages()
+                .Select(i => (extractImages ? Extract(i) : null, i.BoundingBox.Top, i.BoundingBox.Width * i.BoundingBox.Height >= BackgroundShare * pageArea))
+                .ToList();
+            if (images.Count > 0)
             {
-                warnings.Add(new IngestWarning(IngestWarningCodes.ImageNotRead,
-                    $"Page {page.Number} has {images} image(s) that were not read; register an OCR provider to read them.", page.Number));
+                // A few characters over a page-sized image, such as a page-number stamp, mean the page is really a scan.
+                var stamp = letters.Count <= StampLetters && images.Any(i => i.Item3);
+                pageImages.Add(new PageImages(page.Number, Scanned: false, stamp, images));
             }
 
             var words = NearestNeighbourWordExtractor.Instance.GetWords(page.Letters);
@@ -83,43 +93,44 @@ public sealed partial class PdfReader : IDocumentReader
             .OrderDescending()
             .ToList();
 
-        var result = new List<DocumentBlock>();
+        var result = new List<Placed>();
         var path = new List<(int Level, string Title)>();
         foreach (var (number, blocks) in pages)
         {
             foreach (var block in blocks)
             {
+                var top = block.TextLines.Max(l => l.BoundingBox.Top);
                 if (IsHeading(block, bodySize))
                 {
                     var level = headingSizes.IndexOf(RoundHalf(AverageSize(block))) + 1;
                     var title = Join(block, " ");
                     path.RemoveAll(h => h.Level >= level);
                     path.Add((level, title));
-                    result.Add(new DocumentBlock(BlockKind.Heading, title, Snapshot(path), number));
+                    result.Add(new Placed(new DocumentBlock(BlockKind.Heading, title, Snapshot(path), number), top));
                 }
                 else if (IsCode(block))
                 {
-                    result.Add(new DocumentBlock(BlockKind.Code, Join(block, "\n"), Snapshot(path), number));
+                    result.Add(new Placed(new DocumentBlock(BlockKind.Code, Join(block, "\n"), Snapshot(path), number), top));
                 }
                 else if (ListText(block) is { } list)
                 {
-                    result.Add(new DocumentBlock(BlockKind.List, list, Snapshot(path), number));
+                    result.Add(new Placed(new DocumentBlock(BlockKind.List, list, Snapshot(path), number), top));
                 }
                 else
                 {
-                    result.Add(new DocumentBlock(BlockKind.Paragraph, Join(block, " "), Snapshot(path), number));
+                    result.Add(new Placed(new DocumentBlock(BlockKind.Paragraph, Join(block, " "), Snapshot(path), number), top));
                 }
             }
         }
 
-        result = MergeNumberedRuns(result);
+        var placed = MergeNumberedRuns(result).Where(p => p.Block.Text.Length > 0).ToList();
 
         var docTitle = pdf.Information.Title;
         if (string.IsNullOrWhiteSpace(docTitle))
-            docTitle = result.FirstOrDefault(b => b.Kind == BlockKind.Heading && b.HeadingPath.Count == 1)?.Text;
-        return new ParsedDocument(result.Where(b => b.Text.Length > 0).ToList(), string.IsNullOrWhiteSpace(docTitle) ? null : docTitle.Trim())
+            docTitle = placed.FirstOrDefault(p => p.Block.Kind == BlockKind.Heading && p.Block.HeadingPath.Count == 1)?.Block.Text;
+        return new ParsedDocument([.. placed.Select(p => p.Block)], string.IsNullOrWhiteSpace(docTitle) ? null : docTitle.Trim())
         {
-            Warnings = warnings,
+            OcrCandidates = Candidates(placed, pageImages),
         };
     }
 
@@ -240,24 +251,85 @@ public sealed partial class PdfReader : IDocumentReader
     /// Neighbouring numbered blocks on the same page under the same heading, numbered one after the other (1., 2., 3.),
     /// become one list block.
     /// </summary>
-    private static List<DocumentBlock> MergeNumberedRuns(List<DocumentBlock> blocks)
+    private static List<Placed> MergeNumberedRuns(List<Placed> blocks)
     {
-        var merged = new List<DocumentBlock>();
-        foreach (var block in blocks)
+        var merged = new List<Placed>();
+        foreach (var placed in blocks)
         {
-            if (merged.Count > 0 && merged[^1] is var previous
+            var block = placed.Block;
+            if (merged.Count > 0 && merged[^1].Block is var previous
                 && previous.PageNumber == block.PageNumber && previous.HeadingPath.SequenceEqual(block.HeadingPath)
                 && NumberedLines(previous) is { } before && NumberedLines(block) is { } after
                 && after[0] == before[^1] + 1)
             {
-                merged[^1] = previous with { Kind = BlockKind.List, Text = previous.Text + "\n" + block.Text };
+                merged[^1] = merged[^1] with { Block = previous with { Kind = BlockKind.List, Text = previous.Text + "\n" + block.Text } };
                 continue;
             }
 
-            merged.Add(block);
+            merged.Add(placed);
         }
 
         return merged;
+    }
+
+    /// <summary>A block with the top of its first line on the page, in PDF points (y grows upwards).</summary>
+    private sealed record Placed(DocumentBlock Block, double Top);
+
+    /// <summary>What a page holds that only OCR can read.</summary>
+    private sealed record PageImages(int Number, bool Scanned, bool Stamp, IReadOnlyList<(ImageInput? Image, double Top, bool Background)> Images);
+
+    /// <summary>
+    /// Candidates in page order. A scanned page's text goes where its blocks would be; an image's text goes after the last
+    /// block on its page that starts above it; a stamp page's OCR text goes after the page's own blocks.
+    /// </summary>
+    private static List<OcrCandidate> Candidates(List<Placed> placed, List<PageImages> pages)
+    {
+        var candidates = new List<OcrCandidate>();
+        foreach (var page in pages)
+        {
+            var pageStart = placed.FindIndex(p => p.Block.PageNumber >= page.Number);
+            if (pageStart < 0) pageStart = placed.Count;
+            var pageEnd = placed.FindIndex(p => p.Block.PageNumber > page.Number);
+            if (pageEnd < 0) pageEnd = placed.Count;
+
+            if (page.Scanned)
+            {
+                candidates.Add(new OcrCandidate(OcrCandidateKind.ScannedPage, pageStart, page.Number));
+                continue;
+            }
+
+            if (page.Stamp)
+                candidates.Add(new OcrCandidate(OcrCandidateKind.ScannedPage, pageEnd, page.Number) { HasTextLayer = true });
+
+            foreach (var (image, top, background) in page.Images)
+            {
+                var insertAt = pageStart;
+                for (var i = pageStart; i < pageEnd; i++)
+                    if (placed[i].Top > top) insertAt = i + 1;
+                candidates.Add(new OcrCandidate(OcrCandidateKind.Image, insertAt, page.Number, image) { IsPageBackground = background });
+            }
+        }
+
+        return candidates;
+    }
+
+    /// <summary>The image as PNG, or as JPEG when it is stored as one; null when neither can be had.</summary>
+    private static ImageInput? Extract(IPdfImage image)
+    {
+        try
+        {
+            if (image.TryGetPng(out var png))
+                return new ImageInput(png, "image/png", image.WidthInSamples, image.HeightInSamples);
+            var raw = image.RawMemory;
+            if (raw.Length > 2 && raw.Span[0] == 0xFF && raw.Span[1] == 0xD8)
+                return new ImageInput(raw.ToArray(), "image/jpeg", image.WidthInSamples, image.HeightInSamples);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // An image PdfPig cannot decode is reported by ingest as one that could not be extracted.
+        }
+
+        return null;
     }
 
     /// <summary>The item numbers of a paragraph or list block whose every line is numbered; otherwise null.</summary>

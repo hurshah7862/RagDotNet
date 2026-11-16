@@ -28,8 +28,22 @@ switch (command)
         }
 
         return 0;
+    case "scanned":
+        // Image-only copies of the base set's PDFs, for the scanned check (OCR). Run after "formats".
+        var baseSet = Path.Combine(root, "tests", "RagDotNet.Evaluation", "Dataset", "base");
+        long total = 0;
+        foreach (var source in Directory.GetFiles(Path.Combine(baseSet, "formats", "pdf"), "*.pdf").Order(StringComparer.Ordinal))
+        {
+            var target = Path.Combine(baseSet, "formats", "scanned", Path.GetFileName(source));
+            ScannedWriter.Write(source, target);
+            total += new FileInfo(target).Length;
+            Console.WriteLine($"wrote scanned/{Path.GetFileName(target)}");
+        }
+
+        Console.WriteLine($"total {total / 1024} KB");
+        return 0;
     default:
-        Console.Error.WriteLine("Usage: RagDotNet.TestAssetGen samples|formats");
+        Console.Error.WriteLine("Usage: RagDotNet.TestAssetGen samples|formats|scanned");
         return 1;
 }
 

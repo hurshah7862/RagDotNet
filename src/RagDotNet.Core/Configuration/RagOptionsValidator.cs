@@ -32,6 +32,13 @@ internal sealed class RagOptionsValidator(
         if (options.ModelCheckInterval < TimeSpan.Zero) failures.Add("ModelCheckInterval must not be negative.");
         // Reindex waits one interval while holding its marker; it must stay well inside the 5-minute takeover window.
         if (options.ModelCheckInterval > TimeSpan.FromMinutes(1)) failures.Add("ModelCheckInterval must not exceed 1 minute.");
+        if (options.Ocr is null) failures.Add("Ocr must not be null.");
+        else
+        {
+            if (options.Ocr.MinImageSize < 0) failures.Add("Ocr.MinImageSize must not be negative.");
+            if (options.Ocr.MinConfidence is < 0 or > 1 || double.IsNaN(options.Ocr.MinConfidence)) failures.Add("Ocr.MinConfidence must be between 0 and 1.");
+            if (options.Ocr.PageDpi is < 72 or > 1200) failures.Add("Ocr.PageDpi must be between 72 and 1200.");
+        }
 
         foreach (var key in options.PartitionKeys)
         {

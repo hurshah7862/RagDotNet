@@ -26,4 +26,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\RagDotNet.Core\RagDotNet.Core.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\RagDotNet.TestAssetGen\Png.cs" Link="Shared\Png.cs" />
+  </ItemGroup>
 </Project>

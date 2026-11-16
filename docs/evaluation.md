@@ -79,7 +79,8 @@ Add `--modes vector,multi-query,hyde` to include query rewriting, which makes on
 | `--dimensions` | 256 (fake), 768 (ollama) |
 | `--modes` | `vector` |
 | `--chunkers` | `structure-aware,fixed-size,semantic` |
-| `--formats` | `md`; add `pdf`, `docx`, `html` to also read the sets that have rendered copies (see [Format check](#format-check)) |
+| `--formats` | `md`; add `pdf`, `docx`, `html` to also read the sets that have rendered copies (see [Format check](#format-check)), and `scanned` for their image-only copies, read with Tesseract (see [Scanned check](#scanned-check)) |
+| `--tessdata` | `$RAGDOTNET_TESSDATA`, else `/usr/share/tesseract-ocr/5/tessdata`; Tesseract's language data, used only by `scanned` |
 | `--max-tokens` | `128,256,512,1024` |
 | `--overlap` | `0,0.1,0.2` (semantic ignores it and runs once per size, shown as `n/a`) |
 | `--dataset` | `Dataset` next to the harness: a root of set directories, or one set |
@@ -90,7 +91,7 @@ The harness exits with:
 | Code | Meaning |
 |---:|---|
 | 0 | success |
-| 1 | bad arguments or an invalid dataset |
+| 1 | bad arguments, an invalid dataset, or `scanned` requested without Tesseract or its language data |
 | 2 | Ollama is not reachable, lacks a model, or fails during the run |
 | 130 | cancelled with Ctrl+C |
 
@@ -177,4 +178,29 @@ What this shows:
 - **The Markdown rows are identical to stage 4's**, so the readers' arrival changed nothing for existing documents.
 
 **Limits.** The rendered files come from a generator and are cleaner than most real-world files. Real PDFs can have multiple columns, running headers and footers, and headings in the same size as body text; real web pages have more varied boilerplate. These results show the readers work on well-formed input; they do not measure robustness on messy files.
+
+## Scanned check
+
+The scanned check asks how much retrieval is lost when the same documents arrive as scans, with no text layer, and are read with OCR.
+
+**Method.**
+- **Scanning:** `tests/RagDotNet.TestAssetGen scanned` renders every page of the 8 `base` PDFs at 200 DPI and stores it as a JPEG in a new PDF with no text layer, in `Dataset/base/formats/scanned`, like a clean photocopy.
+- **Reading:** the harness reads them with `RagDotNet.Ocr.Tesseract` (Tesseract 5.3, `eng`), rendering each page at the library default of 300 DPI. The loader and the pipeline read through the same OCR step as ingest, and a cache keeps the run to one OCR pass per page.
+- **Strict scoring:** a question counts as found only when its exact evidence text comes back, so OCR mistakes count against the score. A question whose evidence OCR damaged is unscorable and scores as a miss; the report also says how many evidence passages came through intact.
+- **Command:** `--formats md,scanned --chunkers structure-aware --max-tokens 512 --overlap 0.1 --tessdata <dir>`. Tesseract must be installed; the project's Docker image has it.
+
+**Results** (2026-11-12, `nomic-embed-text`; the full report is in [evaluation-results.md](evaluation-results.md#scanned-check-stage-6)):
+
+| Format | Hash | Evidence intact | Chunks | R@1 | R@3 | R@5 | MRR |
+|---|---|---:|---:|---:|---:|---:|---:|
+| Markdown (source) | `cb1f2ea1af73` | n/a | 108 | 0.800 | 0.850 | 0.900 | 0.836 |
+| Scanned PDF, Tesseract | `bb1339c1bbd2` | 39 of 40 | 24 | 0.600 | 0.800 | 0.850 | 0.710 |
+
+What this shows:
+
+- **OCR keeps the text.** 39 of the 40 evidence passages come through Tesseract letter for letter; one is damaged and scores as a miss.
+- **Retrieval drops, mostly because the structure is gone.** MRR falls from 0.836 to 0.710 and R@1 from 0.800 to 0.600, while R@5 drops only from 0.900 to 0.850: the right passage is usually still found, but ranked lower. OCR returns each page as one paragraph without headings, so the structure-aware chunker has no sections to split on and makes 24 chunks instead of 108. Larger chunks that mix several topics are what pushes the right passage down.
+- **What would help:** recognising headings and paragraphs in OCR output (Tesseract can report text blocks and line sizes), or a whole-document provider that returns structure, such as a cloud layout service. Neither is part of stage 6.
+
+**Limits.** These are clean, generated scans: straight, high-contrast and in one standard font. Real scans can be skewed, noisy, low-resolution or handwritten, and will usually do worse. The check measures what OCR costs on good input, not on bad.
 

@@ -17,6 +17,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="../TestAssets/**" CopyToOutputDirectory="PreserveNewest" LinkBase="TestAssets" />
+    <Compile Include="..\RagDotNet.TestAssetGen\Png.cs" Link="Shared\Png.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\RagDotNet.Core\RagDotNet.Core.csproj" />

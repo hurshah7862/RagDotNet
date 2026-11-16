@@ -71,7 +71,8 @@ internal sealed class Ingestor(RagEngine engine)
         if (existing is not null && !IsVisible(scope, existing))
             throw new RagAccessDeniedException("ingest", null, "ingest: A document with this id exists and is not visible to the caller.");
 
-        if (existing is not null && existing.ContentHash == contentHash && existing.ChunkingHash == chunkingHash
+        if (existing is not null && existing.ContentHash == contentHash
+            && (existing.ChunkingHash == chunkingHash || existing.ChunkingHash == StoredChunkingHash(chunkingHash, true, engine.Ocr.Fingerprint))
             && existing.MetadataHash == metadataHash)
         {
             // Finish cleanup left behind by an interrupted earlier run.
@@ -90,10 +91,12 @@ internal sealed class Ingestor(RagEngine engine)
         using (RagTelemetry.ActivitySource.StartActivity("rag.read"))
         {
             var reader = engine.Readers.Select(s.ContentType, s.FileName);
-            using var ms = new MemoryStream(bytes, writable: false);
-            parsed = await reader.ReadAsync(ms, new DocumentReadContext(s.FileName, s.ContentType), ct).ConfigureAwait(false);
+            parsed = await engine.Ocr.ReadAsync(reader, bytes, new DocumentReadContext(s.FileName, s.ContentType), ct).ConfigureAwait(false);
         }
 
+        var storedChunkingHash = StoredChunkingHash(chunkingHash, parsed.OcrCandidates.Count > 0, engine.Ocr.Fingerprint);
+        // A page or image OCR failed on (a timeout, a rate limit) is retried: a marker that never matches makes the next ingest read again.
+        if (parsed.OcrCandidates.Count > 0 && parsed.Warnings.Any(w => w.Code == IngestWarningCodes.OcrFailed)) storedChunkingHash += ":incomplete";
         p?.Report(new IngestProgress(s.DocumentId, IngestStage.Chunking, 0, 0));
         IReadOnlyList<Chunk> chunks;
         using (RagTelemetry.ActivitySource.StartActivity("rag.chunk"))
@@ -126,7 +129,7 @@ internal sealed class Ingestor(RagEngine engine)
                 ["Partition"] = scope.PartitionKey,
                 ["ChunkIndex"] = c.Index,
                 ["ContentHash"] = contentHash,
-                ["ChunkingHash"] = chunkingHash,
+                ["ChunkingHash"] = storedChunkingHash,
                 ["EmbeddingModelId"] = engine.EmbeddingModelId,
                 ["PageStart"] = c.PageStart,
                 ["PageEnd"] = c.PageEnd,
@@ -162,7 +165,7 @@ internal sealed class Ingestor(RagEngine engine)
 
         await engine.Chunks.UpsertAsync(records, ct).ConfigureAwait(false);
         var committed = new ManifestRecord(
-            docKey, s.DocumentId, scope.PartitionKey, partitionValues, contentHash, chunkingHash, engine.EmbeddingModelId,
+            docKey, s.DocumentId, scope.PartitionKey, partitionValues, contentHash, storedChunkingHash, engine.EmbeddingModelId,
             total, sourceName, now, options.ContentStorage, metadataHash, highWater, metadata);
         await engine.Manifests.UpsertAsync(committed, ct).ConfigureAwait(false);
         await DeleteRangeAsync(scope, s.DocumentId, total, highWater, ct).ConfigureAwait(false);
@@ -212,6 +215,13 @@ internal sealed class Ingestor(RagEngine engine)
             await contentStore.DeleteAsync(keys, ct).ConfigureAwait(false);
         await engine.Chunks.DeleteAsync(keys, ct).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// The chunking hash as stored. A document with scanned pages or images also records the OCR setup it was read with,
+    /// so it is read again when that setup changes; every other document stores the plain hash, as before OCR existed.
+    /// </summary>
+    internal static string StoredChunkingHash(string chunkingHash, bool hadCandidates, string ocrFingerprint) =>
+        hadCandidates ? chunkingHash + "+ocr:" + ocrFingerprint : chunkingHash;
 
     private ChunkingOptions EffectiveChunkingFor(string? contentType)
     {

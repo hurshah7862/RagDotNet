@@ -243,20 +243,6 @@ public class HtmlReaderTests
         Assert.Equal("| Plan |  | Price |\n| Team | Yearly | 96 |", Assert.Single(doc.Blocks).Text);
     }
 
-    [Fact]
-    public async Task Data_uri_images_give_one_ImageNotRead_warning_and_remote_images_none()
-    {
-        var doc = await Sample();
-
-        var warning = Assert.Single(doc.Warnings);
-        Assert.Equal(IngestWarningCodes.ImageNotRead, warning.Code);
-        Assert.Equal("1 embedded image(s) were not read; register an OCR provider to read them.", warning.Message);
-        Assert.Null(warning.PageNumber);
-
-        var remoteOnly = await ReadAsync(Reader, "<p>Text</p><img src=\"https://example.com/a.png\">", "c.html");
-        Assert.Empty(remoteOnly.Warnings);
-    }
-
     [Fact] // Review Focus 2 (HTML case)
     public async Task Damaged_or_empty_input_never_throws()
     {

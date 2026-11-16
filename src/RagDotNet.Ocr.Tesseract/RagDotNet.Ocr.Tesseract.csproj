@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <Description>Tesseract OCR provider for RagDotNet: reads scanned PDF pages and images embedded in PDF, DOCX and HTML. Windows binaries are included; Linux and macOS use the system Tesseract (apt install tesseract-ocr, brew install tesseract). Language data is not included.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="TesseractOCR" />
+    <PackageReference Include="Microsoft.Extensions.Options" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="RagDotNet.Ocr.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\RagDotNet.Core\RagDotNet.Core.csproj" />
+    <ProjectReference Include="..\RagDotNet.Readers.Pdf.Rendering\RagDotNet.Readers.Pdf.Rendering.csproj" />
+  </ItemGroup>
+</Project>

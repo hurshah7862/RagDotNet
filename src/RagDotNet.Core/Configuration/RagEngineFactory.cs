@@ -5,6 +5,7 @@ using Microsoft.Extensions.VectorData;
 using RagDotNet.Chunking;
 using RagDotNet.Content;
 using RagDotNet.Documents;
+using RagDotNet.Ocr;
 using RagDotNet.Pipeline;
 using RagDotNet.Readers;
 using RagDotNet.Storage;
@@ -22,7 +23,10 @@ internal static class RagEngineFactory
         VectorStore store,
         ILoggerFactory? loggerFactory,
         IChunkContentStore? contentStore,
-        TimeProvider? time = null)
+        TimeProvider? time = null,
+        IOcrProvider? ocr = null,
+        IDocumentOcrProvider? documentOcr = null,
+        IEnumerable<IPageRenderer>? renderers = null)
     {
         var tokenizer = options.Tokenizer ?? TokenCounter.CreateDefault();
         var tokenizerName = options.Tokenizer is null ? "cl100k_base" : options.Tokenizer.GetType().FullName ?? "custom";
@@ -30,6 +34,11 @@ internal static class RagEngineFactory
         var logger = (loggerFactory ?? NullLoggerFactory.Instance).CreateLogger("RagDotNet");
         return new RagEngine(
             options, readers, new ChunkerRegistry(appChunkers, [new StructureAwareChunker(tokenizer), new FixedSizeChunker(tokenizer), new SemanticChunker(tokenizer, embedder, options.EmbeddingBatchSize, Math.Max(0, options.EmbeddingDimensions))]), new TokenCounter(tokenizer), tokenizerName,
-            embedder, new ChunkStore(store, options), new ManifestStore(store, options), logger, contentStore, time);
+            embedder, new ChunkStore(store, options), new ManifestStore(store, options), logger, contentStore, time)
+        {
+            OcrProvider = ocr,
+            DocumentOcrProvider = documentOcr,
+            PageRenderers = renderers?.ToList() ?? [],
+        };
     }
 }

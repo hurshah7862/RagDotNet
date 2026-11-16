@@ -45,7 +45,10 @@ public static class RagServiceCollectionExtensions
             sp.GetRequiredService<VectorStore>(),
             sp.GetService<ILoggerFactory>(),
             sp.GetService<IChunkContentStore>(),
-            sp.GetService<TimeProvider>() ?? TimeProvider.System));
+            sp.GetService<TimeProvider>() ?? TimeProvider.System,
+            sp.GetService<RagDotNet.Ocr.IOcrProvider>(),
+            sp.GetService<RagDotNet.Ocr.IDocumentOcrProvider>(),
+            sp.GetServices<RagDotNet.Ocr.IPageRenderer>()));
         services.TryAddScoped<IRagPipeline>(sp => new RagPipeline(
             sp.GetRequiredService<RagEngine>(), sp.GetService<IAccessScope>(), sp.GetService<IChatClient>()));
         services.TryAddSingleton<IRagAdmin>(sp => new RagAdmin(sp.GetRequiredService<RagEngine>(), sp.GetService<IChatClient>()));

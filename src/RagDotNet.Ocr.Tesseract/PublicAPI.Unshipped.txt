@@ -1,0 +1,16 @@
+#nullable enable
+Microsoft.Extensions.DependencyInjection.TesseractOcrExtensions
+RagDotNet.Configuration.TesseractOcrBuilderExtensions
+RagDotNet.Ocr.Tesseract.TesseractOcrOptions
+RagDotNet.Ocr.Tesseract.TesseractOcrOptions.DataPath.get -> string!
+RagDotNet.Ocr.Tesseract.TesseractOcrOptions.DataPath.set -> void
+RagDotNet.Ocr.Tesseract.TesseractOcrOptions.Languages.get -> string!
+RagDotNet.Ocr.Tesseract.TesseractOcrOptions.Languages.set -> void
+RagDotNet.Ocr.Tesseract.TesseractOcrOptions.TesseractOcrOptions() -> void
+RagDotNet.Ocr.Tesseract.TesseractOcrProvider
+RagDotNet.Ocr.Tesseract.TesseractOcrProvider.Dispose() -> void
+RagDotNet.Ocr.Tesseract.TesseractOcrProvider.Id.get -> string!
+RagDotNet.Ocr.Tesseract.TesseractOcrProvider.RecognizeAsync(RagDotNet.Ocr.ImageInput! image, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<RagDotNet.Ocr.OcrResult!>!
+RagDotNet.Ocr.Tesseract.TesseractOcrProvider.TesseractOcrProvider(RagDotNet.Ocr.Tesseract.TesseractOcrOptions! options) -> void
+static Microsoft.Extensions.DependencyInjection.TesseractOcrExtensions.AddTesseractOcr(this RagDotNet.Configuration.IRagBuilder! builder, System.Action<RagDotNet.Ocr.Tesseract.TesseractOcrOptions!>? configure = null) -> RagDotNet.Configuration.IRagBuilder!
+static RagDotNet.Configuration.TesseractOcrBuilderExtensions.AddTesseractOcr(this RagDotNet.Configuration.RagPipelineBuilder! builder, System.Action<RagDotNet.Ocr.Tesseract.TesseractOcrOptions!>? configure = null) -> RagDotNet.Configuration.RagPipelineBuilder!
