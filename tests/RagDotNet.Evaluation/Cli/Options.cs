@@ -19,6 +19,7 @@ public sealed record Options
           --chat-model <name>         Ollama chat model for multi-query/hyde (default llama3.2:3b)
           --dimensions <n>            Embedding dimensions (default 256 fake, 768 ollama)
           --modes <list>              vector,multi-query,hyde (default vector)
+          --retrieval <list>          vector,hybrid,hybrid-rerank (default vector); hybrid-rerank uses the chat model with ollama
           --chunkers <list>           structure-aware,fixed-size,semantic (default all three)
           --formats <list>            md,pdf,docx,html,scanned: also read the sets rendered in these formats (default md)
           --tessdata <dir>            Tesseract language data for scanned (default $RAGDOTNET_TESSDATA, else /usr/share/tesseract-ocr/5/tessdata)
@@ -45,6 +46,9 @@ public sealed record Options
 
     /// <summary>Retrieval modes.</summary>
     public IReadOnlyList<string> Modes { get; init; } = [EvaluationConfig.Vector];
+
+    /// <summary>Retrievals: vector, hybrid, hybrid-rerank.</summary>
+    public IReadOnlyList<string> Retrievals { get; init; } = [EvaluationConfig.RetrievalVector];
 
     /// <summary>Chunk sizes.</summary>
     public IReadOnlyList<int> MaxTokens { get; init; } = [128, 256, 512, 1024];
@@ -74,8 +78,8 @@ public sealed record Options
     /// <summary>Whether real (Ollama) providers are used.</summary>
     public bool IsReal => Embedder == "ollama";
 
-    /// <summary>Whether a selected mode needs a chat client.</summary>
-    public bool NeedsChat => Modes.Any(m => m != EvaluationConfig.Vector);
+    /// <summary>Whether a selected mode needs a chat client; hybrid-rerank does with real providers (fake mode uses a fake reranker).</summary>
+    public bool NeedsChat => Modes.Any(m => m != EvaluationConfig.Vector) || (IsReal && Retrievals.Contains(EvaluationConfig.RetrievalHybridRerank));
 
     /// <summary>Parses the arguments.</summary>
     /// <exception cref="OptionsException">An argument is unknown, missing its value, or invalid.</exception>
@@ -101,6 +105,7 @@ public sealed record Options
                 "--chat-model" => o with { ChatModel = NonEmpty(flag, value) },
                 "--dimensions" => SetDimensions(o, ParseInt(flag, value, 1), out dimensions),
                 "--modes" => o with { Modes = List(flag, value, m => EvaluationConfig.Modes.Contains(m) ? m : throw Bad(flag, m, "expected vector, multi-query or hyde")) },
+                "--retrieval" => o with { Retrievals = List(flag, value, r => EvaluationConfig.Retrievals.Contains(r) ? r : throw Bad(flag, r, "expected vector, hybrid or hybrid-rerank")) },
                 "--formats" => o with { Formats = List(flag, value, f => RagDotNet.Evaluation.Datasets.DatasetSet.Formats.Contains(f) ? f : throw Bad(flag, f, "expected md, pdf, docx, html or scanned")) },
                 "--tessdata" => o with { TessData = NonEmpty(flag, value) },
                 "--chunkers" => o with { Chunkers = List(flag, value, c => KnownChunkers.Contains(c) ? c : throw Bad(flag, c, "expected structure-aware, fixed-size or semantic")) },
@@ -116,7 +121,7 @@ public sealed record Options
     }
 
     private static readonly string[] Known =
-        ["--embedder", "--ollama-url", "--embed-model", "--chat-model", "--dimensions", "--modes", "--chunkers", "--formats", "--tessdata", "--max-tokens", "--overlap", "--dataset", "--output"];
+        ["--embedder", "--ollama-url", "--embed-model", "--chat-model", "--dimensions", "--modes", "--retrieval", "--chunkers", "--formats", "--tessdata", "--max-tokens", "--overlap", "--dataset", "--output"];
 
     private static bool IsKnown(string flag) => Known.Contains(flag, StringComparer.Ordinal);
 

@@ -7,9 +7,22 @@ namespace RagDotNet.Evaluation.Running;
 /// <param name="Chunker">Chunker name.</param>
 /// <param name="MaxTokens">Maximum tokens per chunk.</param>
 /// <param name="Overlap">Overlap ratio.</param>
-/// <param name="Mode">Retrieval mode: <c>vector</c>, <c>multi-query</c> or <c>hyde</c>.</param>
-public sealed record EvaluationConfig(string Chunker, int MaxTokens, double Overlap, string Mode)
+/// <param name="Mode">Query mode: <c>vector</c>, <c>multi-query</c> or <c>hyde</c>.</param>
+/// <param name="Retrieval">Retrieval: <c>vector</c>, <c>hybrid</c> or <c>hybrid-rerank</c>.</param>
+public sealed record EvaluationConfig(string Chunker, int MaxTokens, double Overlap, string Mode, string Retrieval = EvaluationConfig.RetrievalVector)
 {
+    /// <summary>Vector search only (<c>HybridMode.Off</c>).</summary>
+    public const string RetrievalVector = "vector";
+
+    /// <summary>Vector and keyword search fused with RRF, through the in-memory keyword index.</summary>
+    public const string RetrievalHybrid = "hybrid";
+
+    /// <summary>Hybrid, then a reranker over the fused candidates.</summary>
+    public const string RetrievalHybridRerank = "hybrid-rerank";
+
+    /// <summary>All supported retrievals.</summary>
+    public static IReadOnlyList<string> Retrievals { get; } = [RetrievalVector, RetrievalHybrid, RetrievalHybridRerank];
+
     /// <summary>Plain vector search.</summary>
     public const string Vector = "vector";
 
@@ -28,17 +41,19 @@ public sealed record EvaluationConfig(string Chunker, int MaxTokens, double Over
     public static IReadOnlyList<string> Modes { get; } = [Vector, MultiQuery, Hyde];
 
     /// <summary>
-    /// Every combination, in nested order chunker → MaxTokens → overlap → mode. The semantic chunker ignores overlap, so it
-    /// runs once per MaxTokens with overlap 0 whatever <paramref name="overlaps"/> holds.
+    /// Every combination, in nested order chunker → MaxTokens → overlap → mode → retrieval. The semantic chunker ignores
+    /// overlap, so it runs once per MaxTokens with overlap 0 whatever <paramref name="overlaps"/> holds. Retrieval defaults to vector.
     /// </summary>
     public static IReadOnlyList<EvaluationConfig> Matrix(
-        IReadOnlyList<string> chunkers, IReadOnlyList<int> maxTokens, IReadOnlyList<double> overlaps, IReadOnlyList<string> modes) =>
+        IReadOnlyList<string> chunkers, IReadOnlyList<int> maxTokens, IReadOnlyList<double> overlaps, IReadOnlyList<string> modes,
+        IReadOnlyList<string>? retrievals = null) =>
         [
             .. from c in chunkers
                from t in maxTokens
                from o in c == Chunkers.Semantic ? NoOverlap : overlaps
                from m in modes
-               select new EvaluationConfig(c, t, o, m),
+               from r in retrievals ?? [RetrievalVector]
+               select new EvaluationConfig(c, t, o, m, r),
         ];
 }
 

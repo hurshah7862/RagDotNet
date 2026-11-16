@@ -7,11 +7,25 @@ namespace RagDotNet.Evaluation.Datasets;
 /// <param name="Text">The question text.</param>
 /// <param name="DocumentId">The document that answers it (its file name without extension).</param>
 /// <param name="Evidence">A short verbatim fragment of the answering passage; occurs exactly once in the corpus.</param>
+/// <param name="Tags">Optional labels; questions tagged <see cref="ExactTerm"/> are also scored on their own.</param>
 public sealed record Question(
     [property: JsonPropertyName("id")] string Id,
     [property: JsonPropertyName("question")] string Text,
     [property: JsonPropertyName("documentId")] string DocumentId,
-    [property: JsonPropertyName("evidence")] string Evidence);
+    [property: JsonPropertyName("evidence")] string Evidence,
+    [property: JsonPropertyName("tags")] IReadOnlyList<string>? Tags = null)
+{
+    /// <summary>The tag of questions whose answer hinges on an exact term: a version, an error code, a setting name.</summary>
+    public const string ExactTerm = "exact-term";
+
+    /// <summary>Value equality, comparing tags element by element.</summary>
+    public bool Equals(Question? other) =>
+        other is not null && Id == other.Id && Text == other.Text && DocumentId == other.DocumentId && Evidence == other.Evidence
+        && (Tags ?? []).SequenceEqual(other.Tags ?? []);
+
+    /// <inheritdoc />
+    public override int GetHashCode() => HashCode.Combine(Id, Text, DocumentId, Evidence);
+}
 
 /// <summary>A corpus document.</summary>
 /// <param name="DocumentId">The file name without extension.</param>

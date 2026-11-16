@@ -58,7 +58,7 @@ public class ScannedFormatTests
 
         Assert.True(code == 0, err);
         Assert.Contains("## base · scanned", report, StringComparison.Ordinal);
-        Assert.Matches(@"- Evidence intact after OCR: \d+ of 40", report);
+        Assert.Matches(@"- Evidence intact after OCR: \d+ of 48", report);
     }
 
     [Fact]

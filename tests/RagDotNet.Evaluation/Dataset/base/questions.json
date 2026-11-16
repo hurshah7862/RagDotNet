@@ -45,5 +45,13 @@
   { "id": "release-2", "question": "What is the last version that runs on 32-bit Windows?", "documentId": "release-notes", "evidence": "The last version for 32-bit Windows is 2.9.4" },
   { "id": "release-3", "question": "When did modal editing arrive and how is it turned on?", "documentId": "release-notes", "evidence": "switched on with the `editor.vim_mode` setting" },
   { "id": "release-4", "question": "For how long does an older minor version keep getting patched for security?", "documentId": "release-notes", "evidence": "receives security fixes for six months" },
-  { "id": "release-5", "question": "Which plugin method replaces the deprecated app.vault.read?", "documentId": "release-notes", "evidence": "deprecated in favour of `app.notes.get`" }
+  { "id": "release-5", "question": "Which plugin method replaces the deprecated app.vault.read?", "documentId": "release-notes", "evidence": "deprecated in favour of `app.notes.get`" },
+  { "id": "exact-1", "question": "What does sync.interval_minutes set?", "documentId": "configuration", "evidence": "Minutes between automatic syncs when changes are waiting", "tags": ["exact-term"] },
+  { "id": "exact-2", "question": "What does search.index_attachments do?", "documentId": "configuration", "evidence": "Also index the text of PDF attachments for search", "tags": ["exact-term"] },
+  { "id": "exact-3", "question": "What does render.gpu control?", "documentId": "configuration", "evidence": "Draw the editor with GPU acceleration", "tags": ["exact-term"] },
+  { "id": "exact-4", "question": "What happens with msiexec /i quill.msi /qn ALLUSERS=1?", "documentId": "install-guide", "evidence": "Silent installs never open the welcome screen", "tags": ["exact-term"] },
+  { "id": "exact-5", "question": "What did 2.9.3 fix?", "documentId": "release-notes", "evidence": "fixed WebDAV sync failing on servers that return file names", "tags": ["exact-term"] },
+  { "id": "exact-6", "question": "What did 2.9.0 add?", "documentId": "release-notes", "evidence": "added the importer for exported Markdown and HTML folders", "tags": ["exact-term"] },
+  { "id": "exact-7", "question": "Where is AES-256-GCM used?", "documentId": "security-and-privacy", "evidence": "encrypts each file with AES-256-GCM", "tags": ["exact-term"] },
+  { "id": "exact-8", "question": "What is minAppVersion for?", "documentId": "plugin-api", "evidence": "stops the plugin from loading on older versions of Quill", "tags": ["exact-term"] }
 ]

@@ -6,6 +6,7 @@ using RagDotNet.Evaluation.Running;
 using RagDotNet.Ocr;
 using RagDotNet.Ocr.Tesseract;
 using RagDotNet.Readers.Pdf.Rendering;
+using RagDotNet.Retrieval;
 
 namespace RagDotNet.Evaluation;
 
@@ -144,8 +145,9 @@ public static class Program
         using var ownedEmbedder = embedder;
         using var ownedChat = chat;
 
-        var configs = EvaluationConfig.Matrix(options.Chunkers, options.MaxTokens, options.Overlaps, options.Modes);
-        var results = await new EvaluationRunner(embedder, options.Dimensions, chat, ocr).RunAsync(sets, configs, ct).ConfigureAwait(false);
+        var configs = EvaluationConfig.Matrix(options.Chunkers, options.MaxTokens, options.Overlaps, options.Modes, options.Retrievals);
+        var reranker = CreateReranker(options, chat);
+        var results = await new EvaluationRunner(embedder, options.Dimensions, chat, ocr, reranker).RunAsync(sets, configs, ct).ConfigureAwait(false);
         var report = ReportWriter.Write(meta, sets, results);
 
         await stdout.WriteAsync(report).ConfigureAwait(false);
@@ -157,5 +159,17 @@ public static class Program
         }
 
         return Ok;
+    }
+
+    /// <summary>
+    /// The reranker for <c>hybrid-rerank</c>: <see cref="LlmReranker"/> over the chat model with real providers, a
+    /// deterministic <see cref="FakeReranker"/> in fake mode; null when no configuration reranks.
+    /// </summary>
+    public static IReranker? CreateReranker(Options options, IChatClient? chat)
+    {
+        if (!options.Retrievals.Contains(EvaluationConfig.RetrievalHybridRerank)) return null;
+        return options.IsReal
+            ? new LlmReranker(chat ?? throw new InvalidOperationException("hybrid-rerank with ollama needs a chat client."))
+            : new FakeReranker();
     }
 }
