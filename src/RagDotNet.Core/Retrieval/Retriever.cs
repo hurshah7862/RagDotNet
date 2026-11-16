@@ -9,6 +9,7 @@ using RagDotNet.Configuration;
 using RagDotNet.Diagnostics;
 using RagDotNet.Embedding;
 using RagDotNet.Filtering;
+using RagDotNet.Keyword;
 using RagDotNet.Pipeline;
 using RagDotNet.Storage;
 
@@ -27,6 +28,15 @@ internal sealed class Retriever(RagEngine engine)
             MatchesNothing = matchesNothing;
             ReindexInProgress = reindexInProgress;
         }
+
+        /// <summary>The keyword search this call runs; None is vector-only.</summary>
+        public KeywordPath Path { get; init; }
+
+        /// <summary>The keyword index constraint, for the index path.</summary>
+        public KeywordFilter? KeywordFilter { get; init; }
+
+        /// <summary>Whether this call requires hybrid search (<see cref="HybridMode.On"/>).</summary>
+        public bool HybridRequired { get; init; }
 
         /// <summary>The validated TopK, captured once so a search never re-reads the caller's options after the chat calls.</summary>
         public int TopK { get; }
@@ -99,8 +109,41 @@ internal sealed class Retriever(RagEngine engine)
                     "A reindex to embedding model {ModelId} is in progress; answers include only documents already re-embedded.", engine.EmbeddingModelId);
         }
 
-        return new Prepared(o.TopK, o.MinScore, filter, matchesNothing: false, reindexInProgress: reindexing);
+        var mode = o.Hybrid ?? options.Hybrid;
+        var path = KeywordPath.None;
+        if (mode != HybridMode.Off)
+        {
+            path = engine.KeywordPath;
+            if (path == KeywordPath.None)
+            {
+                if (mode == HybridMode.On)
+                    throw new HybridSearchUnavailableException(options.Hybrid == HybridMode.Off
+                        ? "Hybrid search was requested for this call, but RagOptions.Hybrid is Off, so no keyword index is kept. Set RagOptions.Hybrid to Auto or On."
+                        : UnavailableMessage);
+                // With Off in the options, a call left on Auto is simply vector-only.
+                if (options.Hybrid != HybridMode.Off && Interlocked.Exchange(ref _unavailableWarned, 1) == 0)
+                    engine.Logger.LogWarning(UnavailableMessage);
+            }
+        }
+
+        KeywordFilter? keywordFilter = null;
+        if (path != KeywordPath.None) // also for native, which may fall back to the index
+            keywordFilter =KeywordFilters.Build(scope, o.IncludeCommon, partitioned, o.Filter, options.Metadata, out _);
+
+        return new Prepared(o.TopK, o.MinScore, filter, matchesNothing: false, reindexInProgress: reindexing)
+        {
+            Path = path,
+            KeywordFilter = keywordFilter,
+            HybridRequired = mode == HybridMode.On,
+        };
     }
+
+    private const string UnavailableMessage =
+        "Hybrid search is unavailable: the vector store has no native hybrid search and no keyword index is registered. Retrieval is vector-only. Register one with AddInMemoryKeywordIndex() or AddLuceneKeywordIndex().";
+
+    private int _unavailableWarned;
+    private int _minScoreWarned;
+    private int _driftWarned;
 
     /// <summary>Searches the store with already-planned queries and the state returned by <see cref="PrepareAsync"/>.</summary>
     public async Task<IReadOnlyList<RetrievedChunk>> SearchAsync(IReadOnlyList<string> queries, Prepared prepared, CancellationToken ct)
@@ -115,7 +158,7 @@ internal sealed class Retriever(RagEngine engine)
         if (prepared.ReindexInProgress) activity?.SetTag("rag.reindex.in_progress", true);
         try
         {
-            IReadOnlyList<RetrievedChunk> results = prepared.MatchesNothing ? [] : await SearchCoreAsync(queries, prepared, ct).ConfigureAwait(false);
+            IReadOnlyList<RetrievedChunk> results = prepared.MatchesNothing ? [] : await SearchCoreAsync(queries, prepared, activity, ct).ConfigureAwait(false);
             activity?.SetTag("rag.result.count", results.Count);
             RagTelemetry.RetrieveCount.Record(results.Count);
             return results;
@@ -138,30 +181,63 @@ internal sealed class Retriever(RagEngine engine)
         if (queries.Any(string.IsNullOrWhiteSpace)) throw new ArgumentException("Queries must not be null, empty or whitespace.", nameof(queries));
     }
 
-    private async Task<List<RetrievedChunk>> SearchCoreAsync(IReadOnlyList<string> queries, Prepared prepared, CancellationToken ct)
+    private async Task<List<RetrievedChunk>> SearchCoreAsync(IReadOnlyList<string> queries, Prepared prepared, Activity? activity, CancellationToken ct)
+    {
+        var vectors = await EmbedQueriesAsync(queries, ct).ConfigureAwait(false);
+        var path = prepared.Path;
+        while (true)
+        {
+            try
+            {
+                return await SearchPathAsync(queries, vectors, prepared, path, activity, ct).ConfigureAwait(false);
+            }
+            catch (NativeHybridUnsupportedException ex)
+            {
+                // A connector that implements hybrid search but cannot serve dynamic records: fall back for the rest of the process.
+                await engine.SwitchFromNativeAsync(ex.InnerException!, ct).ConfigureAwait(false);
+                path = engine.KeywordPath;
+                if (path == KeywordPath.None && prepared.HybridRequired) throw new HybridSearchUnavailableException(UnavailableMessage);
+            }
+        }
+    }
+
+    private async Task<List<RetrievedChunk>> SearchPathAsync(
+        IReadOnlyList<string> queries, List<ReadOnlyMemory<float>> vectors, Prepared prepared, KeywordPath path, Activity? activity, CancellationToken ct)
     {
         var options = engine.Options;
         var filter = prepared.Filter;
-        var vectors = await EmbedQueriesAsync(queries, ct).ConfigureAwait(false);
+        var hybrid = path != KeywordPath.None;
+        activity?.SetTag("rag.hybrid.path", path.ToString().ToLowerInvariant());
+        if (hybrid && prepared.MinScore is not null && Interlocked.Exchange(ref _minScoreWarned, 1) == 0)
+            engine.Logger.LogWarning("MinScore is ignored for hybrid results without a reranker, because fused scores are not similarities.");
 
+        // Vector-only fetches TopK exactly as before hybrid search existed; hybrid fetches more from each path before fusion.
+        var fetch = hybrid ? Math.Max(prepared.TopK, options.HybridCandidates) : prepared.TopK;
+        var keywordCount = 0;
         var rankings = new List<IReadOnlyList<RetrievedChunk>>(queries.Count);
-        foreach (var vector in vectors)
+        for (var i = 0; i < queries.Count; i++)
         {
-            var ranking = new List<RetrievedChunk>();
-            await foreach (var hit in engine.Chunks.SearchAsync(vector, prepared.TopK, filter, ct).ConfigureAwait(false))
+            switch (path)
             {
-                var score = hit.Score ?? throw new InvalidOperationException("The vector store returned a result without a score.");
-                if (options.DistanceFunction == DistanceFunction.CosineDistance) score = 1 - score;
-                if (prepared.MinScore is { } min && score < min) continue;
-                ranking.Add(Map(hit.Record, score));
+                case KeywordPath.Native:
+                    rankings.Add(await NativeSearchAsync(queries[i], vectors[i], fetch, filter, ct).ConfigureAwait(false));
+                    break;
+                case KeywordPath.Index:
+                    var vectorRanking = await VectorSearchAsync(vectors[i], fetch, filter, null, ct).ConfigureAwait(false);
+                    var keywordRanking = await KeywordSearchAsync(queries[i], fetch, prepared, ct).ConfigureAwait(false);
+                    keywordCount += keywordRanking.Count;
+                    rankings.Add(RankFusion.Reciprocal([vectorRanking, keywordRanking], fetch));
+                    break;
+                default:
+                    rankings.Add(await VectorSearchAsync(vectors[i], fetch, filter, prepared.MinScore, ct).ConfigureAwait(false));
+                    break;
             }
-
-            ranking.Sort(RankFusion.Compare);
-            rankings.Add(ranking);
         }
 
+        if (path == KeywordPath.Index) activity?.SetTag("rag.keyword.count", keywordCount);
+
         // Text is fetched once, below, for the final results only.
-        var results = queries.Count == 1 ? rankings[0].ToList() : RankFusion.Reciprocal(rankings, prepared.TopK).ToList();
+        var results = queries.Count == 1 ? rankings[0].Take(prepared.TopK).ToList() : RankFusion.Reciprocal(rankings, prepared.TopK).ToList();
 
         if (engine.ContentStore is { } contentStore && results.Count > 0)
         {
@@ -185,6 +261,88 @@ internal sealed class Retriever(RagEngine engine)
         results.Sort(RankFusion.Compare);
         return results;
     }
+
+    /// <summary>One vector search, best first, with similarity scores; <paramref name="minScore"/> drops weaker results.</summary>
+    private async Task<List<RetrievedChunk>> VectorSearchAsync(
+        ReadOnlyMemory<float> vector, int top, Expression<Func<Dictionary<string, object?>, bool>>? filter, double? minScore, CancellationToken ct)
+    {
+        var ranking = new List<RetrievedChunk>();
+        await foreach (var hit in engine.Chunks.SearchAsync(vector, top, filter, ct).ConfigureAwait(false))
+        {
+            var score = hit.Score ?? throw new InvalidOperationException("The vector store returned a result without a score.");
+            if (engine.Options.DistanceFunction == DistanceFunction.CosineDistance) score = 1 - score;
+            if (minScore is { } min && score < min) continue;
+            ranking.Add(Map(hit.Record, score));
+        }
+
+        ranking.Sort(RankFusion.Compare);
+        return ranking;
+    }
+
+    /// <summary>
+    /// Searches the keyword index and resolves the hits to chunk records in one batch. Hits the store no longer has are
+    /// dropped as drift; during a reindex, hits not yet on the configured model are dropped.
+    /// </summary>
+    private async Task<List<RetrievedChunk>> KeywordSearchAsync(string query, int top, Prepared prepared, CancellationToken ct)
+    {
+        var hits = await engine.KeywordIndex!.SearchAsync(query, prepared.KeywordFilter!, top, ct).ConfigureAwait(false);
+        if (hits.Count == 0) return [];
+
+        var records = new Dictionary<string, Dictionary<string, object?>>(StringComparer.Ordinal);
+        foreach (var r in await engine.Chunks.GetAsync(hits.Select(h => h.ChunkKey), includeVectors: false, ct).ConfigureAwait(false))
+            records[Map(r, 0).ChunkKey] = r;
+
+        var ranking = new List<RetrievedChunk>(hits.Count);
+        var drift = 0;
+        foreach (var hit in hits)
+        {
+            if (!records.TryGetValue(hit.ChunkKey, out var record))
+            {
+                drift++;
+                if (Interlocked.Exchange(ref _driftWarned, 1) == 0)
+                    engine.Logger.LogWarning(
+                        "The keyword index returned chunk {ChunkKey}, which the vector store does not have; the index is out of step. Run IRagAdmin.RebuildKeywordIndexAsync to fix it.",
+                        hit.ChunkKey);
+                continue;
+            }
+
+            if (prepared.ReindexInProgress && !string.Equals(record.GetValueOrDefault("EmbeddingModelId") as string, engine.EmbeddingModelId, StringComparison.Ordinal))
+                continue;
+            ranking.Add(Map(record, hit.Score));
+        }
+
+        if (drift > 0) RagTelemetry.KeywordDrift.Add(drift);
+        return ranking;
+    }
+
+    /// <summary>One call to the vector store's own hybrid search; its results are already fused.</summary>
+    private async Task<IReadOnlyList<RetrievedChunk>> NativeSearchAsync(
+        string query, ReadOnlyMemory<float> vector, int top, Expression<Func<Dictionary<string, object?>, bool>>? filter, CancellationToken ct)
+    {
+        var keywords = KeywordTokenizer.Terms(query).Distinct(StringComparer.Ordinal).ToList();
+        // No keywords (only stop words or punctuation): the vector list alone, fused like any hybrid result.
+        if (keywords.Count == 0) return RankFusion.Reciprocal([await VectorSearchAsync(vector, top, filter, null, ct).ConfigureAwait(false)], top);
+
+        var ranking = new List<RetrievedChunk>();
+        try
+        {
+            await foreach (var hit in engine.Chunks.HybridSearchAsync(vector, keywords, top, filter, ct).ConfigureAwait(false))
+            {
+                var score = hit.Score ?? throw new InvalidOperationException("The vector store returned a hybrid result without a score.");
+                ranking.Add(Map(hit.Record, score) with { ScoreKind = ScoreKind.Fused });
+            }
+        }
+        catch (NotSupportedException ex)
+        {
+            throw new NativeHybridUnsupportedException(ex);
+        }
+
+        ranking.Sort(RankFusion.Compare);
+        return ranking;
+    }
+
+    /// <summary>Carries a NotSupportedException from the native hybrid call only, so other NotSupportedExceptions propagate.</summary>
+    private sealed class NativeHybridUnsupportedException(NotSupportedException inner) : Exception(inner.Message, inner);
 
     /// <summary>Embeds the queries in batches of <see cref="RagOptions.EmbeddingBatchSize"/>, as ingestion does, keeping their order.</summary>
     private async Task<List<ReadOnlyMemory<float>>> EmbedQueriesAsync(IReadOnlyList<string> queries, CancellationToken ct)

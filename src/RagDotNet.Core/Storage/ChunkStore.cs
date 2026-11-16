@@ -37,5 +37,10 @@ internal sealed class ChunkStore(VectorStore store, RagOptions options)
         ReadOnlyMemory<float> vector, int top, Expression<Func<Dictionary<string, object?>, bool>>? filter, CancellationToken ct) =>
         _collection.SearchAsync(vector, top, new VectorSearchOptions<Dictionary<string, object?>> { Filter = filter }, ct);
 
+    /// <summary>The store's own hybrid search over the full-text indexed Text property.</summary>
+    public IAsyncEnumerable<VectorSearchResult<Dictionary<string, object?>>> HybridSearchAsync(
+        ReadOnlyMemory<float> vector, ICollection<string> keywords, int top, Expression<Func<Dictionary<string, object?>, bool>>? filter, CancellationToken ct) =>
+        Hybrid!.HybridSearchAsync(vector, keywords, top, new HybridSearchOptions<Dictionary<string, object?>> { Filter = filter, AdditionalProperty = r => r["Text"] }, ct);
+
     private object ConvertKey(string key) => options.KeyType == RagKeyType.Guid ? ChunkKeys.ToGuid(key) : key;
 }

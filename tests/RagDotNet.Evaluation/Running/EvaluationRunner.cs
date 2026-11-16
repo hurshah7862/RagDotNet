@@ -52,11 +52,16 @@ public sealed class EvaluationRunner(IEmbeddingGenerator<string, Embedding<float
                 .AddPdfReader()
                 .AddDocxReader()
                 .AddHtmlReader()
-                .Configure(o => o.Chunking = new ChunkingOptions
+                .Configure(o =>
                 {
-                    Chunker = group.Key.Chunker,
-                    MaxTokens = group.Key.MaxTokens,
-                    OverlapRatio = group.Key.Overlap,
+                    o.Chunking = new ChunkingOptions
+                    {
+                        Chunker = group.Key.Chunker,
+                        MaxTokens = group.Key.MaxTokens,
+                        OverlapRatio = group.Key.Overlap,
+                    };
+                    // The vector, multi-query and hyde modes measure vector retrieval, as before hybrid search existed.
+                    o.Hybrid = RagDotNet.Retrieval.HybridMode.Off;
                 });
             if (chat is not null)
             {

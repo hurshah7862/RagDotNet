@@ -25,7 +25,7 @@ public class RetrievalTests
     [Fact]
     public async Task Returns_most_similar_chunks_first_with_metadata_and_heading_path()
     {
-        var (pipeline, _, _, _, _) = Create(o => o.Metadata.Add<string>("tenant"));
+        var (pipeline, _, _, _, _) = Create(o => { o.Metadata.Add<string>("tenant"); o.Hybrid = HybridMode.Off; });
         await pipeline.IngestAsync(Md("near", "# Guide\n\n## Setup\n\nalpha beta gamma", Tenant("a")), cancellationToken: Ct);
         await pipeline.IngestAsync(Md("far", "zulu yankee xray", Tenant("b")), cancellationToken: Ct);
 
@@ -61,7 +61,7 @@ public class RetrievalTests
     [Fact]
     public async Task MinScore_drops_low_similarity_results()
     {
-        var (pipeline, _, _, _, _) = Create();
+        var (pipeline, _, _, _, _) = Create(o => o.Hybrid = HybridMode.Off);
         await pipeline.IngestAsync(Md("near", "alpha beta gamma"), cancellationToken: Ct);
         await pipeline.IngestAsync(Md("far", "zulu yankee xray"), cancellationToken: Ct);
 
@@ -115,7 +115,7 @@ public class RetrievalTests
     [Fact]
     public async Task CosineDistance_scores_are_converted_to_similarity()
     {
-        var (pipeline, _, _, _, _) = Create(o => o.DistanceFunction = DistanceFunction.CosineDistance);
+        var (pipeline, _, _, _, _) = Create(o => { o.DistanceFunction = DistanceFunction.CosineDistance; o.Hybrid = HybridMode.Off; });
         await pipeline.IngestAsync(Md("near", "alpha beta gamma"), cancellationToken: Ct);
         await pipeline.IngestAsync(Md("far", "zulu yankee xray"), cancellationToken: Ct);
 
@@ -367,7 +367,7 @@ public class RetrievalTests
     [Fact]
     public async Task Single_query_keeps_similarity_scores()
     {
-        var (pipeline, _, _, _, _) = Create();
+        var (pipeline, _, _, _, _) = Create(o => o.Hybrid = HybridMode.Off);
         await pipeline.IngestAsync(Md("d1", "alpha beta gamma"), cancellationToken: Ct);
         await pipeline.IngestAsync(Md("d2", "zulu yankee xray"), cancellationToken: Ct);
 
