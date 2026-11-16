@@ -38,6 +38,9 @@ internal sealed class Retriever(RagEngine engine)
         /// <summary>Whether this call requires hybrid search (<see cref="HybridMode.On"/>).</summary>
         public bool HybridRequired { get; init; }
 
+        /// <summary>The reranker this call runs, if any.</summary>
+        public IReranker? Reranker { get; init; }
+
         /// <summary>The validated TopK, captured once so a search never re-reads the caller's options after the chat calls.</summary>
         public int TopK { get; }
 
@@ -57,7 +60,7 @@ internal sealed class Retriever(RagEngine engine)
     {
         ValidateQueries(queries);
         var prepared = await PrepareAsync(scope, o, ct).ConfigureAwait(false);
-        return await SearchAsync(queries, prepared, ct).ConfigureAwait(false);
+        return await SearchAsync(queries, prepared, ct, queries[0]).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -89,6 +92,8 @@ internal sealed class Retriever(RagEngine engine)
         ArgumentNullException.ThrowIfNull(o);
         if (o.TopK is < 1 or > 100)
             throw new ArgumentOutOfRangeException("TopK", o.TopK, "TopK must be between 1 and 100.");
+        if (o.UseReranker == true && engine.Reranker is null)
+            throw new InvalidOperationException("UseReranker is true but no reranker is registered. Register one with AddLlmReranker() or AddReranker<T>().");
 
         if (!scope.Permissions.HasFlag(RagPermissions.Read))
             throw new RagAccessDeniedException("retrieve", RagPermissions.Read, "retrieve: The access scope does not grant Read.");
@@ -135,6 +140,7 @@ internal sealed class Retriever(RagEngine engine)
             Path = path,
             KeywordFilter = keywordFilter,
             HybridRequired = mode == HybridMode.On,
+            Reranker = o.UseReranker == false ? null : engine.Reranker,
         };
     }
 
@@ -145,8 +151,11 @@ internal sealed class Retriever(RagEngine engine)
     private int _minScoreWarned;
     private int _driftWarned;
 
-    /// <summary>Searches the store with already-planned queries and the state returned by <see cref="PrepareAsync"/>.</summary>
-    public async Task<IReadOnlyList<RetrievedChunk>> SearchAsync(IReadOnlyList<string> queries, Prepared prepared, CancellationToken ct)
+    /// <summary>
+    /// Searches the store with already-planned queries and the state returned by <see cref="PrepareAsync"/>. A reranker reads
+    /// the candidates against <paramref name="question"/>, the user's own question (the first query when null).
+    /// </summary>
+    public async Task<IReadOnlyList<RetrievedChunk>> SearchAsync(IReadOnlyList<string> queries, Prepared prepared, CancellationToken ct, string? question = null)
     {
         ValidateQueries(queries);
         ArgumentNullException.ThrowIfNull(prepared);
@@ -158,7 +167,7 @@ internal sealed class Retriever(RagEngine engine)
         if (prepared.ReindexInProgress) activity?.SetTag("rag.reindex.in_progress", true);
         try
         {
-            IReadOnlyList<RetrievedChunk> results = prepared.MatchesNothing ? [] : await SearchCoreAsync(queries, prepared, activity, ct).ConfigureAwait(false);
+            IReadOnlyList<RetrievedChunk> results = prepared.MatchesNothing ? [] : await SearchCoreAsync(queries, question ?? queries[0], prepared, activity, ct).ConfigureAwait(false);
             activity?.SetTag("rag.result.count", results.Count);
             RagTelemetry.RetrieveCount.Record(results.Count);
             return results;
@@ -181,7 +190,7 @@ internal sealed class Retriever(RagEngine engine)
         if (queries.Any(string.IsNullOrWhiteSpace)) throw new ArgumentException("Queries must not be null, empty or whitespace.", nameof(queries));
     }
 
-    private async Task<List<RetrievedChunk>> SearchCoreAsync(IReadOnlyList<string> queries, Prepared prepared, Activity? activity, CancellationToken ct)
+    private async Task<List<RetrievedChunk>> SearchCoreAsync(IReadOnlyList<string> queries, string question, Prepared prepared, Activity? activity, CancellationToken ct)
     {
         var vectors = await EmbedQueriesAsync(queries, ct).ConfigureAwait(false);
         var path = prepared.Path;
@@ -189,7 +198,7 @@ internal sealed class Retriever(RagEngine engine)
         {
             try
             {
-                return await SearchPathAsync(queries, vectors, prepared, path, activity, ct).ConfigureAwait(false);
+                return await SearchPathAsync(queries, question, vectors, prepared, path, activity, ct).ConfigureAwait(false);
             }
             catch (NativeHybridUnsupportedException ex)
             {
@@ -202,17 +211,21 @@ internal sealed class Retriever(RagEngine engine)
     }
 
     private async Task<List<RetrievedChunk>> SearchPathAsync(
-        IReadOnlyList<string> queries, List<ReadOnlyMemory<float>> vectors, Prepared prepared, KeywordPath path, Activity? activity, CancellationToken ct)
+        IReadOnlyList<string> queries, string question, List<ReadOnlyMemory<float>> vectors, Prepared prepared, KeywordPath path, Activity? activity, CancellationToken ct)
     {
         var options = engine.Options;
         var filter = prepared.Filter;
         var hybrid = path != KeywordPath.None;
         activity?.SetTag("rag.hybrid.path", path.ToString().ToLowerInvariant());
-        if (hybrid && prepared.MinScore is not null && Interlocked.Exchange(ref _minScoreWarned, 1) == 0)
+        var reranker = prepared.Reranker;
+        if (hybrid && reranker is null && prepared.MinScore is not null && Interlocked.Exchange(ref _minScoreWarned, 1) == 0)
             engine.Logger.LogWarning("MinScore is ignored for hybrid results without a reranker, because fused scores are not similarities.");
 
-        // Vector-only fetches TopK exactly as before hybrid search existed; hybrid fetches more from each path before fusion.
-        var fetch = hybrid ? Math.Max(prepared.TopK, options.HybridCandidates) : prepared.TopK;
+        // Vector-only fetches TopK exactly as before hybrid search existed; hybrid fetches more from each path before fusion,
+        // and a reranker sees a pool of RerankCandidates. MinScore then applies to rerank scores, not similarities.
+        var pool = reranker is null ? prepared.TopK : Math.Max(prepared.TopK, options.RerankCandidates);
+        var fetch = hybrid ? Math.Max(pool, options.HybridCandidates) : pool;
+        var vectorMinScore = reranker is null ? prepared.MinScore : null;
         var keywordCount = 0;
         var rankings = new List<IReadOnlyList<RetrievedChunk>>(queries.Count);
         for (var i = 0; i < queries.Count; i++)
@@ -229,7 +242,7 @@ internal sealed class Retriever(RagEngine engine)
                     rankings.Add(RankFusion.Reciprocal([vectorRanking, keywordRanking], fetch));
                     break;
                 default:
-                    rankings.Add(await VectorSearchAsync(vectors[i], fetch, filter, prepared.MinScore, ct).ConfigureAwait(false));
+                    rankings.Add(await VectorSearchAsync(vectors[i], fetch, filter, vectorMinScore, ct).ConfigureAwait(false));
                     break;
             }
         }
@@ -237,7 +250,7 @@ internal sealed class Retriever(RagEngine engine)
         if (path == KeywordPath.Index) activity?.SetTag("rag.keyword.count", keywordCount);
 
         // Text is fetched once, below, for the final results only.
-        var results = queries.Count == 1 ? rankings[0].Take(prepared.TopK).ToList() : RankFusion.Reciprocal(rankings, prepared.TopK).ToList();
+        var results = queries.Count == 1 ? rankings[0].Take(pool).ToList() : RankFusion.Reciprocal(rankings, pool).ToList();
 
         if (engine.ContentStore is { } contentStore && results.Count > 0)
         {
@@ -259,7 +272,52 @@ internal sealed class Retriever(RagEngine engine)
         }
 
         results.Sort(RankFusion.Compare);
-        return results;
+        return reranker is null || results.Count == 0 ? results : await RerankAsync(reranker, question, results, prepared, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Reranks the candidates against the question, validates the reranker's answer, then applies MinScore and TopK. A
+    /// <see cref="RerankFallbackException"/> keeps the fused order, with a warning.
+    /// </summary>
+    private async Task<List<RetrievedChunk>> RerankAsync(IReranker reranker, string question, List<RetrievedChunk> candidates, Prepared prepared, CancellationToken ct)
+    {
+        using var activity = RagTelemetry.ActivitySource.StartActivity("rag.rerank");
+        activity?.SetTag("rag.rerank.candidates", candidates.Count);
+        var name = reranker.GetType().Name;
+        IReadOnlyList<RerankResult> ranked;
+        try
+        {
+            ranked = await reranker.RerankAsync(question, candidates, prepared.TopK, ct).ConfigureAwait(false)
+                ?? throw new InvalidOperationException($"The reranker {name} returned null.");
+        }
+        catch (RerankFallbackException ex)
+        {
+            activity?.SetTag("rag.rerank.fallback", true);
+            engine.Logger.LogWarning("The reranker {Reranker} gave up ({Reason}); results keep the fused order.", name, ex.Message);
+            return candidates.Take(prepared.TopK).ToList();
+        }
+        catch (Exception ex)
+        {
+            RagTelemetry.Fail(activity, ex);
+            throw;
+        }
+
+        var seen = new HashSet<int>();
+        foreach (var r in ranked)
+        {
+            if (r is null || r.Index < 0 || r.Index >= candidates.Count || !seen.Add(r.Index))
+                throw new InvalidOperationException($"The reranker {name} returned an invalid or repeated candidate index ({r?.Index}); indexes must be distinct and from 0 to {candidates.Count - 1}.");
+            if (!double.IsFinite(r.Score) || r.Score is < 0 or > 1)
+                throw new InvalidOperationException($"The reranker {name} returned score {r.Score} for candidate {r.Index}; scores must be from 0 to 1.");
+        }
+
+        // Highest score first; equal scores keep the reranker's order.
+        return ranked
+            .OrderByDescending(r => r.Score)
+            .Select(r => candidates[r.Index] with { Score = r.Score, ScoreKind = ScoreKind.Rerank })
+            .Where(c => prepared.MinScore is not { } min || c.Score >= min)
+            .Take(prepared.TopK)
+            .ToList();
     }
 
     /// <summary>One vector search, best first, with similarity scores; <paramref name="minScore"/> drops weaker results.</summary>

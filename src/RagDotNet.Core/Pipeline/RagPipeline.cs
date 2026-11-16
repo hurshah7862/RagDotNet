@@ -78,7 +78,7 @@ internal sealed class RagPipeline(RagEngine engine, IAccessScope? accessScope = 
         var queries = prepared.MatchesNothing
             ? [question]
             : await engine.QueryPlanner.PlanAsync(question, history, options, chatClient, ct).ConfigureAwait(false);
-        return await engine.Retriever.SearchAsync(queries, prepared, ct).ConfigureAwait(false);
+        return await engine.Retriever.SearchAsync(queries, prepared, ct, question).ConfigureAwait(false);
     }
 
     public Task<RagAnswer> AskAsync(string question, AskOptions? options = null, CancellationToken cancellationToken = default)
