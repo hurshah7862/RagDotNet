@@ -22,6 +22,33 @@ internal static class RagFilterEvaluator
         return simplified is not null && Evaluate(simplified, schema, documentId, metadata);
     }
 
+    /// <summary>
+    /// True when the document matches a filter that was already simplified and whose values were already converted to the
+    /// declared types (as in <see cref="Keyword.KeywordFilter.Metadata"/>), so no schema is needed. The field
+    /// <c>DocumentId</c> means <paramref name="documentId"/>. Null or missing values never match.
+    /// </summary>
+    public static bool MatchesConverted(RagFilter? filter, string documentId, IReadOnlyDictionary<string, object?> metadata)
+    {
+        ArgumentNullException.ThrowIfNull(metadata);
+        return filter switch
+        {
+            null => true,
+            RagFilter.EqFilter eq => EqualsConverted(eq.Field, eq.Value, documentId, metadata),
+            RagFilter.InFilter i => i.Values.Any(v => EqualsConverted(i.Field, v, documentId, metadata)),
+            RagFilter.ContainsFilter c => ConvertedActual(c.Field, documentId, metadata) is string[] a && a.Contains(c.Value, StringComparer.Ordinal),
+            RagFilter.ContainsAnyFilter ca => ConvertedActual(ca.Field, documentId, metadata) is string[] a && ca.Values.Any(v => a.Contains(v, StringComparer.Ordinal)),
+            RagFilter.AndFilter and => and.Filters.All(f => MatchesConverted(f, documentId, metadata)),
+            RagFilter.OrFilter or => or.Filters.Any(f => MatchesConverted(f, documentId, metadata)),
+            _ => throw new ArgumentException($"Unsupported filter type '{filter.GetType().Name}'."),
+        };
+    }
+
+    private static object? ConvertedActual(string field, string documentId, IReadOnlyDictionary<string, object?> metadata) =>
+        field == "DocumentId" ? documentId : metadata.TryGetValue(field, out var v) ? v : null;
+
+    private static bool EqualsConverted(string field, object value, string documentId, IReadOnlyDictionary<string, object?> metadata) =>
+        ConvertedActual(field, documentId, metadata) is { } actual && value.Equals(actual);
+
     private static bool Evaluate(RagFilter filter, MetadataSchema schema, string documentId, IReadOnlyDictionary<string, object?> metadata) => filter switch
     {
         RagFilter.EqFilter eq => EqualsValue(eq.Field, eq.Value, schema, documentId, metadata),

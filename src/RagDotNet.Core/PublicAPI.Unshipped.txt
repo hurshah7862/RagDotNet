@@ -927,3 +927,11 @@ static RagDotNet.Keyword.KeywordHit.operator !=(RagDotNet.Keyword.KeywordHit? le
 static RagDotNet.Keyword.KeywordHit.operator ==(RagDotNet.Keyword.KeywordHit? left, RagDotNet.Keyword.KeywordHit? right) -> bool
 static RagDotNet.Retrieval.RerankResult.operator !=(RagDotNet.Retrieval.RerankResult? left, RagDotNet.Retrieval.RerankResult? right) -> bool
 static RagDotNet.Retrieval.RerankResult.operator ==(RagDotNet.Retrieval.RerankResult? left, RagDotNet.Retrieval.RerankResult? right) -> bool
+RagDotNet.Keyword.InMemoryKeywordIndex
+RagDotNet.Keyword.InMemoryKeywordIndex.CountAsync(System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<long>!
+RagDotNet.Keyword.InMemoryKeywordIndex.DeleteAsync(System.Collections.Generic.IReadOnlyCollection<string!>! chunkKeys, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task!
+RagDotNet.Keyword.InMemoryKeywordIndex.InMemoryKeywordIndex() -> void
+RagDotNet.Keyword.InMemoryKeywordIndex.Name.get -> string!
+RagDotNet.Keyword.InMemoryKeywordIndex.RebuildAsync(System.Collections.Generic.IAsyncEnumerable<RagDotNet.Keyword.KeywordChunk!>! source, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task!
+RagDotNet.Keyword.InMemoryKeywordIndex.SearchAsync(string! query, RagDotNet.Keyword.KeywordFilter! filter, int top, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<RagDotNet.Keyword.KeywordHit!>!>!
+RagDotNet.Keyword.InMemoryKeywordIndex.UpsertAsync(System.Collections.Generic.IReadOnlyList<RagDotNet.Keyword.KeywordChunk!>! chunks, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task!
