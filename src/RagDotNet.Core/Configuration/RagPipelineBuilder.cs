@@ -33,6 +33,8 @@ public sealed class RagPipelineBuilder
     private IOcrProvider? _ocr;
     private IDocumentOcrProvider? _documentOcr;
     private readonly List<IPageRenderer> _renderers = [];
+    private Keyword.IKeywordIndex? _keywordIndex;
+    private Retrieval.IReranker? _reranker;
     private bool _frozen;
 
     /// <summary>Sets the chat client used to generate answers.</summary>
@@ -134,6 +136,33 @@ public sealed class RagPipelineBuilder
         return this;
     }
 
+    /// <summary>
+    /// Sets the keyword index used for hybrid search when the vector store has no native hybrid search. Replaces the
+    /// default <see cref="Keyword.InMemoryKeywordIndex"/>.
+    /// </summary>
+    /// <param name="index">The index.</param>
+    /// <returns>This builder.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="index"/> is null.</exception>
+    /// <exception cref="InvalidOperationException">The builder has already built a pipeline or admin interface.</exception>
+    public RagPipelineBuilder UseKeywordIndex(Keyword.IKeywordIndex index)
+    {
+        ThrowIfFrozen();
+        _keywordIndex = index ?? throw new ArgumentNullException(nameof(index));
+        return this;
+    }
+
+    /// <summary>Sets the reranker applied to the fused candidates of every retrieval. Replaces an earlier one.</summary>
+    /// <param name="reranker">The reranker.</param>
+    /// <returns>This builder.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="reranker"/> is null.</exception>
+    /// <exception cref="InvalidOperationException">The builder has already built a pipeline or admin interface.</exception>
+    public RagPipelineBuilder UseReranker(Retrieval.IReranker reranker)
+    {
+        ThrowIfFrozen();
+        _reranker = reranker ?? throw new ArgumentNullException(nameof(reranker));
+        return this;
+    }
+
     /// <summary>Registers a custom chunker, selected by its <see cref="IChunker.Name"/> in <see cref="ChunkingOptions.Chunker"/>.</summary>
     /// <param name="chunker">The chunker.</param>
     /// <returns>This builder.</returns>
@@ -211,7 +240,8 @@ public sealed class RagPipelineBuilder
     internal IChatClient? ChatClient => _chat;
 
     private RagEngine CreateEngine(IEmbeddingGenerator<string, Embedding<float>> embedder, VectorStore store) =>
-        RagEngineFactory.Create(_options, _readers, _chunkers, embedder, store, _loggerFactory, _contentStore, _time, _ocr, _documentOcr, _renderers);
+        RagEngineFactory.Create(_options, _readers, _chunkers, embedder, store, _loggerFactory, _contentStore, _time, _ocr, _documentOcr, _renderers,
+            _keywordIndex ?? new Keyword.InMemoryKeywordIndex(), _reranker);
 
     /// <summary>Sets the clock used for model check expiry and reindex heartbeats; tests use a manual clock.</summary>
     internal RagPipelineBuilder UseTimeProvider(TimeProvider time)

@@ -15,10 +15,14 @@ internal sealed class RagRegistrations
 internal sealed class RagOptionsValidator(
     RagRegistrations registrations, IServiceProviderIsService serviceCheck, IEnumerable<IChunker> appChunkers) : IValidateOptions<RagOptions>
 {
-    public ValidateOptionsResult Validate(string? name, RagOptions options) =>
-        Validate(options, registrations.HasContentStore || serviceCheck.IsService(typeof(IChunkContentStore)), appChunkers.ToList());
+    internal const string ExternalHybridNeedsIndex =
+        "Hybrid = On with External content storage requires a keyword index, because the vector store holds no text. Register one with AddInMemoryKeywordIndex() or AddLuceneKeywordIndex(), or set Hybrid to Auto or Off.";
 
-    public static ValidateOptionsResult Validate(RagOptions options, bool hasContentStore, IReadOnlyList<IChunker> appChunkers)
+    public ValidateOptionsResult Validate(string? name, RagOptions options) =>
+        Validate(options, registrations.HasContentStore || serviceCheck.IsService(typeof(IChunkContentStore)), appChunkers.ToList(),
+            serviceCheck.IsService(typeof(Keyword.IKeywordIndex)));
+
+    public static ValidateOptionsResult Validate(RagOptions options, bool hasContentStore, IReadOnlyList<IChunker> appChunkers, bool hasKeywordIndex = true)
     {
         ArgumentNullException.ThrowIfNull(options);
         var failures = new List<string>();
@@ -74,6 +78,9 @@ internal sealed class RagOptionsValidator(
 
         if (options.ContentStorage == ContentStorageMode.External && !hasContentStore)
             failures.Add("External content storage requires a content store. Register one with UseExternalContent<T>() or UseContentStore().");
+
+        if (options.Hybrid == Retrieval.HybridMode.On && options.ContentStorage == ContentStorageMode.External && !hasKeywordIndex)
+            failures.Add(ExternalHybridNeedsIndex);
 
         return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
     }

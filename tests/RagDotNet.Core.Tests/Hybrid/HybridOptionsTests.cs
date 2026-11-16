@@ -50,7 +50,7 @@ public class HybridOptionsTests
         Assert.Contains($"{option} must be between 1 and 100.", diEx.Message);
     }
 
-    [Fact(Skip = "Turned on in Task 4, when the default keyword index is registered.")]
+    [Fact]
     public void Hybrid_On_with_external_content_and_no_keyword_index_fails_at_startup()
     {
         var services = new ServiceCollection();

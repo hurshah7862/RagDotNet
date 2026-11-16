@@ -935,3 +935,9 @@ RagDotNet.Keyword.InMemoryKeywordIndex.Name.get -> string!
 RagDotNet.Keyword.InMemoryKeywordIndex.RebuildAsync(System.Collections.Generic.IAsyncEnumerable<RagDotNet.Keyword.KeywordChunk!>! source, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task!
 RagDotNet.Keyword.InMemoryKeywordIndex.SearchAsync(string! query, RagDotNet.Keyword.KeywordFilter! filter, int top, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<RagDotNet.Keyword.KeywordHit!>!>!
 RagDotNet.Keyword.InMemoryKeywordIndex.UpsertAsync(System.Collections.Generic.IReadOnlyList<RagDotNet.Keyword.KeywordChunk!>! chunks, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task!
+Microsoft.Extensions.DependencyInjection.RagHybridBuilderExtensions
+RagDotNet.Configuration.RagPipelineBuilder.UseKeywordIndex(RagDotNet.Keyword.IKeywordIndex! index) -> RagDotNet.Configuration.RagPipelineBuilder!
+RagDotNet.Configuration.RagPipelineBuilder.UseReranker(RagDotNet.Retrieval.IReranker! reranker) -> RagDotNet.Configuration.RagPipelineBuilder!
+static Microsoft.Extensions.DependencyInjection.RagHybridBuilderExtensions.AddInMemoryKeywordIndex(this RagDotNet.Configuration.IRagBuilder! builder) -> RagDotNet.Configuration.IRagBuilder!
+static Microsoft.Extensions.DependencyInjection.RagHybridBuilderExtensions.AddKeywordIndex<TIndex>(this RagDotNet.Configuration.IRagBuilder! builder) -> RagDotNet.Configuration.IRagBuilder!
+static Microsoft.Extensions.DependencyInjection.RagHybridBuilderExtensions.AddReranker<TReranker>(this RagDotNet.Configuration.IRagBuilder! builder) -> RagDotNet.Configuration.IRagBuilder!

@@ -13,6 +13,19 @@ using RagDotNet.Storage;
 
 namespace RagDotNet.Pipeline;
 
+/// <summary>Which keyword search runs alongside vector search.</summary>
+internal enum KeywordPath
+{
+    /// <summary>Vector-only.</summary>
+    None,
+
+    /// <summary>The vector store's own hybrid search.</summary>
+    Native,
+
+    /// <summary>The registered <see cref="Keyword.IKeywordIndex"/>.</summary>
+    Index,
+}
+
 internal sealed class RagEngine
 {
     private readonly SemaphoreSlim _initLock = new(1, 1);
@@ -55,6 +68,19 @@ internal sealed class RagEngine
     }
 
     public QueryPlanner QueryPlanner { get; }
+
+    /// <summary>The keyword index for hybrid search, if one is registered (the in-memory index is, by default).</summary>
+    public Keyword.IKeywordIndex? KeywordIndex { get; init; }
+
+    /// <summary>The reranker, if one is registered.</summary>
+    public IReranker? Reranker { get; init; }
+
+    /// <summary>Which keyword search runs with vector search.</summary>
+    public KeywordPath KeywordPath =>
+        Options.Hybrid != HybridMode.Off && KeywordIndex is not null ? KeywordPath.Index : KeywordPath.None;
+
+    /// <summary>True when ingest and delete keep the keyword index in step.</summary>
+    public bool WritesKeywordIndex => KeywordPath == KeywordPath.Index;
 
     /// <summary>The per-image OCR provider, if one is registered.</summary>
     public Ocr.IOcrProvider? OcrProvider { get; init; }

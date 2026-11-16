@@ -7,6 +7,7 @@ using RagDotNet.Diagnostics;
 using RagDotNet.Documents;
 using RagDotNet.Embedding;
 using RagDotNet.Filtering;
+using RagDotNet.Keyword;
 using RagDotNet.Pipeline;
 using RagDotNet.Storage;
 
@@ -164,6 +165,14 @@ internal sealed class Ingestor(RagEngine engine)
         }
 
         await engine.Chunks.UpsertAsync(records, ct).ConfigureAwait(false);
+        if (engine.WritesKeywordIndex && total > 0)
+        {
+            // After the chunks and before the manifest commit: a failure here leaves the manifest pending, and a retry rewrites both.
+            var keywordChunks = chunks.Select(c => new KeywordChunk(
+                ChunkKeys.Chunk(scope.PartitionKey, s.DocumentId, c.Index), s.DocumentId, scope.PartitionKey, c.Text, metadata)).ToList();
+            await engine.KeywordIndex!.UpsertAsync(keywordChunks, ct).ConfigureAwait(false);
+        }
+
         var committed = new ManifestRecord(
             docKey, s.DocumentId, scope.PartitionKey, partitionValues, contentHash, storedChunkingHash, engine.EmbeddingModelId,
             total, sourceName, now, options.ContentStorage, metadataHash, highWater, metadata);
@@ -214,6 +223,8 @@ internal sealed class Ingestor(RagEngine engine)
         if (engine.ContentStore is { } contentStore)
             await contentStore.DeleteAsync(keys, ct).ConfigureAwait(false);
         await engine.Chunks.DeleteAsync(keys, ct).ConfigureAwait(false);
+        if (engine.WritesKeywordIndex)
+            await engine.KeywordIndex!.DeleteAsync(keys, ct).ConfigureAwait(false);
     }
 
     /// <summary>
