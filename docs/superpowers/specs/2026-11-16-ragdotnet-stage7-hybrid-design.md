@@ -55,18 +55,18 @@ public interface IKeywordIndex
 {
     string Name { get; }                       // e.g. "in-memory", "lucene"; used in logs and telemetry
     Task UpsertAsync(IReadOnlyList<KeywordChunk> chunks, CancellationToken ct);
-    Task DeleteDocumentAsync(string documentId, string? partition, CancellationToken ct);
+    Task DeleteAsync(IReadOnlyCollection<string> chunkKeys, CancellationToken ct);
     Task<IReadOnlyList<KeywordHit>> SearchAsync(string query, KeywordFilter filter, int top, CancellationToken ct);
     Task<long> CountAsync(CancellationToken ct);
     Task RebuildAsync(IAsyncEnumerable<KeywordChunk> source, CancellationToken ct);
 }
 ```
 
-- `KeywordChunk`: `ChunkKey`, `DocumentId`, `Partition` (null for the common area), `ModelId`, `Text`, and declared metadata values.
+- `KeywordChunk`: `ChunkKey`, `DocumentId`, `Partition` (empty for the common area, as in chunk records), `Text`, and declared metadata values.
 - `KeywordHit`: `ChunkKey` and `Score` (BM25, higher is better).
-- `KeywordFilter`: the same constraint a vector search gets: the partition rule (own partition, common area, or both), `AccessScope.Filter`, the caller's `RagFilter`, and, during a reindex, the required model id. Core builds it; each index translates it (main spec §5.5 "each backend gets a translator").
+- `KeywordFilter`: the same constraint a vector search gets: the partition rule (`Partitions`: the allowed partition values, null for any; `ExcludeCommon`: true to exclude the common area), and `Metadata`, the combined `AccessScope.Filter` and caller `RagFilter`, already validated against the schema with every value converted to its declared type, so an index needs no schema to apply it. Core builds it; each index translates it (main spec §5.5 "each backend gets a translator").
 - The index returns keys only. Core fetches the chunk records for the hits from the vector collection in one `GetAsync` call, which supplies pages, heading path, metadata and, in-vector mode, text *(builder's call: one source of truth for chunk data; the index stores only what it needs to search and filter)*. A key the collection no longer has is dropped and counted as drift (5.3).
-- The main spec's `DeleteDocumentAsync(id)` gains the partition, because the same `DocumentId` can exist in two partitions (main spec §5.8) *(builder's call)*. `CountAsync` is added for the startup consistency check *(builder's call)*.
+- The main spec's `DeleteDocumentAsync(id)` becomes `DeleteAsync(chunkKeys)`: chunk keys are computed from partition, document id and index, as the vector store deletes them, which also removes the stale tail of a document that shrank, and keeps the same `DocumentId` in two partitions apart (main spec §5.8) *(builder's call)*. `CountAsync` is added for the startup consistency check *(builder's call)*.
 
 ### 4.3 Reranker
 
@@ -117,14 +117,14 @@ For each planned query (after query transformers):
 
 **Scores and `MinScore`** (main spec §5.5): vector-only results keep `Similarity`; fused results `Fused`; reranked results `Rerank`. `MinScore` applies to rerank scores and to similarity in vector-only mode. In hybrid mode without a reranker it does not apply and logs a one-time warning. Native hybrid results are `Fused`, whatever scale the store uses.
 
-**Reindex in progress:** reads are limited to chunks already on the new model (main spec §5.8). The keyword filter includes the model id; the in-memory and Lucene indexes store it per chunk, and the reindex updates it document by document under the existing per-document lock *(builder's call)*.
+**Reindex in progress:** reads are limited to chunks already on the new model (main spec §5.8). Keyword hits whose fetched record is not on the configured model are dropped, so the keyword list may hold fewer than `HybridCandidates` during a reindex. The keyword index does not store the model id, and reindex does not touch it, because text does not change *(builder's call)*.
 
 ### 5.3 Keeping the index in step
 
 - **Ingest:** keyword upsert happens after the chunks are written and before the manifest is finalised, so a crash or failure in between leaves the manifest in progress and a retry rewrites both (main spec §5.3 write sequence) *(builder's call)*. Unchanged documents do not touch the index.
 - **Update:** stale chunk keys deleted from the vector store are deleted from the index in the same step.
-- **Delete** (`DeleteDocumentAsync`, admin partition deletes): the index is cleared for those documents after the vector store.
-- **Reindex:** updates each document's model id in the index (text does not change).
+- **Delete** (`DeleteDocumentAsync`, admin deletes): the same chunk keys are deleted from the index after the vector store and before the manifest, so a crash leaves the manifest and a retry finishes the job.
+- **Reindex:** the index is not touched.
 - **`Hybrid = Off` in `RagOptions`:** the index is neither written nor built. Turning hybrid on later triggers the startup check below, which rebuilds it.
 - **Startup check** (first `EnsureReadyAsync`): the index's `CountAsync` is compared with the sum of manifest `ChunkCount`s. On a mismatch, the index is rebuilt from the vector store (keys from the manifests, text from records or the content store), and a warning logs the two counts. The in-memory index is always empty at start, so it is always built here (main spec §5.9 "lazily rebuilt at startup").
 - **At query time:** a hit whose record is gone counts as drift; it is dropped, logged once per process, and counted in a `rag.keyword.drift` counter. No rebuild is triggered from a query *(builder's call: a query should not pay for a rebuild)*.
@@ -145,7 +145,7 @@ For each planned query (after query transformers):
 
 - Lucene.NET 4.8 (prerelease), so the package version always carries `-preview` (main spec §6).
 - Options: `Directory` (required), validated at startup.
-- `StandardAnalyzer` (main spec). Text is indexed, not stored (main spec §5.15). Stored fields: chunk key, document id, partition, model id, and declared metadata as indexed, untokenized fields for filters. `string[]` metadata is one field value per element.
+- `StandardAnalyzer` (main spec). Text is indexed, not stored (main spec §5.15). Stored fields: chunk key, document id, partition, and declared metadata as indexed, untokenized fields for filters. `string[]` metadata is one field value per element.
 - The filter translator builds a Lucene `BooleanQuery`; missing values never match.
 - One `IndexWriter` per process; commits after each ingest call; a searcher refreshed after each commit (near-real-time reader). A second process opening the same directory fails at startup with a clear message naming the directory (Lucene's write lock) *(builder's call)*.
 - The query is parsed with the same analyzer and terms are combined as `SHOULD` clauses, so user text never hits Lucene query syntax errors *(builder's call)*.
