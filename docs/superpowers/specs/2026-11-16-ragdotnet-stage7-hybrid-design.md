@@ -26,7 +26,8 @@ The stage 6 scanned check gives one measured reason: OCR text has no headings, s
   - Query syntax for users (phrases, `AND`/`OR`, wildcards). The query is plain text.
   - Sharing one in-memory index across processes.
 - **Anti-goals** (failure even if it technically works):
-  - An app that changes nothing gets different vector-only results. With hybrid unavailable or `Off`, retrieval output is identical to stage 6.
+  - Vector-only retrieval that changes. With `Hybrid = Off`, retrieval output is identical to stage 6.
+  - A choice the app cannot make. Hybrid is the default *(owner's decision)*, but an app can always choose vector-only, hybrid, or hybrid with reranking, for the whole app or for one call.
   - A keyword search that returns a chunk the access scope would hide, or a chunk from another tenant.
   - A keyword index that silently drifts from the vector store, so deleted documents keep appearing or new ones never do.
   - Core taking a dependency on Lucene.
@@ -83,7 +84,9 @@ Returning indexes rather than chunks keeps a reranker from altering or inventing
 
 - DI: `.AddInMemoryKeywordIndex()`, `.AddLuceneKeywordIndex(o => o.Directory = "./kw-index")`, `.AddLlmReranker(o => ...)`, `.AddReranker<T>()`, `.AddKeywordIndex<T>()`. Each replaces an earlier registration of the same kind: there is at most one keyword index and one reranker.
 - Pipeline builder: `UseKeywordIndex(IKeywordIndex)`, `UseReranker(IReranker)`, and `AddLuceneKeywordIndex(...)` / `AddLlmReranker(...)` extensions.
-- Nothing is registered by default. With `Hybrid = Auto`, a store without native hybrid and no keyword index runs vector-only and logs the one-time warning, which names `AddInMemoryKeywordIndex` and `AddLuceneKeywordIndex`.
+- **Hybrid by default** *(owner's decision)*: `AddRag` and the pipeline builder register `InMemoryKeywordIndex` unless the app registers another keyword index, so hybrid search works with no setup on any store. It is built only when the keyword path is `index` (5.1): with a store that has native hybrid, or with `Hybrid = Off` in `RagOptions`, it stays empty and costs nothing *(builder's call)*.
+- **Choosing per app:** `RagOptions.Hybrid = HybridMode.Off` for vector-only; register a reranker for hybrid with reranking; `.AddLuceneKeywordIndex(...)` instead of the in-memory index for large corpora or a persisted index.
+- **Choosing per call:** `RetrievalOptions.Hybrid` (`Off` for vector-only on this call) and `RetrievalOptions.UseReranker` (`false` to skip the reranker on this call).
 
 ## 5. Behaviour
 
@@ -122,6 +125,7 @@ For each planned query (after query transformers):
 - **Update:** stale chunk keys deleted from the vector store are deleted from the index in the same step.
 - **Delete** (`DeleteDocumentAsync`, admin partition deletes): the index is cleared for those documents after the vector store.
 - **Reindex:** updates each document's model id in the index (text does not change).
+- **`Hybrid = Off` in `RagOptions`:** the index is neither written nor built. Turning hybrid on later triggers the startup check below, which rebuilds it.
 - **Startup check** (first `EnsureReadyAsync`): the index's `CountAsync` is compared with the sum of manifest `ChunkCount`s. On a mismatch, the index is rebuilt from the vector store (keys from the manifests, text from records or the content store), and a warning logs the two counts. The in-memory index is always empty at start, so it is always built here (main spec §5.9 "lazily rebuilt at startup").
 - **At query time:** a hit whose record is gone counts as drift; it is dropped, logged once per process, and counted in a `rag.keyword.drift` counter. No rebuild is triggered from a query *(builder's call: a query should not pay for a rebuild)*.
 - **Manual rebuild:** `IRagAdmin.RebuildKeywordIndexAsync(ct)` *(builder's call)*.
@@ -133,7 +137,8 @@ For each planned query (after query transformers):
 - Tokenizer *(builder's call)*: Unicode letters and digits form terms; lowercase (invariant); terms joined by `.`, `-` or `_` inside a word are indexed both whole and as parts, so `v2.3.1`, `ERR-404` and `max_tokens` match exactly and by part; a short English stop-word list; no stemming.
 - Filters evaluated in memory against stored metadata, with the same missing-value rule as the stores: a chunk without a value never matches a condition on that field.
 - Thread-safe for concurrent searches and writes.
-- One process only: another process's writes are not seen until this one restarts. The same holds for Lucene (one writer per directory). The docs say so, and point apps that ingest from several instances to a vector store with native hybrid search.
+- Being the default, its startup build reads every chunk once (text from records, or from the content store in external content mode). The startup log gives the chunk count and build time, and the docs say when to switch to Lucene or `Hybrid = Off`.
+- One process only: another process's writes are not seen until this one restarts. Searches stay correct, only less complete: a document another instance added is still found by vector search, and one it deleted is dropped as drift (5.3). The same holds for Lucene (one writer per directory). The docs say so, and point apps that ingest from several instances to a vector store with native hybrid search.
 - Recommended for small to medium corpora; the docs give the measured memory per 10,000 chunks.
 
 ### 5.5 `LuceneKeywordIndex` (`RagDotNet.Keyword.Lucene`)
@@ -170,7 +175,7 @@ For each planned query (after query transformers):
 
 | Situation | Result |
 |---|---|
-| `Hybrid = Auto`, no keyword path | vector-only, one-time warning |
+| `Hybrid = Auto`, no keyword path (the app removed the default index) | vector-only, one-time warning |
 | `Hybrid = On`, no keyword path | `HybridSearchUnavailableException` on retrieve |
 | `Hybrid = On`, external content mode, no keyword index | `OptionsValidationException` at startup |
 | `UseReranker = true`, no reranker | `InvalidOperationException` |
@@ -185,10 +190,11 @@ For each planned query (after query transformers):
 - The harness gains `--retrieval vector,hybrid,hybrid-rerank` (default `vector`, so existing reports are unchanged) *(builder's call)*. `hybrid` uses `InMemoryKeywordIndex` (the harness's in-memory store has no native hybrid). `hybrid-rerank` adds `LlmReranker` and needs a chat model, so in fake mode it uses a deterministic fake reranker that only proves the wiring.
 - A real-mode run (Ollama) on the Markdown set and the scanned set, library default chunking, reports MRR, recall and hit rate for each retrieval mode, recorded in `docs/evaluation-results.md` as "Hybrid check (stage 7)".
 - The dataset gains about 8 questions whose answer hinges on an exact term (a version, an error code, a setting name) that already appears in the corpus, tagged `exact-term`, reported separately so the check shows whether keyword search helps where it should *(builder's call)*. The existing 40 questions stay as they are, so earlier results remain comparable.
-- No result is a gate. If hybrid scores worse than vector, the results say so and the default stays `Auto` only if the measured loss is under 0.02 MRR on the Markdown set; otherwise the default becomes `Off` and the docs explain why *(builder's call)*.
+- No result is a gate, and the default stays hybrid whatever the numbers *(owner's decision)*. If hybrid scores worse than vector on a set, the results and `docs/retrieval.md` say so, so apps can choose `Off` knowingly.
 
 ## 9. Tests
 
+- Default: a pipeline built with no keyword or reranker setup runs hybrid through the in-memory index; `Hybrid = Off` in options or per call gives stage 6's output and leaves the index unbuilt.
 - Unit: RRF of vector and keyword lists; path selection (native, index, none) for each mode; `On`/`Auto`/`Off`; the `NotSupportedException` fallback; scope and filter inside keyword search (partition isolation, common area, `IncludeCommon`, read filters, missing values, same `DocumentId` in two partitions); reindex model-id restriction; index kept in step through ingest, update, delete, admin delete, reindex, crash between writes; startup count check and rebuild; drift handling; `MinScore` rules per score kind; reranker validation; `LlmReranker` batching, parsing, retry and fallback with a scripted chat client; vector-only output identical to stage 6 (parity test, as stage 6 did for readers).
 - Tokenizer: exact terms (`v2.3.1`, `ERR-404`, `max_tokens`), case, Unicode letters, stop words.
 - Native path: a test collection implementing `IKeywordHybridSearchable` (the real stores with native hybrid are covered by stage 8's shared suite).
