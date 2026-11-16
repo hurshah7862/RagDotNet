@@ -160,6 +160,7 @@ public sealed class RagPipelineBuilder
     {
         ThrowIfFrozen();
         _reranker = reranker ?? throw new ArgumentNullException(nameof(reranker));
+        _rerankerFactory = null;
         return this;
     }
 
@@ -241,7 +242,7 @@ public sealed class RagPipelineBuilder
 
     private RagEngine CreateEngine(IEmbeddingGenerator<string, Embedding<float>> embedder, VectorStore store) =>
         RagEngineFactory.Create(_options, _readers, _chunkers, embedder, store, _loggerFactory, _contentStore, _time, _ocr, _documentOcr, _renderers,
-            _keywordIndex ?? new Keyword.InMemoryKeywordIndex(), _reranker);
+            _keywordIndex ?? new Keyword.InMemoryKeywordIndex(), _reranker ?? _rerankerFactory?.Invoke(_chat!, _options.Tokenizer));
 
     /// <summary>Sets the clock used for model check expiry and reindex heartbeats; tests use a manual clock.</summary>
     internal RagPipelineBuilder UseTimeProvider(TimeProvider time)
@@ -257,8 +258,21 @@ public sealed class RagPipelineBuilder
             throw new InvalidOperationException("RagPipelineBuilder cannot be changed after Build(); create a new builder.");
     }
 
+    /// <summary>Creates the reranker at build time from the chat client; used by <c>AddLlmReranker</c>. Replaces a reranker set earlier.</summary>
+    internal RagPipelineBuilder UseRerankerFactory(Func<IChatClient, Microsoft.ML.Tokenizers.Tokenizer?, Retrieval.IReranker> factory)
+    {
+        ThrowIfFrozen();
+        _rerankerFactory = factory ?? throw new ArgumentNullException(nameof(factory));
+        _reranker = null;
+        return this;
+    }
+
+    private Func<IChatClient, Microsoft.ML.Tokenizers.Tokenizer?, Retrieval.IReranker>? _rerankerFactory;
+
     private void Validate()
     {
+        if (_rerankerFactory is not null && _reranker is null && _chat is null)
+            throw new InvalidOperationException("AddLlmReranker needs a chat client. Call UseChatClient() first.");
         var result = RagOptionsValidator.Validate(_options, _contentStore is not null, _chunkers);
         if (result.Failed) throw new OptionsValidationException(Options.DefaultName, typeof(RagOptions), result.Failures);
     }

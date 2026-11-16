@@ -942,3 +942,19 @@ static Microsoft.Extensions.DependencyInjection.RagHybridBuilderExtensions.AddIn
 static Microsoft.Extensions.DependencyInjection.RagHybridBuilderExtensions.AddKeywordIndex<TIndex>(this RagDotNet.Configuration.IRagBuilder! builder) -> RagDotNet.Configuration.IRagBuilder!
 static Microsoft.Extensions.DependencyInjection.RagHybridBuilderExtensions.AddReranker<TReranker>(this RagDotNet.Configuration.IRagBuilder! builder) -> RagDotNet.Configuration.IRagBuilder!
 RagDotNet.Pipeline.IRagAdmin.RebuildKeywordIndexAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+RagDotNet.Configuration.LlmRerankerBuilderExtensions
+RagDotNet.Retrieval.LlmReranker
+RagDotNet.Retrieval.LlmReranker.LlmReranker(Microsoft.Extensions.AI.IChatClient! chat, RagDotNet.Retrieval.LlmRerankerOptions? options = null, Microsoft.ML.Tokenizers.Tokenizer? tokenizer = null) -> void
+RagDotNet.Retrieval.LlmReranker.RerankAsync(string! query, System.Collections.Generic.IReadOnlyList<RagDotNet.Retrieval.RetrievedChunk!>! candidates, int top, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<RagDotNet.Retrieval.RerankResult!>!>!
+RagDotNet.Retrieval.LlmRerankerOptions
+RagDotNet.Retrieval.LlmRerankerOptions.BatchSize.get -> int
+RagDotNet.Retrieval.LlmRerankerOptions.BatchSize.set -> void
+RagDotNet.Retrieval.LlmRerankerOptions.Instructions.get -> string?
+RagDotNet.Retrieval.LlmRerankerOptions.Instructions.set -> void
+RagDotNet.Retrieval.LlmRerankerOptions.LlmRerankerOptions() -> void
+RagDotNet.Retrieval.LlmRerankerOptions.MaxCandidateTokens.get -> int
+RagDotNet.Retrieval.LlmRerankerOptions.MaxCandidateTokens.set -> void
+RagDotNet.Retrieval.LlmRerankerOptions.MaxConcurrency.get -> int
+RagDotNet.Retrieval.LlmRerankerOptions.MaxConcurrency.set -> void
+static Microsoft.Extensions.DependencyInjection.RagHybridBuilderExtensions.AddLlmReranker(this RagDotNet.Configuration.IRagBuilder! builder, System.Action<RagDotNet.Retrieval.LlmRerankerOptions!>? configure = null) -> RagDotNet.Configuration.IRagBuilder!
+static RagDotNet.Configuration.LlmRerankerBuilderExtensions.AddLlmReranker(this RagDotNet.Configuration.RagPipelineBuilder! builder, System.Action<RagDotNet.Retrieval.LlmRerankerOptions!>? configure = null) -> RagDotNet.Configuration.RagPipelineBuilder!
