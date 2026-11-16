@@ -32,6 +32,8 @@ internal sealed class RagOptionsValidator(
         if (options.ModelCheckInterval < TimeSpan.Zero) failures.Add("ModelCheckInterval must not be negative.");
         // Reindex waits one interval while holding its marker; it must stay well inside the 5-minute takeover window.
         if (options.ModelCheckInterval > TimeSpan.FromMinutes(1)) failures.Add("ModelCheckInterval must not exceed 1 minute.");
+        if (options.RerankCandidates is < 1 or > 100) failures.Add("RerankCandidates must be between 1 and 100.");
+        if (options.HybridCandidates is < 1 or > 100) failures.Add("HybridCandidates must be between 1 and 100.");
         if (options.Ocr is null) failures.Add("Ocr must not be null.");
         else
         {

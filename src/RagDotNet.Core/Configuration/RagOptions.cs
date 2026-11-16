@@ -77,4 +77,20 @@ public sealed class RagOptions
 
     /// <summary>How ingest uses a registered OCR provider; ignored when none is registered.</summary>
     public Ocr.OcrOptions Ocr { get; set; } = new();
+
+    /// <summary>
+    /// Whether retrieval combines vector search with keyword search. Auto (the default) is hybrid when the vector store
+    /// has native hybrid search or a keyword index is registered (one is by default). Off is vector-only.
+    /// <see cref="Retrieval.RetrievalOptions.Hybrid"/> overrides this per call.
+    /// </summary>
+    public Retrieval.HybridMode Hybrid { get; set; } = Retrieval.HybridMode.Auto;
+
+    /// <summary>How many fused candidates a registered reranker sees, from 1 to 100. Defaults to 20.</summary>
+    public int RerankCandidates { get; set; } = 20;
+
+    /// <summary>
+    /// How many results the vector search and the keyword search each return per query before fusion, from 1 to 100.
+    /// At least the call's TopK is always fetched. Defaults to 20.
+    /// </summary>
+    public int HybridCandidates { get; set; } = 20;
 }

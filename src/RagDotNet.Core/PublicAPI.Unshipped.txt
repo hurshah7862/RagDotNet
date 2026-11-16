@@ -837,3 +837,93 @@ static RagDotNet.Documents.OcrCandidate.operator !=(RagDotNet.Documents.OcrCandi
 static RagDotNet.Documents.OcrCandidate.operator ==(RagDotNet.Documents.OcrCandidate? left, RagDotNet.Documents.OcrCandidate? right) -> bool
 RagDotNet.Documents.DocumentReadContext.ExtractImages.get -> bool
 RagDotNet.Documents.DocumentReadContext.ExtractImages.init -> void
+override RagDotNet.Keyword.KeywordChunk.Equals(object? obj) -> bool
+override RagDotNet.Keyword.KeywordChunk.GetHashCode() -> int
+override RagDotNet.Keyword.KeywordChunk.ToString() -> string!
+override RagDotNet.Keyword.KeywordFilter.Equals(object? obj) -> bool
+override RagDotNet.Keyword.KeywordFilter.GetHashCode() -> int
+override RagDotNet.Keyword.KeywordFilter.ToString() -> string!
+override RagDotNet.Keyword.KeywordHit.Equals(object? obj) -> bool
+override RagDotNet.Keyword.KeywordHit.GetHashCode() -> int
+override RagDotNet.Keyword.KeywordHit.ToString() -> string!
+override RagDotNet.Retrieval.RerankResult.Equals(object? obj) -> bool
+override RagDotNet.Retrieval.RerankResult.GetHashCode() -> int
+override RagDotNet.Retrieval.RerankResult.ToString() -> string!
+RagDotNet.Configuration.RagOptions.Hybrid.get -> RagDotNet.Retrieval.HybridMode
+RagDotNet.Configuration.RagOptions.Hybrid.set -> void
+RagDotNet.Configuration.RagOptions.HybridCandidates.get -> int
+RagDotNet.Configuration.RagOptions.HybridCandidates.set -> void
+RagDotNet.Configuration.RagOptions.RerankCandidates.get -> int
+RagDotNet.Configuration.RagOptions.RerankCandidates.set -> void
+RagDotNet.Keyword.IKeywordIndex
+RagDotNet.Keyword.IKeywordIndex.CountAsync(System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<long>!
+RagDotNet.Keyword.IKeywordIndex.DeleteAsync(System.Collections.Generic.IReadOnlyCollection<string!>! chunkKeys, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task!
+RagDotNet.Keyword.IKeywordIndex.Name.get -> string!
+RagDotNet.Keyword.IKeywordIndex.RebuildAsync(System.Collections.Generic.IAsyncEnumerable<RagDotNet.Keyword.KeywordChunk!>! source, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task!
+RagDotNet.Keyword.IKeywordIndex.SearchAsync(string! query, RagDotNet.Keyword.KeywordFilter! filter, int top, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<RagDotNet.Keyword.KeywordHit!>!>!
+RagDotNet.Keyword.IKeywordIndex.UpsertAsync(System.Collections.Generic.IReadOnlyList<RagDotNet.Keyword.KeywordChunk!>! chunks, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task!
+RagDotNet.Keyword.KeywordChunk
+RagDotNet.Keyword.KeywordChunk.<Clone>$() -> RagDotNet.Keyword.KeywordChunk!
+RagDotNet.Keyword.KeywordChunk.ChunkKey.get -> string!
+RagDotNet.Keyword.KeywordChunk.ChunkKey.init -> void
+RagDotNet.Keyword.KeywordChunk.Deconstruct(out string! ChunkKey, out string! DocumentId, out string! Partition, out string! Text, out System.Collections.Generic.IReadOnlyDictionary<string!, object?>! Metadata) -> void
+RagDotNet.Keyword.KeywordChunk.DocumentId.get -> string!
+RagDotNet.Keyword.KeywordChunk.DocumentId.init -> void
+RagDotNet.Keyword.KeywordChunk.Equals(RagDotNet.Keyword.KeywordChunk? other) -> bool
+RagDotNet.Keyword.KeywordChunk.KeywordChunk(string! ChunkKey, string! DocumentId, string! Partition, string! Text, System.Collections.Generic.IReadOnlyDictionary<string!, object?>! Metadata) -> void
+RagDotNet.Keyword.KeywordChunk.Metadata.get -> System.Collections.Generic.IReadOnlyDictionary<string!, object?>!
+RagDotNet.Keyword.KeywordChunk.Metadata.init -> void
+RagDotNet.Keyword.KeywordChunk.Partition.get -> string!
+RagDotNet.Keyword.KeywordChunk.Partition.init -> void
+RagDotNet.Keyword.KeywordChunk.Text.get -> string!
+RagDotNet.Keyword.KeywordChunk.Text.init -> void
+RagDotNet.Keyword.KeywordFilter
+RagDotNet.Keyword.KeywordFilter.<Clone>$() -> RagDotNet.Keyword.KeywordFilter!
+RagDotNet.Keyword.KeywordFilter.Deconstruct(out System.Collections.Generic.IReadOnlyList<string!>? Partitions, out bool ExcludeCommon, out RagDotNet.Filtering.RagFilter? Metadata) -> void
+RagDotNet.Keyword.KeywordFilter.Equals(RagDotNet.Keyword.KeywordFilter? other) -> bool
+RagDotNet.Keyword.KeywordFilter.ExcludeCommon.get -> bool
+RagDotNet.Keyword.KeywordFilter.ExcludeCommon.init -> void
+RagDotNet.Keyword.KeywordFilter.KeywordFilter(System.Collections.Generic.IReadOnlyList<string!>? Partitions, bool ExcludeCommon, RagDotNet.Filtering.RagFilter? Metadata) -> void
+RagDotNet.Keyword.KeywordFilter.Metadata.get -> RagDotNet.Filtering.RagFilter?
+RagDotNet.Keyword.KeywordFilter.Metadata.init -> void
+RagDotNet.Keyword.KeywordFilter.Partitions.get -> System.Collections.Generic.IReadOnlyList<string!>?
+RagDotNet.Keyword.KeywordFilter.Partitions.init -> void
+RagDotNet.Keyword.KeywordHit
+RagDotNet.Keyword.KeywordHit.<Clone>$() -> RagDotNet.Keyword.KeywordHit!
+RagDotNet.Keyword.KeywordHit.ChunkKey.get -> string!
+RagDotNet.Keyword.KeywordHit.ChunkKey.init -> void
+RagDotNet.Keyword.KeywordHit.Deconstruct(out string! ChunkKey, out double Score) -> void
+RagDotNet.Keyword.KeywordHit.Equals(RagDotNet.Keyword.KeywordHit? other) -> bool
+RagDotNet.Keyword.KeywordHit.KeywordHit(string! ChunkKey, double Score) -> void
+RagDotNet.Keyword.KeywordHit.Score.get -> double
+RagDotNet.Keyword.KeywordHit.Score.init -> void
+RagDotNet.Retrieval.HybridMode
+RagDotNet.Retrieval.HybridMode.Auto = 0 -> RagDotNet.Retrieval.HybridMode
+RagDotNet.Retrieval.HybridMode.Off = 2 -> RagDotNet.Retrieval.HybridMode
+RagDotNet.Retrieval.HybridMode.On = 1 -> RagDotNet.Retrieval.HybridMode
+RagDotNet.Retrieval.HybridSearchUnavailableException
+RagDotNet.Retrieval.HybridSearchUnavailableException.HybridSearchUnavailableException(string! message) -> void
+RagDotNet.Retrieval.IReranker
+RagDotNet.Retrieval.IReranker.RerankAsync(string! query, System.Collections.Generic.IReadOnlyList<RagDotNet.Retrieval.RetrievedChunk!>! candidates, int top, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<RagDotNet.Retrieval.RerankResult!>!>!
+RagDotNet.Retrieval.RerankResult
+RagDotNet.Retrieval.RerankResult.<Clone>$() -> RagDotNet.Retrieval.RerankResult!
+RagDotNet.Retrieval.RerankResult.Deconstruct(out int Index, out double Score) -> void
+RagDotNet.Retrieval.RerankResult.Equals(RagDotNet.Retrieval.RerankResult? other) -> bool
+RagDotNet.Retrieval.RerankResult.Index.get -> int
+RagDotNet.Retrieval.RerankResult.Index.init -> void
+RagDotNet.Retrieval.RerankResult.RerankResult(int Index, double Score) -> void
+RagDotNet.Retrieval.RerankResult.Score.get -> double
+RagDotNet.Retrieval.RerankResult.Score.init -> void
+RagDotNet.Retrieval.RetrievalOptions.Hybrid.get -> RagDotNet.Retrieval.HybridMode?
+RagDotNet.Retrieval.RetrievalOptions.Hybrid.init -> void
+RagDotNet.Retrieval.RetrievalOptions.UseReranker.get -> bool?
+RagDotNet.Retrieval.RetrievalOptions.UseReranker.init -> void
+static RagDotNet.Keyword.KeywordChunk.operator !=(RagDotNet.Keyword.KeywordChunk? left, RagDotNet.Keyword.KeywordChunk? right) -> bool
+static RagDotNet.Keyword.KeywordChunk.operator ==(RagDotNet.Keyword.KeywordChunk? left, RagDotNet.Keyword.KeywordChunk? right) -> bool
+static RagDotNet.Keyword.KeywordFilter.All.get -> RagDotNet.Keyword.KeywordFilter!
+static RagDotNet.Keyword.KeywordFilter.operator !=(RagDotNet.Keyword.KeywordFilter? left, RagDotNet.Keyword.KeywordFilter? right) -> bool
+static RagDotNet.Keyword.KeywordFilter.operator ==(RagDotNet.Keyword.KeywordFilter? left, RagDotNet.Keyword.KeywordFilter? right) -> bool
+static RagDotNet.Keyword.KeywordHit.operator !=(RagDotNet.Keyword.KeywordHit? left, RagDotNet.Keyword.KeywordHit? right) -> bool
+static RagDotNet.Keyword.KeywordHit.operator ==(RagDotNet.Keyword.KeywordHit? left, RagDotNet.Keyword.KeywordHit? right) -> bool
+static RagDotNet.Retrieval.RerankResult.operator !=(RagDotNet.Retrieval.RerankResult? left, RagDotNet.Retrieval.RerankResult? right) -> bool
+static RagDotNet.Retrieval.RerankResult.operator ==(RagDotNet.Retrieval.RerankResult? left, RagDotNet.Retrieval.RerankResult? right) -> bool
