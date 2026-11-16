@@ -22,13 +22,7 @@ internal static class ReadFilters
         string? requireModelId = null)
     {
         if (!partitioned) includeCommon = true;
-        RagFilter? combined = (scope.UserFilter, callerFilter) switch
-        {
-            (null, var f) => f,
-            (var u, null) => u,
-            (var u, var f) => new RagFilter.AndFilter([u, f]),
-        };
-        var translated = RagFilterTranslator.Translate(combined, schema, out matchesNothing);
+        var translated = RagFilterTranslator.Translate(Combine(scope, callerFilter), schema, out matchesNothing);
         if (matchesNothing) return null;
 
         var p = Expression.Parameter(typeof(Dictionary<string, object?>), "r");
@@ -48,6 +42,14 @@ internal static class ReadFilters
         }
         return body is null ? null : Expression.Lambda<Func<Dictionary<string, object?>, bool>>(body, p);
     }
+
+    /// <summary>The scope's own read filter AND the caller's filter; null when there is neither.</summary>
+    internal static RagFilter? Combine(ResolvedScope scope, RagFilter? callerFilter) => (scope.UserFilter, callerFilter) switch
+    {
+        (null, var f) => f,
+        (var u, null) => u,
+        (var u, var f) => new RagFilter.AndFilter([u, f]),
+    };
 
     private static Expression? PartitionClause(ResolvedScope scope, bool includeCommon, ParameterExpression p)
     {
