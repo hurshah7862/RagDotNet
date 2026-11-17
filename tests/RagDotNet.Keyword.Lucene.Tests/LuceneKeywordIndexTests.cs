@@ -69,6 +69,37 @@ public sealed class LuceneKeywordIndexTests : IDisposable
     }
 
     [Fact]
+    public async Task Ranks_with_bm25_term_saturation()
+    {
+        // Classic TF-IDF (Lucene 4.8's default) puts "repeated" first: sqrt(100) outweighs a second matching term.
+        // BM25 saturates term frequency, so the chunk that matches both terms wins.
+        using var index = Open();
+        var filler = string.Join(' ', Enumerable.Range(0, 98).Select(i => "filler" + i));
+        await index.UpsertAsync([
+            Chunk("repeated:0", string.Join(' ', Enumerable.Repeat("apple", 100))),
+            Chunk("both:0", "apple banana " + filler),
+            Chunk("other:0", "cherry date"),
+        ], Ct);
+
+        Assert.Equal(["both:0", "repeated:0"], await Keys(index, "apple banana"));
+    }
+
+    [Fact]
+    public async Task Filters_do_not_change_scores()
+    {
+        // Identical text in a small and a large partition must score the same: the filter only selects.
+        using var index = Open();
+        var chunks = new List<KeywordChunk> { Chunk("small|a:0", "quarterly report", "p:small") };
+        chunks.AddRange(Enumerable.Range(0, 20).Select(i => Chunk($"large|d{i}:0", i == 0 ? "quarterly report" : "unrelated text " + i, "p:large")));
+        await index.UpsertAsync(chunks, Ct);
+
+        var hits = await index.SearchAsync("quarterly", new KeywordFilter(["p:small", "p:large"], false, null), 10, Ct);
+
+        Assert.Equal(2, hits.Count);
+        Assert.Equal(hits[0].Score, hits[1].Score, 6);
+    }
+
+    [Fact]
     public async Task Persists_across_restarts()
     {
         using (var index = Open())

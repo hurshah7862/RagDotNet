@@ -52,6 +52,8 @@ External content storage never uses native hybrid search, because the vector sto
 
 ### The in-memory index (default)
 
+Both keyword indexes receive each chunk's heading path along with its text, as the embedding does, so a question that names a section title finds that section's chunks.
+
 `InMemoryKeywordIndex` is part of `RagDotNet.Core`. It ranks with BM25 (k1 = 1.2, b = 0.75). Its tokenizer:
 
 - lowercases Unicode letters and digits;
@@ -83,7 +85,8 @@ services.AddRag(o => { /* ... */ })
     .AddLuceneKeywordIndex(o => o.Directory = "./kw-index");
 ```
 
-- It uses Lucene's `StandardAnalyzer`. Chunk text is indexed but not stored.
+- It ranks with BM25 (k1 = 1.2, b = 0.75), like the in-memory index; filters select hits without changing their scores. Chunk text is indexed but not stored.
+- It splits text with Lucene's `StandardAnalyzer`, which differs from the in-memory tokenizer: `ERR-404` becomes `err` and `404`, and `max_tokens` stays one word with no parts. Switching index can change which exact terms match.
 - Query text is never parsed as Lucene syntax: `title:(foo AND bar)` searches for the words title, foo and bar. Long queries, such as a HyDE passage, use their first 1,024 distinct terms.
 - **One writer per directory.** Only one process, and one index instance, can open a directory. A second one fails at startup with a message naming the directory.
 - **Disposal.** With dependency injection the container disposes the index. With the pipeline builder, `.AddLuceneKeywordIndex(...)` holds the directory for the life of the process; to release it earlier, create the index yourself and dispose it when the pipeline is no longer used:
@@ -104,7 +107,7 @@ Implement `IKeywordIndex` and register it with `.AddKeywordIndex<T>()` or `UseKe
 - **Reindexing** to a new embedding model does not touch the index: the text does not change. While a reindex is in progress, keyword hits not yet re-embedded are left out, as vector hits are.
 - **At startup** the index's chunk count is compared with the documents' chunk counts. When they differ, the index is rebuilt from the vector store (text comes from the content store in external content mode) and a warning gives both counts.
 - **At query time** a keyword hit whose chunk the vector store no longer has is dropped, logged once, and counted in the `rag.keyword.drift` metric. Queries never trigger a rebuild.
-- **By hand**, `IRagAdmin.RebuildKeywordIndexAsync()` rebuilds the index. Run it when no ingest is in progress.
+- **By hand**, `IRagAdmin.RebuildKeywordIndexAsync()` rebuilds the index. Ingests and deletes in this process wait while it runs, so none is lost.
 
 Access control applies inside keyword search exactly as it does inside vector search: a tenant's keyword search never returns another tenant's chunk, and the common area and read filters work the same way.
 
@@ -159,15 +162,17 @@ Measured with the evaluation harness on 2026-11-17 (`nomic-embed-text` embedding
 
 | Set | Vector | Hybrid | Hybrid, reranked with `llama3.2:3b` |
 |---|---:|---:|---:|
-| `base` (48 questions, short sections) | 0.806 | 0.743 | 0.273 |
+| `base` (48 questions, short sections) | 0.806 | 0.773 | 0.273 |
 | `base`, the 8 exact-term questions | 0.656 | 0.705 | 0.354 |
 | `base` as scanned PDFs | 0.722 | 0.772 | not run |
 | scanned, the 8 exact-term questions | 0.781 | 0.938 | not run |
-| `long-sections` (20 questions) | 0.783 | 0.798 | not run |
-| `all` (68 questions) | 0.800 | 0.759 | not run |
+| `long-sections` (20 questions) | 0.783 | 0.823 | not run |
+| `all` (68 questions) | 0.800 | 0.788 | not run |
+
+The reranked column was measured before section headings were indexed, when hybrid scored 0.743 on `base`.
 
 - **Hybrid is better** on questions that hinge on an exact term, and on large chunks (scans, long sections).
-- **Hybrid is worse on `base` as a whole**, and so on `all`. Many of its questions are paraphrased to share few words with the answer, where keyword search has little to go on. If your users mostly ask in their own words about short sections, compare `Hybrid = Off` on your own documents.
+- **Hybrid is worse on `base` as a whole**, and slightly worse on `all`. Many of its questions are paraphrased to share few words with the answer, where keyword search has little to go on. If your users mostly ask in their own words about short sections, compare `Hybrid = Off` on your own documents.
 - **A small local model is a poor reranker.** `llama3.2:3b` returned valid scores, so nothing fell back, but the scores were bad enough to cut MRR from 0.743 to 0.273. Use `LlmReranker` with a capable chat model, and measure it before relying on it. Stronger models were not measured here.
 
 [evaluation.md](evaluation.md#hybrid-check) has the method, the full discussion and the limits.

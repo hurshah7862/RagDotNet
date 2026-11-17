@@ -4,6 +4,7 @@ using Lucene.Net.Analysis.TokenAttributes;
 using Lucene.Net.Documents;
 using Lucene.Net.Index;
 using Lucene.Net.Search;
+using Lucene.Net.Search.Similarities;
 using Lucene.Net.Store;
 using Lucene.Net.Util;
 using static RagDotNet.Keyword.Lucene.LuceneFilterTranslator;
@@ -44,7 +45,11 @@ public sealed class LuceneKeywordIndex : IKeywordIndex, IDisposable
         _analyzer = new StandardAnalyzer(LuceneVersion.LUCENE_48);
         try
         {
-            _writer = new IndexWriter(_directory, new IndexWriterConfig(LuceneVersion.LUCENE_48, _analyzer) { OpenMode = OpenMode.CREATE_OR_APPEND });
+            _writer = new IndexWriter(_directory, new IndexWriterConfig(LuceneVersion.LUCENE_48, _analyzer)
+            {
+                OpenMode = OpenMode.CREATE_OR_APPEND,
+                Similarity = Bm25, // Lucene 4.8 defaults to classic TF-IDF
+            });
         }
         catch (LockObtainFailedException ex)
         {
@@ -54,7 +59,15 @@ public sealed class LuceneKeywordIndex : IKeywordIndex, IDisposable
         }
 
         _writer.Commit(); // a new directory gets an empty commit, so searchers can open it
-        _searchers = new SearcherManager(_writer, applyAllDeletes: true, new SearcherFactory());
+        _searchers = new SearcherManager(_writer, applyAllDeletes: true, new Bm25SearcherFactory());
+    }
+
+    /// <summary>BM25 with the same parameters as the in-memory index.</summary>
+    private static readonly BM25Similarity Bm25 = new(1.2f, 0.75f);
+
+    private sealed class Bm25SearcherFactory : SearcherFactory
+    {
+        public override IndexSearcher NewSearcher(IndexReader reader) => new(reader) { Similarity = Bm25 };
     }
 
     internal static string LockedMessage(string directory) =>
@@ -124,17 +137,13 @@ public sealed class LuceneKeywordIndex : IKeywordIndex, IDisposable
         // Each term is a plain SHOULD clause: user text never reaches Lucene's query parser.
         var text = new BooleanQuery();
         foreach (var term in terms) text.Add(new TermQuery(new Term(TextFieldName, term)), Occur.SHOULD);
-        Query search = text;
-        if (Translate(filter) is { } constraint)
-        {
-            var both = new BooleanQuery { { text, Occur.MUST }, { constraint, Occur.MUST } };
-            search = both;
-        }
+        // The filter only selects: as a Filter it adds nothing to the score, so partition and metadata terms never reorder hits.
+        var constraint = Translate(filter) is { } c ? new QueryWrapperFilter(c) : null;
 
         var searcher = _searchers.Acquire();
         try
         {
-            var found = searcher.Search(search, top);
+            var found = searcher.Search(text, constraint, top);
             IReadOnlyList<KeywordHit> hits = found.ScoreDocs
                 .Select(d => new KeywordHit(searcher.Doc(d.Doc).Get(KeyField), d.Score))
                 .ToList();
