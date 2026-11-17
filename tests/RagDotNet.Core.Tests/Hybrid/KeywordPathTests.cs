@@ -146,6 +146,81 @@ public class KeywordPathTests
     }
 
     [Fact]
+    public async Task Headings_are_keyword_searchable_after_ingest_and_after_a_rebuild()
+    {
+        var store = new InMemoryVectorStore();
+        var index = new InMemoryKeywordIndex();
+        var builder = Builder(store, new()).UseKeywordIndex(index);
+        await builder.Build().IngestAsync(Md("doc", "# Zorblax settings\n\nBody text number 1\n"), cancellationToken: Ct);
+
+        Assert.Equal(["doc:0"], (await index.SearchAsync("zorblax", KeywordFilter.All, 10, Ct)).Select(h => h.ChunkKey));
+
+        await builder.BuildAdmin().RebuildKeywordIndexAsync(Ct);
+
+        Assert.Equal(["doc:0"], (await index.SearchAsync("zorblax", KeywordFilter.All, 10, Ct)).Select(h => h.ChunkKey));
+    }
+
+    [Fact]
+    public async Task Ingest_during_a_rebuild_is_not_lost()
+    {
+        var index = new PausingKeywordIndex();
+        var builder = Builder(new InMemoryVectorStore(), new()).UseKeywordIndex(index);
+        var rag = builder.Build();
+        await rag.IngestAsync(Md("first", Sections(1)), cancellationToken: Ct);
+
+        // The rebuild reads the documents, then waits before replacing the index.
+        var rebuild = builder.BuildAdmin().RebuildKeywordIndexAsync(Ct);
+        await index.Enumerated.Task.WaitAsync(Ct);
+        var ingest = rag.IngestAsync(Md("late", "# Late\n\nQuixotic words\n"), cancellationToken: Ct);
+        await Task.WhenAny(ingest, Task.Delay(500, Ct));
+        index.Release.TrySetResult();
+        await Task.WhenAll(rebuild, ingest);
+
+        Assert.Equal(["late:0"], (await index.SearchAsync("quixotic", KeywordFilter.All, 10, Ct)).Select(h => h.ChunkKey));
+    }
+
+    /// <summary>An in-memory index whose rebuild pauses after reading its source, until released.</summary>
+    private sealed class PausingKeywordIndex : IKeywordIndex
+    {
+        private readonly InMemoryKeywordIndex _inner = new();
+
+        public TaskCompletionSource Enumerated { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public string Name => "pausing";
+
+        public Task UpsertAsync(IReadOnlyList<KeywordChunk> chunks, CancellationToken cancellationToken) => _inner.UpsertAsync(chunks, cancellationToken);
+
+        public Task DeleteAsync(IReadOnlyCollection<string> chunkKeys, CancellationToken cancellationToken) => _inner.DeleteAsync(chunkKeys, cancellationToken);
+
+        public Task<IReadOnlyList<KeywordHit>> SearchAsync(string query, KeywordFilter filter, int top, CancellationToken cancellationToken) =>
+            _inner.SearchAsync(query, filter, top, cancellationToken);
+
+        public Task<long> CountAsync(CancellationToken cancellationToken) => _inner.CountAsync(cancellationToken);
+
+        public async Task RebuildAsync(IAsyncEnumerable<KeywordChunk> source, CancellationToken cancellationToken)
+        {
+            var chunks = new List<KeywordChunk>();
+            await foreach (var c in source.WithCancellation(cancellationToken)) chunks.Add(c);
+            if (chunks.Count > 0)
+            {
+                // Only the admin rebuild pauses; the startup build of an empty store does not.
+                Enumerated.TrySetResult();
+                await Release.Task.WaitAsync(cancellationToken);
+            }
+
+            await _inner.RebuildAsync(Replay(chunks), cancellationToken);
+        }
+
+        private static async IAsyncEnumerable<KeywordChunk> Replay(List<KeywordChunk> chunks)
+        {
+            await Task.Yield();
+            foreach (var c in chunks) yield return c;
+        }
+    }
+
+    [Fact]
     public async Task Admin_rebuild_with_Hybrid_Off_throws()
     {
         var builder = Builder(new InMemoryVectorStore(), new(), o => o.Hybrid = HybridMode.Off);

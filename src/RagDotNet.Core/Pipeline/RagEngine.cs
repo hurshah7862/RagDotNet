@@ -85,6 +85,9 @@ internal sealed class RagEngine
     /// <summary>True when ingest and delete keep the keyword index in step.</summary>
     public bool WritesKeywordIndex => KeywordPath == KeywordPath.Index;
 
+    /// <summary>Held shared by ingest and delete around their keyword writes and manifest commits, exclusively by rebuilds.</summary>
+    public Keyword.KeywordSyncGate KeywordSync { get; } = new();
+
     /// <summary>The per-image OCR provider, if one is registered.</summary>
     public Ocr.IOcrProvider? OcrProvider { get; init; }
 
@@ -193,8 +196,13 @@ internal sealed class RagEngine
             Logger.LogWarning(
                 "The vector store's hybrid search failed with NotSupportedException ({Message}); keyword search now uses {Path} for the rest of this process.",
                 error.Message, next == KeywordPath.Index ? $"the {KeywordIndex!.Name} keyword index" : "nothing (vector-only)");
-            if (next == KeywordPath.Index) await RebuildKeywordIndexCoreAsync(ct).ConfigureAwait(false);
-            _keywordPath = next;
+            // Exclusive across the rebuild and the switch: an ingest either committed before the rebuild read the
+            // manifests, or writes the index after the switch.
+            using (await KeywordSync.EnterExclusiveAsync(ct).ConfigureAwait(false))
+            {
+                if (next == KeywordPath.Index) await RebuildKeywordIndexCoreAsync(ct).ConfigureAwait(false);
+                _keywordPath = next;
+            }
         }
         finally
         {
@@ -227,7 +235,8 @@ internal sealed class RagEngine
         if (index is not Keyword.InMemoryKeywordIndex || actual != 0)
             Logger.LogWarning(
                 "The {Index} keyword index holds {IndexCount} chunks but the documents have {ChunkCount}; rebuilding it.", index.Name, actual, expected);
-        await RebuildKeywordIndexCoreAsync(ct).ConfigureAwait(false);
+        using (await KeywordSync.EnterExclusiveAsync(ct).ConfigureAwait(false))
+            await RebuildKeywordIndexCoreAsync(ct).ConfigureAwait(false);
     }
 
     /// <summary>Rebuilds the keyword index from the vector store (or the content store, for text). For IRagAdmin.</summary>
@@ -237,7 +246,8 @@ internal sealed class RagEngine
         if (KeywordPath != KeywordPath.Index)
             throw new InvalidOperationException(
                 $"The keyword index is not in use: keyword search is '{KeywordPath.ToString().ToLowerInvariant()}' ({ChooseKeywordPath().Detail}).");
-        await RebuildKeywordIndexCoreAsync(ct).ConfigureAwait(false);
+        using (await KeywordSync.EnterExclusiveAsync(ct).ConfigureAwait(false))
+            await RebuildKeywordIndexCoreAsync(ct).ConfigureAwait(false);
     }
 
     private async Task RebuildKeywordIndexCoreAsync(CancellationToken ct)
@@ -283,27 +293,29 @@ internal sealed class RagEngine
     private async Task<List<Keyword.KeywordChunk>> FetchKeywordChunksAsync(List<(ManifestRecord Manifest, string Key)> batch, CancellationToken ct)
     {
         var keys = batch.Select(b => b.Key).ToList();
-        IReadOnlyDictionary<string, string> texts;
-        if (ContentStore is { } contentStore)
-        {
-            texts = await contentStore.GetAsync(keys, ct).ConfigureAwait(false);
-        }
-        else
-        {
-            var found = new Dictionary<string, string>(StringComparer.Ordinal);
-            foreach (var r in await Chunks.GetAsync(keys, includeVectors: false, ct).ConfigureAwait(false))
-            {
-                var key = ChunkKeys.Chunk((string)r["Partition"]!, (string)r["DocumentId"]!, Convert.ToInt32(r["ChunkIndex"], System.Globalization.CultureInfo.InvariantCulture));
-                if (r.TryGetValue("Text", out var t) && t is string text) found[key] = text;
-            }
 
-            texts = found;
+        // Headings come from the vector records in both modes; text from the records, or from the content store.
+        var headings = new Dictionary<string, string>(StringComparer.Ordinal);
+        var recordTexts = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var r in await Chunks.GetAsync(keys, includeVectors: false, ct).ConfigureAwait(false))
+        {
+            var key = ChunkKeys.Chunk((string)r["Partition"]!, (string)r["DocumentId"]!, Convert.ToInt32(r["ChunkIndex"], System.Globalization.CultureInfo.InvariantCulture));
+            if (r.TryGetValue("HeadingPath", out var h) && h is string heading) headings[key] = heading;
+            if (r.TryGetValue("Text", out var t) && t is string text) recordTexts[key] = text;
         }
+
+        var texts = ContentStore is { } contentStore
+            ? await contentStore.GetAsync(keys, ct).ConfigureAwait(false)
+            : recordTexts;
 
         var result = new List<Keyword.KeywordChunk>(batch.Count);
         foreach (var (m, key) in batch)
-            if (texts.TryGetValue(key, out var text))
-                result.Add(new Keyword.KeywordChunk(key, m.DocumentId, m.Partition, text, m.Metadata));
+        {
+            if (!texts.TryGetValue(key, out var text)) continue;
+            var path = headings.TryGetValue(key, out var h) && h.Length > 0 ? h.Split(" > ") : [];
+            result.Add(new Keyword.KeywordChunk(key, m.DocumentId, m.Partition, Chunking.EmbeddingText.For(path, text), m.Metadata));
+        }
+
         return result;
     }
 }

@@ -153,6 +153,8 @@ internal sealed class Ingestor(RagEngine engine)
             ? existing with { ContentHash = "", ChunkHighWater = highWater } // dirty marker: never matches a real hash
             : new ManifestRecord(docKey, s.DocumentId, scope.PartitionKey, partitionValues, "", "", engine.EmbeddingModelId,
                 0, sourceName, now, options.ContentStorage, "", highWater, metadata);
+        // Shared with other writers, exclusive of a keyword-index rebuild: from the pending manifest to the final commit.
+        using var keywordSync = await engine.KeywordSync.EnterSharedAsync(ct).ConfigureAwait(false);
         await engine.Manifests.UpsertAsync(pending, ct).ConfigureAwait(false);
         if (engine.ContentStore is { } contentStore && total > 0)
         {
@@ -168,8 +170,10 @@ internal sealed class Ingestor(RagEngine engine)
         if (engine.WritesKeywordIndex && total > 0)
         {
             // After the chunks and before the manifest commit: a failure here leaves the manifest pending, and a retry rewrites both.
+            // The headings are indexed with the text, as they are embedded with it.
             var keywordChunks = chunks.Select(c => new KeywordChunk(
-                ChunkKeys.Chunk(scope.PartitionKey, s.DocumentId, c.Index), s.DocumentId, scope.PartitionKey, c.Text, metadata)).ToList();
+                ChunkKeys.Chunk(scope.PartitionKey, s.DocumentId, c.Index), s.DocumentId, scope.PartitionKey,
+                EmbeddingText.For(c.HeadingPath, c.Text), metadata)).ToList();
             await engine.KeywordIndex!.UpsertAsync(keywordChunks, ct).ConfigureAwait(false);
         }
 
@@ -207,6 +211,7 @@ internal sealed class Ingestor(RagEngine engine)
         if (existing is null || !IsVisible(scope, existing)) return false;
 
         // Chunks first, so a crash leaves the manifest and a retry finishes the job.
+        using var keywordSync = await engine.KeywordSync.EnterSharedAsync(ct).ConfigureAwait(false);
         await DeleteRangeAsync(scope, documentId, 0, Math.Max(existing.ChunkCount, existing.ChunkHighWater), ct).ConfigureAwait(false);
         await engine.Manifests.DeleteAsync(scope.PartitionKey, documentId, ct).ConfigureAwait(false);
         return true;
