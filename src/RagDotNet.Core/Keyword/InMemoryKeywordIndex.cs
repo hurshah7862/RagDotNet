@@ -170,7 +170,8 @@ public sealed class InMemoryKeywordIndex : IKeywordIndex
                 postings[chunk.ChunkKey] = tf;
             }
 
-            Docs[chunk.ChunkKey] = new Doc(chunk, terms.Count, [.. frequencies.Keys]);
+            // The text is not kept: searches need only the postings, and filters only the key, partition and metadata.
+            Docs[chunk.ChunkKey] = new Doc(chunk with { Text = "" }, terms.Count, [.. frequencies.Keys]);
             TotalLength += terms.Count;
         }
 
