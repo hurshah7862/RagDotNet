@@ -187,7 +187,7 @@ The 8 `base` documents as image-only PDFs (each page rendered from the stage 5 P
 
 ## Hybrid check (stage 7)
 
-Vector, hybrid and reranked retrieval at the library defaults (structure-aware, 512 tokens, 0.1 overlap), in two runs: vector and hybrid on every set, Markdown and scanned; and all three on `base` only, with `LlmReranker` over `llama3.2:3b`. The first run scored `all` across the two Markdown sets. Reranking the other sets did not fit in the test machine's memory. Method and discussion: [evaluation.md](evaluation.md#hybrid-check).
+Vector, hybrid and reranked retrieval at the library defaults (structure-aware, 512 tokens, 0.1 overlap), in two runs: vector and hybrid on every set, Markdown and scanned; and all three on `base` only, with `LlmReranker` over `llama3.2:3b`. The first run scored `all` across the two Markdown sets. Reranking the other sets did not fit in the test machine's memory. The `hybrid-rerank` rows come from a run made before the keyword index received section headings; the `vector` and `hybrid` rows are from after. Method and discussion: [evaluation.md](evaluation.md#hybrid-check).
 
 - Embedder: ollama (nomic-embed-text)
 - Chat model: llama3.2:3b (reranking run only)
@@ -201,7 +201,7 @@ Vector, hybrid and reranked retrieval at the library defaults (structure-aware, 
 | Chunker | MaxTokens | Overlap | Mode | Retrieval | Chunks | R@1 | R@3 | R@5 | MRR |
 |---|---:|---:|---|---|---:|---:|---:|---:|---:|
 | structure-aware | 512 | 0.1 | vector | vector | 108 | 0.771 | 0.813 | 0.875 | 0.806 |
-| structure-aware | 512 | 0.1 | vector | hybrid | 108 | 0.667 | 0.771 | 0.813 | 0.743 |
+| structure-aware | 512 | 0.1 | vector | hybrid | 108 | 0.708 | 0.792 | 0.854 | 0.773 |
 | structure-aware | 512 | 0.1 | vector | hybrid-rerank | 108 | 0.083 | 0.313 | 0.521 | 0.273 |
 
 #### base · exact-term (8 questions)
@@ -234,11 +234,11 @@ Vector, hybrid and reranked retrieval at the library defaults (structure-aware, 
 | Chunker | MaxTokens | Overlap | Mode | Retrieval | Chunks | R@1 | R@3 | R@5 | MRR |
 |---|---:|---:|---|---|---:|---:|---:|---:|---:|
 | structure-aware | 512 | 0.1 | vector | vector | 28 | 0.650 | 0.950 | 0.950 | 0.783 |
-| structure-aware | 512 | 0.1 | vector | hybrid | 28 | 0.650 | 0.900 | 1.000 | 0.798 |
+| structure-aware | 512 | 0.1 | vector | hybrid | 28 | 0.700 | 0.900 | 1.000 | 0.823 |
 
 ### all
 
 | Chunker | MaxTokens | Overlap | Mode | Retrieval | Chunks | R@1 | R@3 | R@5 | MRR |
 |---|---:|---:|---|---|---:|---:|---:|---:|---:|
 | structure-aware | 512 | 0.1 | vector | vector | 136 | 0.735 | 0.853 | 0.897 | 0.800 |
-| structure-aware | 512 | 0.1 | vector | hybrid | 136 | 0.662 | 0.809 | 0.868 | 0.759 |
+| structure-aware | 512 | 0.1 | vector | hybrid | 136 | 0.706 | 0.824 | 0.897 | 0.788 |

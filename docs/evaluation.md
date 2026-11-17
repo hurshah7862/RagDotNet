@@ -219,18 +219,20 @@ The hybrid check asks whether keyword search and reranking improve retrieval, ov
 
 | Set | Questions | Vector | Hybrid | Hybrid, reranked |
 |---|---:|---:|---:|---:|
-| `base` | 48 | 0.806 (0.875) | 0.743 (0.813) | 0.273 (0.521) |
+| `base` | 48 | 0.806 (0.875) | 0.773 (0.854) | 0.273 (0.521) |
 | `base`, exact-term only | 8 | 0.656 (0.750) | 0.705 (0.750) | 0.354 (0.750) |
 | `base` scanned | 48 | 0.722 (0.875) | 0.772 (0.896) | not run |
 | `base` scanned, exact-term only | 8 | 0.781 (1.000) | 0.938 (1.000) | not run |
-| `long-sections` | 20 | 0.783 (0.950) | 0.798 (1.000) | not run |
-| `all` | 68 | 0.800 (0.897) | 0.759 (0.868) | not run |
+| `long-sections` | 20 | 0.783 (0.950) | 0.823 (1.000) | not run |
+| `all` | 68 | 0.800 (0.897) | 0.788 (0.897) | not run |
+
+The reranked column was measured before the keyword index received section headings, when hybrid scored 0.743 on `base`; the other columns after. Indexing headings raised hybrid MRR on `base` from 0.743 to 0.773, on `long-sections` from 0.798 to 0.823, and on `all` from 0.759 to 0.788; the scanned set has no headings and did not change.
 
 What this shows:
 
 - **Hybrid helps where an exact term decides the answer.** On the exact-term questions MRR rises from 0.656 to 0.705 on Markdown and from 0.781 to 0.938 on scans.
-- **Hybrid helps on large chunks.** On the scanned set (24 page-sized chunks) MRR rises from 0.722 to 0.772, and on `long-sections` R@5 reaches 1.000. A plausible reason: a large chunk that mixes topics has a diluted embedding, but still contains the question's words.
-- **Hybrid is worse on `base` as a whole:** MRR falls from 0.806 to 0.743 and R@5 from 0.875 to 0.813, which also pulls `all` down from 0.800 to 0.759. About half of these questions are paraphrased to share few words with the answer. The likely cause, not checked question by question: on those, keyword search ranks other passages first, and fusion gives them equal weight with the vector results. An app whose users mostly ask in their own words about short, well-structured sections may do better with `Hybrid = Off`.
-- **Reranking with `llama3.2:3b` makes retrieval much worse:** MRR falls from 0.743 to 0.273 and R@1 from 0.667 to 0.083. The replies are valid scores, so the fallback to the fused order never applies; the scores are simply poor. Given ten short passages of which one plainly answers the question, this model gave that passage the top score in two of three tries. A 3-billion-parameter model is too small for this job. Reranking with a stronger chat model was not measured.
+- **Hybrid helps on large chunks.** On the scanned set (24 page-sized chunks) MRR rises from 0.722 to 0.772, and on `long-sections` from 0.783 to 0.823, with R@5 reaching 1.000. A plausible reason: a large chunk that mixes topics has a diluted embedding, but still contains the question's words.
+- **Hybrid is still worse on `base` as a whole:** MRR falls from 0.806 to 0.773 and R@5 from 0.875 to 0.854, which also pulls `all` down slightly, from 0.800 to 0.788. About half of these questions are paraphrased to share few words with the answer. The likely cause, not checked question by question: on those, keyword search ranks other passages first, and fusion gives them equal weight with the vector results. An app whose users mostly ask in their own words about short, well-structured sections may do better with `Hybrid = Off`.
+- **Reranking with `llama3.2:3b` makes retrieval much worse:** MRR fell from 0.743 (hybrid, at the time) to 0.273 and R@1 from 0.667 to 0.083. The replies are valid scores, so the fallback to the fused order never applies; the scores are simply poor. Given ten short passages of which one plainly answers the question, this model gave that passage the top score in two of three tries. A 3-billion-parameter model is too small for this job. Reranking with a stronger chat model was not measured.
 
 **Limits.** 8 exact-term questions is a small sample: one question changes R@1 by 0.125. The corpus is small, 136 chunks at most, so vector search rarely has to pick among many near matches, which is where keyword search usually earns more. Reranking was measured with one small model on one set.
