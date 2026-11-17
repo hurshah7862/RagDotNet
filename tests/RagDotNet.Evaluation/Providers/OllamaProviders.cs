@@ -12,8 +12,12 @@ public static class OllamaProviders
     /// <summary>Creates the embedding client.</summary>
     public static IEmbeddingGenerator<string, Embedding<float>> CreateEmbedder(Uri url, string model) => new OllamaApiClient(url, model);
 
+    /// <summary>How long one chat call may take. A reranking prompt of several thousand tokens on a CPU takes minutes.</summary>
+    public static readonly TimeSpan ChatTimeout = TimeSpan.FromMinutes(30);
+
     /// <summary>Creates the chat client.</summary>
-    public static IChatClient CreateChat(Uri url, string model) => new OllamaApiClient(url, model);
+    public static IChatClient CreateChat(Uri url, string model) =>
+        new OllamaApiClient(new HttpClient { BaseAddress = url, Timeout = ChatTimeout }, model);
 
     /// <summary>
     /// Lists the models Ollama has pulled, within <see cref="PingTimeout"/>, and checks each of <paramref name="models"/>
