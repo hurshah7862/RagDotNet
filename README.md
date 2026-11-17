@@ -4,7 +4,7 @@
 
 RagDotNet is a .NET library for retrieval-augmented generation (RAG). It ingests documents, chunks and embeds them into a vector store, and answers questions with cited sources, built on Microsoft.Extensions.AI and Microsoft.Extensions.VectorData.
 
-> **Under development.** RagDotNet is not released yet. The public API can still change between commits, stored data may need re-ingesting after an update, and no package is published to NuGet. Core ingestion, retrieval, cited answers, chat and query rewriting, three chunkers, PDF, DOCX and HTML readers, and OCR work today; hybrid search and reranking, more vector stores, and hosting adapters are still to come. Feedback and issues are welcome.
+> **Under development.** RagDotNet is not released yet. The public API can still change between commits, stored data may need re-ingesting after an update, and no package is published to NuGet. Core ingestion, hybrid retrieval and reranking, cited answers, chat and query rewriting, three chunkers, PDF, DOCX and HTML readers, and OCR work today; more vector stores and hosting adapters are still to come. Feedback and issues are welcome.
 
 ## Why this exists
 
@@ -24,7 +24,7 @@ RagDotNet is for .NET developers who want an application to answer questions fro
 | External content store, dependency injection, OpenTelemetry tracing | Works |
 | Retrieval evaluation harness | Works |
 | OCR: Tesseract package, or your own provider (per image or whole document) | Works |
-| Hybrid search and reranking | Planned |
+| Hybrid search and reranking | Works |
 | More vector stores | Planned |
 | Hosting adapters | Planned |
 | NuGet packages | Planned |
@@ -159,6 +159,25 @@ new AccessScope(
 
 **Custom transformers.** Implement `IQueryTransformer.TransformAsync(QueryContext, CancellationToken)`. `QueryContext` has the `Question`, the windowed `History`, the current `Queries` (the previous step's output) and the `ChatClient`, which is null when none is configured. Return the new list of queries; empty and duplicate entries are dropped, and an empty result keeps the previous queries.
 
+## Hybrid search
+
+Retrieval is hybrid by default: every question runs a vector search and a keyword search, and the two ranked lists are fused with reciprocal rank fusion. Keyword search finds what vector search misses, such as version numbers, error codes and setting names. It needs no setup: an in-memory keyword index is built from the vector store when the app starts and kept in step on every ingest and delete. Access scopes and filters apply inside keyword search exactly as they do inside vector search.
+
+```csharp
+services.AddRag(o => o.Hybrid = HybridMode.Off);                         // vector-only, for the whole app
+services.AddRag().AddLuceneKeywordIndex(o => o.Directory = "./kw-index");  // persisted index, for large corpora
+services.AddRag().AddLlmReranker();                                       // rerank the top 20 with the chat model
+
+var chunks = await rag.RetrieveAsync(question, new RetrievalOptions { Hybrid = HybridMode.Off, UseReranker = false }); // per call
+```
+
+- A vector store with its own hybrid search (`IKeywordHybridSearchable`) is used directly, and no keyword index is kept.
+- `RagDotNet.Keyword.Lucene` (preview, because Lucene.NET 4.8 is a prerelease) keeps the index on disk; one process can write to a directory at a time.
+- `LlmReranker` scores the candidates with your chat model, 2 chat calls per retrieval with the defaults. If the model's reply cannot be read, retrieval keeps the fused order instead of failing. It needs a capable model: in our check a 3B local model made results much worse.
+- In our check hybrid search beat vector search on exact-term questions and on large chunks, and lost to it on paraphrased questions over short sections, so measure both on your own documents.
+
+[docs/retrieval.md](docs/retrieval.md) covers the modes, choosing an index, the in-memory index's limits, scores and `MinScore`, and the measured results.
+
 ## Readers
 
 Text and Markdown are read by Core. PDF, DOCX and HTML each have their own package, so you only take the parser you need:
@@ -243,8 +262,8 @@ RAGDOTNET_INTEGRATION=1 dotnet test --project tests/RagDotNet.IntegrationTests
 
 `tests/RagDotNet.Evaluation` is a console app that measures how often retrieval finds the passage that answers a question. It uses only the library's public API.
 
-- **Dataset.** 60 questions over original Markdown documents for a fictional note-taking app, in two sets that are scored separately and together: `base` (8 documents with many short sections, 40 questions) and `long-sections` (4 documents whose sections run 800 to 2000 words, 20 questions), which is what makes chunk size matter. Each question names its document and a short verbatim fragment, 20 to 80 characters, of the passage that answers it. The harness refuses to run if a fragment is missing, appears more than once, spans two blocks or sits in a heading, so editing a document can't silently change the scores.
-- **Run.** For every combination of chunker (structure-aware, fixed-size and semantic), chunk size (128, 256, 512 and 1024 tokens), overlap (0, 0.1 and 0.2; semantic ignores it) and retrieval mode, it builds a fresh in-memory pipeline for each set, ingests the documents, and retrieves the top 10 chunks for each question. Vector search is the default mode; multi-query and HyDE are opt-in.
+- **Dataset.** 68 questions over original Markdown documents for a fictional note-taking app, in two sets that are scored separately and together: `base` (8 documents with many short sections, 48 questions, 8 of them tagged `exact-term` because the answer hinges on a version, a command or a setting name) and `long-sections` (4 documents whose sections run 800 to 2000 words, 20 questions), which is what makes chunk size matter. Each question names its document and a short verbatim fragment, 20 to 80 characters, of the passage that answers it. The harness refuses to run if a fragment is missing, appears more than once, spans two blocks or sits in a heading, so editing a document can't silently change the scores.
+- **Run.** For every combination of chunker (structure-aware, fixed-size and semantic), chunk size (128, 256, 512 and 1024 tokens), overlap (0, 0.1 and 0.2; semantic ignores it) and retrieval mode, it builds a fresh in-memory pipeline for each set, ingests the documents, and retrieves the top 10 chunks for each question. Vector search is the default mode; multi-query and HyDE are opt-in, and `--retrieval vector,hybrid,hybrid-rerank` compares vector, hybrid and reranked retrieval, with the `exact-term` questions also scored on their own.
 - **Scoring.** A retrieved chunk counts as relevant when it comes from the right document and contains the fragment. The report gives recall@1, recall@3 and recall@5, the share of questions whose first relevant chunk is within the top 1, 3 or 5, and the mean reciprocal rank (MRR).
 - **Two modes.** The default fake mode uses a deterministic bag-of-words embedder, needs no model, and gives byte-identical reports; it checks that the harness works, and its scores mean nothing. Ollama mode gives real numbers.
 
@@ -253,7 +272,7 @@ dotnet run --project tests/RagDotNet.Evaluation                            # fak
 dotnet run --project tests/RagDotNet.Evaluation -- --embedder ollama      # real embeddings via Ollama
 ```
 
-A format check renders the 8 base documents as PDF, DOCX and HTML and runs the same 40 questions on each, to show the readers keep enough text and structure for retrieval (`--formats md,pdf,docx,html`). A scanned check does the same with image-only PDFs read by Tesseract (`--formats md,scanned`).
+A format check renders the 8 base documents as PDF, DOCX and HTML and runs the same questions on each, to show the readers keep enough text and structure for retrieval (`--formats md,pdf,docx,html`). A scanned check does the same with image-only PDFs read by Tesseract (`--formats md,scanned`).
 
 The harness's own tests are in `tests/RagDotNet.Evaluation.Tests`. [docs/evaluation.md](docs/evaluation.md) describes the method and its limits and records the latest real-mode results, and [docs/evaluation-results.md](docs/evaluation-results.md) holds the full report. [docs/chunking.md](docs/chunking.md) compares the three chunkers.
 

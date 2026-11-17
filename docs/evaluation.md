@@ -10,12 +10,12 @@ The dataset lives in `tests/RagDotNet.Evaluation/Dataset`, as two **sets**. Each
 
 | Set | Documents | Questions | What it is for |
 |---|---|---|---|
-| `base` | 8, 600–1500 words each, many short sections | 40, 5 per document; 6 from tables, 4 from code | The stage 3 set, unchanged, so its results stay comparable with the stage 3 baseline (hash `cb1f2ea1af73`) |
+| `base` | 8, 600–1500 words each, many short sections | 48: the stage 3 set's 40 (5 per document; 6 from tables, 4 from code), plus 8 tagged `exact-term` added in stage 7 | The stage 3 set. Adding the 8 questions changed its hash from `cb1f2ea1af73` to `ca2b85ecf304`; the 40 original questions are unchanged, but only runs with the same hash are comparable |
 | `long-sections` | 4, each with 2 sections of 800–2000 words and no subheadings | 20, 5 per document; 4 from tables, 3 from code; at least 12 answered from the second half of a section | Separating chunk sizes: sections far longer than 512 tokens, so the size decides how they are cut |
 
 The base documents cover install, configuration, sync and storage, troubleshooting, keyboard shortcuts, the plugin API, security and privacy, and release notes. The long-section documents cover migrating from other apps, collaboration, templates and automation, and performance tuning. In both sets about half the questions reuse the document's wording and half are paraphrased with few shared keywords.
 
-Each question is labelled with its document and an `evidence` string: a short verbatim fragment (20–80 characters) of the answering passage.
+Each question is labelled with its document and an `evidence` string: a short verbatim fragment (20–80 characters) of the answering passage. A question can also carry `tags`; the 8 tagged `exact-term` hinge on a setting name, a command, a version number, a cipher name or a manifest key that appears once in the corpus, such as "What does render.gpu control?". When a hybrid retrieval runs, the report scores them again on their own.
 
 `--dataset` accepts either one set folder or a root folder of set folders.
 
@@ -69,7 +69,7 @@ Real mode uses Ollama (`nomic-embed-text`, 768 dimensions, and `llama3.2:3b` for
 dotnet run --project tests/RagDotNet.Evaluation -- --embedder ollama --output docs/evaluation-results.md
 ```
 
-Add `--modes vector,multi-query,hyde` to include query rewriting, which makes one chat call per question per mode.
+Add `--modes vector,multi-query,hyde` to include query rewriting, which makes one chat call per question per mode. Add `--retrieval vector,hybrid,hybrid-rerank` to compare vector, hybrid and reranked retrieval (see [Hybrid check](#hybrid-check)).
 
 | Option | Default |
 |---|---|
@@ -78,6 +78,7 @@ Add `--modes vector,multi-query,hyde` to include query rewriting, which makes on
 | `--embed-model` / `--chat-model` | `nomic-embed-text` / `llama3.2:3b` |
 | `--dimensions` | 256 (fake), 768 (ollama) |
 | `--modes` | `vector` |
+| `--retrieval` | `vector`; `hybrid` adds keyword search through the in-memory index, `hybrid-rerank` also reranks with `LlmReranker` over the chat model (a deterministic fake reranker in fake mode) |
 | `--chunkers` | `structure-aware,fixed-size,semantic` |
 | `--formats` | `md`; add `pdf`, `docx`, `html` to also read the sets that have rendered copies (see [Format check](#format-check)), and `scanned` for their image-only copies, read with Tesseract (see [Scanned check](#scanned-check)) |
 | `--tessdata` | `$RAGDOTNET_TESSDATA`, else `/usr/share/tesseract-ocr/5/tessdata`; Tesseract's language data, used only by `scanned` |
@@ -204,3 +205,32 @@ What this shows:
 
 **Limits.** These are clean, generated scans: straight, high-contrast and in one standard font. Real scans can be skewed, noisy, low-resolution or handwritten, and will usually do worse. The check measures what OCR costs on good input, not on bad.
 
+## Hybrid check
+
+The hybrid check asks whether keyword search and reranking improve retrieval, overall and on the questions where an exact term decides the answer.
+
+**Method.**
+- **Retrieval:** each set is ingested once; every question is then retrieved three ways: `vector` (vector search only), `hybrid` (vector and keyword search through the in-memory index, fused with reciprocal rank fusion) and `hybrid-rerank` (hybrid, then `LlmReranker` with `llama3.2:3b` over the top 20 candidates).
+- **Questions:** all of them, and the 8 `exact-term` questions on their own.
+- **Command:** `--embedder ollama --formats md,scanned --retrieval vector,hybrid,hybrid-rerank --chunkers structure-aware --max-tokens 512 --overlap 0.1 --tessdata <dir>`.
+- **What was run:** `vector` and `hybrid` on every set, Markdown and scanned. `hybrid-rerank` on `base` only (`--formats md --dataset <Dataset/base>`): on the test machine the chat model runs on the CPU, and reranking the sets with long chunks did not fit in its 16 GB of memory.
+
+**Results** (2026-11-17, `nomic-embed-text`, `llama3.2:3b`; the full report is in [evaluation-results.md](evaluation-results.md#hybrid-check-stage-7)). MRR, with R@5 in brackets:
+
+| Set | Questions | Vector | Hybrid | Hybrid, reranked |
+|---|---:|---:|---:|---:|
+| `base` | 48 | 0.806 (0.875) | 0.743 (0.813) | 0.273 (0.521) |
+| `base`, exact-term only | 8 | 0.656 (0.750) | 0.705 (0.750) | 0.354 (0.750) |
+| `base` scanned | 48 | 0.722 (0.875) | 0.772 (0.896) | not run |
+| `base` scanned, exact-term only | 8 | 0.781 (1.000) | 0.938 (1.000) | not run |
+| `long-sections` | 20 | 0.783 (0.950) | 0.798 (1.000) | not run |
+| `all` | 68 | 0.800 (0.897) | 0.759 (0.868) | not run |
+
+What this shows:
+
+- **Hybrid helps where an exact term decides the answer.** On the exact-term questions MRR rises from 0.656 to 0.705 on Markdown and from 0.781 to 0.938 on scans.
+- **Hybrid helps on large chunks.** On the scanned set (24 page-sized chunks) MRR rises from 0.722 to 0.772, and on `long-sections` R@5 reaches 1.000. A plausible reason: a large chunk that mixes topics has a diluted embedding, but still contains the question's words.
+- **Hybrid is worse on `base` as a whole:** MRR falls from 0.806 to 0.743 and R@5 from 0.875 to 0.813, which also pulls `all` down from 0.800 to 0.759. About half of these questions are paraphrased to share few words with the answer. The likely cause, not checked question by question: on those, keyword search ranks other passages first, and fusion gives them equal weight with the vector results. An app whose users mostly ask in their own words about short, well-structured sections may do better with `Hybrid = Off`.
+- **Reranking with `llama3.2:3b` makes retrieval much worse:** MRR falls from 0.743 to 0.273 and R@1 from 0.667 to 0.083. The replies are valid scores, so the fallback to the fused order never applies; the scores are simply poor. Given ten short passages of which one plainly answers the question, this model gave that passage the top score in two of three tries. A 3-billion-parameter model is too small for this job. Reranking with a stronger chat model was not measured.
+
+**Limits.** 8 exact-term questions is a small sample: one question changes R@1 by 0.125. The corpus is small, 136 chunks at most, so vector search rarely has to pick among many near matches, which is where keyword search usually earns more. Reranking was measured with one small model on one set.
