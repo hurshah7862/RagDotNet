@@ -151,10 +151,15 @@ public sealed class LlmReranker : IReranker
         return (normalized ?? text)[..end];
     }
 
-    /// <summary>The scores divided by 10, or null when the reply holds no JSON array of exactly <paramref name="count"/> numbers from 0 to 10.</summary>
+    /// <summary>
+    /// The scores divided by 10, or null when the reply holds no JSON array of exactly <paramref name="count"/> numbers from 0 to 10.
+    /// A reasoning model's <c>&lt;think&gt;</c> block comes before the answer and often cites passages as [1], so it is skipped.
+    /// </summary>
     internal static double[]? Parse(string? reply, int count)
     {
         if (reply is null) return null;
+        var thought = reply.LastIndexOf("</think>", StringComparison.OrdinalIgnoreCase);
+        if (thought >= 0) reply = reply[(thought + "</think>".Length)..];
         var open = reply.IndexOf('[', StringComparison.Ordinal);
         var close = open < 0 ? -1 : reply.IndexOf(']', open);
         if (close < 0) return null;

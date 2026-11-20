@@ -230,6 +230,19 @@ public class LlmRerankerTests
     }
 
     [Theory]
+    [InlineData("<think>Passage [1] mentions it, [2] does not.</think>\n[7, 0]")]
+    [InlineData("<think>\n[1] is good.\n</think>The scores: [7, 0]")]
+    public async Task Reasoning_models_think_block_is_skipped(string reply)
+    {
+        var chat = new ScriptChat((_, _) => Task.FromResult(reply));
+
+        var results = await new LlmReranker(chat).RerankAsync("q", Candidates(2), 2, Ct);
+
+        Assert.Equal(1, chat.Calls);
+        Assert.Equal([new RerankResult(0, 0.7), new RerankResult(1, 0.0)], results);
+    }
+
+    [Theory]
     [InlineData("[1, 2]")]
     [InlineData("[1, 2, 3, 4]")]
     [InlineData("[11, 2, 3]")]
