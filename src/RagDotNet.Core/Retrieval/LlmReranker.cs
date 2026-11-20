@@ -3,6 +3,8 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.ML.Tokenizers;
 using RagDotNet.Chunking;
 
@@ -12,7 +14,8 @@ namespace RagDotNet.Retrieval;
 /// An <see cref="IReranker"/> that asks the app's chat model to score each candidate from 0 to 10 against the question.
 /// Candidates go in groups of <see cref="LlmRerankerOptions.BatchSize"/> per chat call, so one retrieval costs
 /// <c>ceil(candidates / BatchSize)</c> calls. When the model's reply cannot be read even after one retry, retrieval keeps
-/// the fused order and logs a warning.
+/// the fused order and logs a warning. When the chat client reports reading far fewer input tokens than were sent, the
+/// prompt was probably cut to fit the model's context window, and the reranker logs a warning once per call.
 /// </summary>
 public sealed class LlmReranker : IReranker
 {
@@ -22,7 +25,11 @@ public sealed class LlmReranker : IReranker
     private const string FormatInstruction =
         "Reply with only a JSON array of integers, one score from 0 to 10 per passage, in passage order, for example [7, 0, 10].";
 
+    /// <summary>A model that reports reading less than this share of the tokens counted with the reranker's tokenizer probably had the prompt cut.</summary>
+    private const double CutPromptRatio = 0.85;
+
     private readonly IChatClient _chat;
+    private readonly ILogger _logger;
     private readonly LlmRerankerOptions _options;
     private readonly Tokenizer _tokenizer;
 
@@ -30,10 +37,12 @@ public sealed class LlmReranker : IReranker
     /// <param name="chat">The chat client that scores the candidates.</param>
     /// <param name="options">The options; defaults when null.</param>
     /// <param name="tokenizer">Counts tokens for <see cref="LlmRerankerOptions.MaxCandidateTokens"/>; cl100k_base when null.</param>
+    /// <param name="logger">Logs a warning when the model probably read a cut prompt; none when null.</param>
     /// <exception cref="ArgumentNullException"><paramref name="chat"/> is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">An option is below 1.</exception>
-    public LlmReranker(IChatClient chat, LlmRerankerOptions? options = null, Tokenizer? tokenizer = null)
+    public LlmReranker(IChatClient chat, LlmRerankerOptions? options = null, Tokenizer? tokenizer = null, ILogger? logger = null)
     {
+        _logger = logger ?? NullLogger.Instance;
         _chat = chat ?? throw new ArgumentNullException(nameof(chat));
         _options = options ?? new LlmRerankerOptions();
         ArgumentOutOfRangeException.ThrowIfLessThan(_options.BatchSize, 1, "BatchSize");
@@ -54,6 +63,7 @@ public sealed class LlmReranker : IReranker
             batches.Add((start, Math.Min(_options.BatchSize, candidates.Count - start)));
 
         var calls = 0;
+        var warnedCut = 0;
         using var gate = new SemaphoreSlim(_options.MaxConcurrency);
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var scores = new double[candidates.Count];
@@ -64,7 +74,7 @@ public sealed class LlmReranker : IReranker
                 await gate.WaitAsync(cts.Token).ConfigureAwait(false);
                 try
                 {
-                    var batchScores = await ScoreBatchAsync(query, candidates, batch.Start, batch.Count, () => Interlocked.Increment(ref calls), cts.Token).ConfigureAwait(false);
+                    var batchScores = await ScoreBatchAsync(query, candidates, batch.Start, batch.Count, () => Interlocked.Increment(ref calls), () => Interlocked.Exchange(ref warnedCut, 1) == 0, cts.Token).ConfigureAwait(false);
                     batchScores.CopyTo(scores, batch.Start);
                 }
                 catch
@@ -94,18 +104,30 @@ public sealed class LlmReranker : IReranker
     }
 
     private async Task<double[]> ScoreBatchAsync(
-        string query, IReadOnlyList<RetrievedChunk> candidates, int start, int count, Action countCall, CancellationToken ct)
+        string query, IReadOnlyList<RetrievedChunk> candidates, int start, int count, Action countCall, Func<bool> firstCutWarning, CancellationToken ct)
     {
-        var messages = new List<ChatMessage>
-        {
-            new(ChatRole.System, (_options.Instructions ?? DefaultInstruction) + "\n" + FormatInstruction),
-            new(ChatRole.User, UserPrompt(query, candidates, start, count)),
-        };
+        var system = (_options.Instructions ?? DefaultInstruction) + "\n" + FormatInstruction;
+        var user = UserPrompt(query, candidates, start, count);
+        var messages = new List<ChatMessage> { new(ChatRole.System, system), new(ChatRole.User, user) };
+        long? sent = null;
 
         for (var attempt = 0; attempt < 2; attempt++)
         {
             countCall();
             var response = await _chat.GetResponseAsync(messages, cancellationToken: ct).ConfigureAwait(false);
+            if (response.Usage?.InputTokenCount is { } read)
+            {
+                sent ??= _tokenizer.CountTokens(system) + _tokenizer.CountTokens(user);
+                if (read < sent * CutPromptRatio && firstCutWarning())
+                {
+                    _logger.LogWarning(
+                        "The chat model read {Read} of about {Sent} prompt tokens sent to rerank {Count} passages; the prompt was probably cut to fit "
+                        + "the model's context window, so the scores may ignore the question. Lower LlmRerankerOptions.BatchSize or "
+                        + "MaxCandidateTokens, or raise the model's context window (num_ctx in Ollama).",
+                        read, sent, count);
+                }
+            }
+
             if (Parse(response.Text, count) is { } parsed) return parsed;
         }
 

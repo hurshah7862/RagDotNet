@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using RagDotNet.Retrieval;
 
 namespace RagDotNet.Configuration;
@@ -17,6 +18,6 @@ public static class LlmRerankerBuilderExtensions
         ArgumentNullException.ThrowIfNull(builder);
         var options = new LlmRerankerOptions();
         configure?.Invoke(options);
-        return builder.UseRerankerFactory((chat, tokenizer) => new LlmReranker(chat, options, tokenizer));
+        return builder.UseRerankerFactory((chat, tokenizer, loggers) => new LlmReranker(chat, options, tokenizer, loggers?.CreateLogger<LlmReranker>()));
     }
 }

@@ -3,8 +3,12 @@ namespace RagDotNet.Retrieval;
 /// <summary>Options for <see cref="LlmReranker"/>.</summary>
 public sealed class LlmRerankerOptions
 {
-    /// <summary>How many candidates go in one chat call. Default 10.</summary>
-    public int BatchSize { get; set; } = 10;
+    /// <summary>
+    /// How many candidates go in one chat call. Default 5, so that a call of up to 5 × <see cref="MaxCandidateTokens"/>
+    /// tokens fits a 4,096-token context window. Raise it only when the model's window holds
+    /// <c>BatchSize × MaxCandidateTokens</c> tokens plus the question.
+    /// </summary>
+    public int BatchSize { get; set; } = 5;
 
     /// <summary>The most chat calls running at once for one retrieval. Default 4.</summary>
     public int MaxConcurrency { get; set; } = 4;

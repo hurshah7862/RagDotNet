@@ -242,7 +242,7 @@ public sealed class RagPipelineBuilder
 
     private RagEngine CreateEngine(IEmbeddingGenerator<string, Embedding<float>> embedder, VectorStore store) =>
         RagEngineFactory.Create(_options, _readers, _chunkers, embedder, store, _loggerFactory, _contentStore, _time, _ocr, _documentOcr, _renderers,
-            _keywordIndex ?? new Keyword.InMemoryKeywordIndex(), _reranker ?? _rerankerFactory?.Invoke(_chat!, _options.Tokenizer));
+            _keywordIndex ?? new Keyword.InMemoryKeywordIndex(), _reranker ?? _rerankerFactory?.Invoke(_chat!, _options.Tokenizer, _loggerFactory));
 
     /// <summary>Sets the clock used for model check expiry and reindex heartbeats; tests use a manual clock.</summary>
     internal RagPipelineBuilder UseTimeProvider(TimeProvider time)
@@ -259,7 +259,7 @@ public sealed class RagPipelineBuilder
     }
 
     /// <summary>Creates the reranker at build time from the chat client; used by <c>AddLlmReranker</c>. Replaces a reranker set earlier.</summary>
-    internal RagPipelineBuilder UseRerankerFactory(Func<IChatClient, Microsoft.ML.Tokenizers.Tokenizer?, Retrieval.IReranker> factory)
+    internal RagPipelineBuilder UseRerankerFactory(Func<IChatClient, Microsoft.ML.Tokenizers.Tokenizer?, ILoggerFactory?, Retrieval.IReranker> factory)
     {
         ThrowIfFrozen();
         _rerankerFactory = factory ?? throw new ArgumentNullException(nameof(factory));
@@ -267,7 +267,7 @@ public sealed class RagPipelineBuilder
         return this;
     }
 
-    private Func<IChatClient, Microsoft.ML.Tokenizers.Tokenizer?, Retrieval.IReranker>? _rerankerFactory;
+    private Func<IChatClient, Microsoft.ML.Tokenizers.Tokenizer?, ILoggerFactory?, Retrieval.IReranker>? _rerankerFactory;
 
     private void Validate()
     {

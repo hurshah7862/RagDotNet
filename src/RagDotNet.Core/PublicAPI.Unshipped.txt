@@ -944,7 +944,7 @@ static Microsoft.Extensions.DependencyInjection.RagHybridBuilderExtensions.AddRe
 RagDotNet.Pipeline.IRagAdmin.RebuildKeywordIndexAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
 RagDotNet.Configuration.LlmRerankerBuilderExtensions
 RagDotNet.Retrieval.LlmReranker
-RagDotNet.Retrieval.LlmReranker.LlmReranker(Microsoft.Extensions.AI.IChatClient! chat, RagDotNet.Retrieval.LlmRerankerOptions? options = null, Microsoft.ML.Tokenizers.Tokenizer? tokenizer = null) -> void
+RagDotNet.Retrieval.LlmReranker.LlmReranker(Microsoft.Extensions.AI.IChatClient! chat, RagDotNet.Retrieval.LlmRerankerOptions? options = null, Microsoft.ML.Tokenizers.Tokenizer? tokenizer = null, Microsoft.Extensions.Logging.ILogger? logger = null) -> void
 RagDotNet.Retrieval.LlmReranker.RerankAsync(string! query, System.Collections.Generic.IReadOnlyList<RagDotNet.Retrieval.RetrievedChunk!>! candidates, int top, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<RagDotNet.Retrieval.RerankResult!>!>!
 RagDotNet.Retrieval.LlmRerankerOptions
 RagDotNet.Retrieval.LlmRerankerOptions.BatchSize.get -> int

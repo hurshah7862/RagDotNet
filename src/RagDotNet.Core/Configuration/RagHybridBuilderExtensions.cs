@@ -1,5 +1,6 @@
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using RagDotNet.Configuration;
 using RagDotNet.Keyword;
@@ -54,7 +55,8 @@ public static class RagHybridBuilderExtensions
         builder.Services.Replace(ServiceDescriptor.Singleton<IReranker>(sp => new LlmReranker(
             sp.GetRequiredService<IChatClient>(),
             sp.GetRequiredService<IOptions<LlmRerankerOptions>>().Value,
-            sp.GetRequiredService<IOptions<RagOptions>>().Value.Tokenizer)));
+            sp.GetRequiredService<IOptions<RagOptions>>().Value.Tokenizer,
+            sp.GetService<ILoggerFactory>()?.CreateLogger<LlmReranker>())));
         return builder;
     }
 

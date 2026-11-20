@@ -3,6 +3,8 @@ using CommunityToolkit.VectorData.InMemory;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Testing;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.VectorData;
 using RagDotNet.Configuration;
@@ -18,7 +20,7 @@ public class LlmRerankerTests
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     /// <summary>A chat client answering through a function of the request.</summary>
-    private sealed class ScriptChat(Func<IList<ChatMessage>, CancellationToken, Task<string>> reply) : IChatClient
+    private sealed class ScriptChat(Func<IList<ChatMessage>, CancellationToken, Task<string>> reply, Func<IList<ChatMessage>, long?>? inputTokens = null) : IChatClient
     {
         private int _calls;
 
@@ -31,7 +33,9 @@ public class LlmRerankerTests
             var list = messages.ToList();
             lock (Requests) Requests.Add(list);
             Interlocked.Increment(ref _calls);
-            return new ChatResponse(new ChatMessage(ChatRole.Assistant, await reply(list, cancellationToken)));
+            var response = new ChatResponse(new ChatMessage(ChatRole.Assistant, await reply(list, cancellationToken)));
+            if (inputTokens?.Invoke(list) is { } tokens) response.Usage = new UsageDetails { InputTokenCount = tokens };
+            return response;
         }
 
         public IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default) =>
@@ -53,7 +57,7 @@ public class LlmRerankerTests
     public async Task Sends_candidates_in_groups_of_BatchSize()
     {
         var chat = new ScriptChat((r, _) => Task.FromResult(Fives(r)));
-        var reranker = new LlmReranker(chat);
+        var reranker = new LlmReranker(chat, new LlmRerankerOptions { BatchSize = 10 });
 
         var results = await reranker.RerankAsync("question", Candidates(25), 25, Ct);
 
@@ -61,6 +65,73 @@ public class LlmRerankerTests
         Assert.Equal([10, 10, 5], chat.Requests.Select(Passages).Order().Reverse());
         Assert.Equal(25, results.Count);
         Assert.Equal(Enumerable.Range(0, 25), results.Select(r => r.Index)); // all ties: input order
+    }
+
+    [Fact]
+    public async Task Default_BatchSize_is_5_so_a_batch_fits_a_4096_token_window()
+    {
+        Assert.Equal(5, new LlmRerankerOptions().BatchSize);
+        var chat = new ScriptChat((r, _) => Task.FromResult(Fives(r)));
+
+        await new LlmReranker(chat).RerankAsync("question", Candidates(20), 20, Ct);
+
+        Assert.Equal(4, chat.Calls);
+        Assert.All(chat.Requests, r => Assert.Equal(5, Passages(r)));
+    }
+
+    private static List<RetrievedChunk> LongCandidates(int n) =>
+        Candidates(n).Select(c => c with { Text = string.Join(' ', Enumerable.Range(0, 400).Select(i => "word" + i)) }).ToList();
+
+    [Fact]
+    public async Task Warns_when_the_model_read_far_fewer_tokens_than_were_sent()
+    {
+        var logger = new FakeLogger<LlmReranker>();
+        var chat = new ScriptChat((r, _) => Task.FromResult(Fives(r)), _ => 2050);
+
+        var results = await new LlmReranker(chat, new LlmRerankerOptions { BatchSize = 10 }, logger: logger).RerankAsync("question", LongCandidates(10), 10, Ct);
+
+        Assert.Equal(10, results.Count);
+        var warning = Assert.Single(logger.Collector.GetSnapshot(), r => r.Level == LogLevel.Warning);
+        Assert.Contains("2050", warning.Message);
+        Assert.Contains("context window", warning.Message);
+        Assert.Contains("BatchSize", warning.Message);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task No_warning_when_the_model_read_the_whole_prompt_or_reports_no_usage(bool reportUsage)
+    {
+        var logger = new FakeLogger<LlmReranker>();
+        // A model tokenizer may count somewhat fewer tokens than cl100k_base; 90% is not a cut prompt.
+        var chat = new ScriptChat((r, _) => Task.FromResult(Fives(r)), r => reportUsage ? (long)(Estimate(r) * 0.9) : null);
+
+        await new LlmReranker(chat, logger: logger).RerankAsync("question", LongCandidates(10), 10, Ct);
+
+        Assert.DoesNotContain(logger.Collector.GetSnapshot(), r => r.Level == LogLevel.Warning);
+    }
+
+    private static long Estimate(IList<ChatMessage> request) =>
+        request.Sum(m => RagDotNet.Chunking.TokenCounter.CreateDefault().CountTokens(m.Text));
+
+    [Fact]
+    public async Task Builder_passes_its_logger_factory_to_the_LlmReranker()
+    {
+        using var provider = new FakeLoggerProvider();
+        using var loggerFactory = LoggerFactory.Create(b => b.AddProvider(provider));
+        var chat = new ScriptChat((r, _) => Task.FromResult(Fives(r)), _ => 5);
+        var rag = new RagPipelineBuilder()
+            .UseEmbeddingGenerator(new FakeEmbeddingGenerator(64))
+            .UseVectorStore(new InMemoryVectorStore(), "test", 64)
+            .UseChatClient(chat)
+            .UseLoggerFactory(loggerFactory)
+            .AddLlmReranker()
+            .Build();
+        await rag.IngestAsync(Md("a", string.Join(' ', Enumerable.Range(0, 300).Select(i => "zorblax" + i))), cancellationToken: Ct);
+
+        await rag.RetrieveAsync("zorblax1", cancellationToken: Ct);
+
+        Assert.Contains(provider.Collector.GetSnapshot(), r => r.Level == LogLevel.Warning && r.Message.Contains("context window"));
     }
 
     [Fact]
