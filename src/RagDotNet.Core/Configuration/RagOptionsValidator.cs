@@ -15,10 +15,14 @@ internal sealed class RagRegistrations
 internal sealed class RagOptionsValidator(
     RagRegistrations registrations, IServiceProviderIsService serviceCheck, IEnumerable<IChunker> appChunkers) : IValidateOptions<RagOptions>
 {
-    public ValidateOptionsResult Validate(string? name, RagOptions options) =>
-        Validate(options, registrations.HasContentStore || serviceCheck.IsService(typeof(IChunkContentStore)), appChunkers.ToList());
+    internal const string ExternalHybridNeedsIndex =
+        "Hybrid = On with External content storage requires a keyword index, because the vector store holds no text. Register one with AddInMemoryKeywordIndex() or AddLuceneKeywordIndex(), or set Hybrid to Auto or Off.";
 
-    public static ValidateOptionsResult Validate(RagOptions options, bool hasContentStore, IReadOnlyList<IChunker> appChunkers)
+    public ValidateOptionsResult Validate(string? name, RagOptions options) =>
+        Validate(options, registrations.HasContentStore || serviceCheck.IsService(typeof(IChunkContentStore)), appChunkers.ToList(),
+            serviceCheck.IsService(typeof(Keyword.IKeywordIndex)));
+
+    public static ValidateOptionsResult Validate(RagOptions options, bool hasContentStore, IReadOnlyList<IChunker> appChunkers, bool hasKeywordIndex = true)
     {
         ArgumentNullException.ThrowIfNull(options);
         var failures = new List<string>();
@@ -32,6 +36,8 @@ internal sealed class RagOptionsValidator(
         if (options.ModelCheckInterval < TimeSpan.Zero) failures.Add("ModelCheckInterval must not be negative.");
         // Reindex waits one interval while holding its marker; it must stay well inside the 5-minute takeover window.
         if (options.ModelCheckInterval > TimeSpan.FromMinutes(1)) failures.Add("ModelCheckInterval must not exceed 1 minute.");
+        if (options.RerankCandidates is < 1 or > 100) failures.Add("RerankCandidates must be between 1 and 100.");
+        if (options.HybridCandidates is < 1 or > 100) failures.Add("HybridCandidates must be between 1 and 100.");
         if (options.Ocr is null) failures.Add("Ocr must not be null.");
         else
         {
@@ -72,6 +78,9 @@ internal sealed class RagOptionsValidator(
 
         if (options.ContentStorage == ContentStorageMode.External && !hasContentStore)
             failures.Add("External content storage requires a content store. Register one with UseExternalContent<T>() or UseContentStore().");
+
+        if (options.Hybrid == Retrieval.HybridMode.On && options.ContentStorage == ContentStorageMode.External && !hasKeywordIndex)
+            failures.Add(ExternalHybridNeedsIndex);
 
         return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
     }

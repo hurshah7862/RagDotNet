@@ -112,7 +112,7 @@ public class DatasetTests
         var d = await DatasetLoader.LoadAsync(Path.Combine(AppContext.BaseDirectory, "Dataset", "base"), Ct);
 
         Assert.Equal(8, d.Documents.Count);
-        Assert.InRange(d.Questions.Count, 40, 40);
+        Assert.InRange(d.Questions.Count, 48, 48);
         Assert.All(d.Documents, doc => Assert.True(d.Questions.Count(q => q.DocumentId == doc.DocumentId) >= 3, doc.DocumentId));
         Assert.All(d.Documents, doc =>
         {

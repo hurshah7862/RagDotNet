@@ -48,7 +48,11 @@ public static class RagServiceCollectionExtensions
             sp.GetService<TimeProvider>() ?? TimeProvider.System,
             sp.GetService<RagDotNet.Ocr.IOcrProvider>(),
             sp.GetService<RagDotNet.Ocr.IDocumentOcrProvider>(),
-            sp.GetServices<RagDotNet.Ocr.IPageRenderer>()));
+            sp.GetServices<RagDotNet.Ocr.IPageRenderer>(),
+            sp.GetService<RagDotNet.Keyword.IKeywordIndex>(),
+            sp.GetService<RagDotNet.Retrieval.IReranker>()));
+        // Hybrid by default: the in-memory index, unless the app registers another (or removes it).
+        services.TryAddSingleton<RagDotNet.Keyword.IKeywordIndex, RagDotNet.Keyword.InMemoryKeywordIndex>();
         services.TryAddScoped<IRagPipeline>(sp => new RagPipeline(
             sp.GetRequiredService<RagEngine>(), sp.GetService<IAccessScope>(), sp.GetService<IChatClient>()));
         services.TryAddSingleton<IRagAdmin>(sp => new RagAdmin(sp.GetRequiredService<RagEngine>(), sp.GetService<IChatClient>()));

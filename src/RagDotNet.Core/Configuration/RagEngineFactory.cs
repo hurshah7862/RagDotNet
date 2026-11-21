@@ -26,8 +26,12 @@ internal static class RagEngineFactory
         TimeProvider? time = null,
         IOcrProvider? ocr = null,
         IDocumentOcrProvider? documentOcr = null,
-        IEnumerable<IPageRenderer>? renderers = null)
+        IEnumerable<IPageRenderer>? renderers = null,
+        Keyword.IKeywordIndex? keywordIndex = null,
+        Retrieval.IReranker? reranker = null)
     {
+        if (options.Hybrid == Retrieval.HybridMode.On && options.ContentStorage == ContentStorageMode.External && keywordIndex is null)
+            throw new ArgumentException(RagOptionsValidator.ExternalHybridNeedsIndex);
         var tokenizer = options.Tokenizer ?? TokenCounter.CreateDefault();
         var tokenizerName = options.Tokenizer is null ? "cl100k_base" : options.Tokenizer.GetType().FullName ?? "custom";
         var readers = new ReaderSelector(appReaders.Concat<IDocumentReader>([new MarkdownReader(), new PlainTextReader()]));
@@ -39,6 +43,8 @@ internal static class RagEngineFactory
             OcrProvider = ocr,
             DocumentOcrProvider = documentOcr,
             PageRenderers = renderers?.ToList() ?? [],
+            KeywordIndex = keywordIndex,
+            Reranker = reranker,
         };
     }
 }

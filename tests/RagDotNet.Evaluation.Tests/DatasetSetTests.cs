@@ -13,14 +13,15 @@ public class DatasetSetTests
     private const string QB = """[ { "id": "qb", "question": "Sync?", "documentId": "doc-b", "evidence": "run the sync command to force a sync" } ]""";
 
     [Fact]
-    public async Task Base_set_hash_is_unchanged_from_stage3()
+    // Stage 7 added 8 exact-term questions, which changed the hash from cb1f2ea1af73; results before stage 7 used that hash.
+    public async Task Base_set_hash_is_pinned()
     {
         var sets = await DatasetLoader.LoadSetsAsync(Path.Combine(AppContext.BaseDirectory, "Dataset"), Ct);
 
         var b = Assert.Single(sets, s => s.Name == "base").Dataset;
-        Assert.Equal("cb1f2ea1af73", b.Hash);
+        Assert.Equal("ca2b85ecf304", b.Hash);
         Assert.Equal(8, b.Documents.Count);
-        Assert.Equal(40, b.Questions.Count);
+        Assert.Equal(48, b.Questions.Count);
     }
 
     [Fact]

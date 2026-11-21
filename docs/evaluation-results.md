@@ -184,3 +184,94 @@ The 8 `base` documents as image-only PDFs (each page rendered from the stage 5 P
 | Chunker | MaxTokens | Overlap | Mode | Chunks | R@1 | R@3 | R@5 | MRR |
 |---|---:|---:|---|---:|---:|---:|---:|---:|
 | structure-aware | 512 | 0.1 | vector | 24 | 0.600 | 0.800 | 0.850 | 0.710 |
+
+## Hybrid check (stage 7)
+
+Vector, hybrid and reranked retrieval at the library defaults (structure-aware, 512 tokens, 0.1 overlap), with `LlmReranker` over five chat models, one run per model. Method and discussion: [evaluation.md](evaluation.md#hybrid-check).
+
+- Embedder: ollama (nomic-embed-text)
+- Reranker chat models: llama3.2:3b, qwen2.5:7b, qwen2.5:14b, qwen2.5-coder:14b, deepseek-r1:14b
+- Set `base`: 8 documents, 48 questions, hash ca2b85ecf304
+- Set `base` · scanned: 8 documents, 48 questions, hash bc590c9657ac
+- Set `long-sections`: 4 documents, 20 questions, hash b51efdaa25f2
+- Date: 2026-11-20 and 2026-11-21
+- Where: Ollama 0.40.16 on a Kaggle notebook with two NVIDIA T4 GPUs, where every chat model had a 32,768-token context window. The harness ran on the same machine, with Tesseract 5.5.1, except for `qwen2.5:7b`: its harness ran on the 16 GB development machine with Tesseract 5.3 and reached Ollama through a tunnel.
+- Code: `61a822c` for `llama3.2:3b`; `92f53ea` for the others, before `LlmRerankerOptions.MaxOutputTokens` existed. The non-reasoning models reply in a few dozen tokens, so that limit should not change their results; `deepseek-r1:14b` thinks first and needs it raised (see [retrieval.md](retrieval.md#llmreranker)).
+- Not run: `deepseek-r1:14b` on the scanned set, to save time (its Markdown run took 89 minutes).
+
+The `vector` and `hybrid` rows were the same in every run made on Kaggle; the five reranked rows below come from the five runs. The `qwen2.5:7b` run read the scanned PDFs with Tesseract 5.3, which gave hybrid 0.667 / 0.854 / 0.896 / 0.772 on `base` · scanned instead of the row shown; its other `vector` and `hybrid` rows matched.
+
+The earlier `llama3.2:3b` result on `base` (MRR 0.273, 2026-11-17) was measured with 10 passages per chat call on a 4,096-token window, which cut the prompt; it is replaced by the row below.
+
+### base
+
+| Chunker | MaxTokens | Overlap | Mode | Retrieval | Chunks | R@1 | R@3 | R@5 | MRR |
+|---|---:|---:|---|---|---:|---:|---:|---:|---:|
+| structure-aware | 512 | 0.1 | vector | vector | 108 | 0.771 | 0.813 | 0.875 | 0.806 |
+| structure-aware | 512 | 0.1 | vector | hybrid | 108 | 0.708 | 0.792 | 0.854 | 0.773 |
+| structure-aware | 512 | 0.1 | vector | hybrid-rerank, `llama3.2:3b` | 108 | 0.229 | 0.438 | 0.667 | 0.404 |
+| structure-aware | 512 | 0.1 | vector | hybrid-rerank, `qwen2.5:7b` | 108 | 0.500 | 0.854 | 0.917 | 0.690 |
+| structure-aware | 512 | 0.1 | vector | hybrid-rerank, `qwen2.5:14b` | 108 | 0.792 | 1.000 | 1.000 | 0.885 |
+| structure-aware | 512 | 0.1 | vector | hybrid-rerank, `qwen2.5-coder:14b` | 108 | 0.771 | 0.958 | 1.000 | 0.867 |
+| structure-aware | 512 | 0.1 | vector | hybrid-rerank, `deepseek-r1:14b` | 108 | 0.792 | 1.000 | 1.000 | 0.892 |
+
+#### base · exact-term (8 questions)
+
+| Chunker | MaxTokens | Overlap | Mode | Retrieval | Chunks | R@1 | R@3 | R@5 | MRR |
+|---|---:|---:|---|---|---:|---:|---:|---:|---:|
+| structure-aware | 512 | 0.1 | vector | vector | 108 | 0.625 | 0.625 | 0.750 | 0.656 |
+| structure-aware | 512 | 0.1 | vector | hybrid | 108 | 0.625 | 0.750 | 0.750 | 0.705 |
+| structure-aware | 512 | 0.1 | vector | hybrid-rerank, `llama3.2:3b` | 108 | 0.375 | 0.375 | 0.500 | 0.475 |
+| structure-aware | 512 | 0.1 | vector | hybrid-rerank, `qwen2.5:7b` | 108 | 0.625 | 0.875 | 0.875 | 0.750 |
+| structure-aware | 512 | 0.1 | vector | hybrid-rerank, `qwen2.5:14b` | 108 | 0.750 | 1.000 | 1.000 | 0.875 |
+| structure-aware | 512 | 0.1 | vector | hybrid-rerank, `qwen2.5-coder:14b` | 108 | 0.875 | 1.000 | 1.000 | 0.938 |
+| structure-aware | 512 | 0.1 | vector | hybrid-rerank, `deepseek-r1:14b` | 108 | 0.625 | 1.000 | 1.000 | 0.813 |
+
+### base · scanned
+
+- Unscorable questions: 1
+- Evidence intact after OCR: 47 of 48
+
+| Chunker | MaxTokens | Overlap | Mode | Retrieval | Chunks | R@1 | R@3 | R@5 | MRR |
+|---|---:|---:|---|---|---:|---:|---:|---:|---:|
+| structure-aware | 512 | 0.1 | vector | vector | 24 | 0.604 | 0.813 | 0.875 | 0.722 |
+| structure-aware | 512 | 0.1 | vector | hybrid | 24 | 0.646 | 0.854 | 0.896 | 0.762 |
+| structure-aware | 512 | 0.1 | vector | hybrid-rerank, `llama3.2:3b` | 24 | 0.646 | 0.854 | 0.896 | 0.762 |
+| structure-aware | 512 | 0.1 | vector | hybrid-rerank, `qwen2.5:7b` | 24 | 0.708 | 0.896 | 0.938 | 0.810 |
+| structure-aware | 512 | 0.1 | vector | hybrid-rerank, `qwen2.5:14b` | 24 | 0.896 | 0.958 | 0.958 | 0.923 |
+| structure-aware | 512 | 0.1 | vector | hybrid-rerank, `qwen2.5-coder:14b` | 24 | 0.854 | 0.958 | 0.958 | 0.905 |
+
+#### base · scanned · exact-term (8 questions)
+
+| Chunker | MaxTokens | Overlap | Mode | Retrieval | Chunks | R@1 | R@3 | R@5 | MRR |
+|---|---:|---:|---|---|---:|---:|---:|---:|---:|
+| structure-aware | 512 | 0.1 | vector | vector | 24 | 0.625 | 0.875 | 1.000 | 0.781 |
+| structure-aware | 512 | 0.1 | vector | hybrid | 24 | 0.875 | 1.000 | 1.000 | 0.938 |
+| structure-aware | 512 | 0.1 | vector | hybrid-rerank, `llama3.2:3b` | 24 | 0.875 | 1.000 | 1.000 | 0.938 |
+| structure-aware | 512 | 0.1 | vector | hybrid-rerank, `qwen2.5:7b` | 24 | 0.750 | 1.000 | 1.000 | 0.875 |
+| structure-aware | 512 | 0.1 | vector | hybrid-rerank, `qwen2.5:14b` | 24 | 1.000 | 1.000 | 1.000 | 1.000 |
+| structure-aware | 512 | 0.1 | vector | hybrid-rerank, `qwen2.5-coder:14b` | 24 | 1.000 | 1.000 | 1.000 | 1.000 |
+
+### long-sections
+
+| Chunker | MaxTokens | Overlap | Mode | Retrieval | Chunks | R@1 | R@3 | R@5 | MRR |
+|---|---:|---:|---|---|---:|---:|---:|---:|---:|
+| structure-aware | 512 | 0.1 | vector | vector | 28 | 0.650 | 0.950 | 0.950 | 0.783 |
+| structure-aware | 512 | 0.1 | vector | hybrid | 28 | 0.700 | 0.900 | 1.000 | 0.823 |
+| structure-aware | 512 | 0.1 | vector | hybrid-rerank, `llama3.2:3b` | 28 | 0.700 | 0.900 | 1.000 | 0.823 |
+| structure-aware | 512 | 0.1 | vector | hybrid-rerank, `qwen2.5:7b` | 28 | 0.650 | 0.950 | 1.000 | 0.796 |
+| structure-aware | 512 | 0.1 | vector | hybrid-rerank, `qwen2.5:14b` | 28 | 0.850 | 1.000 | 1.000 | 0.917 |
+| structure-aware | 512 | 0.1 | vector | hybrid-rerank, `qwen2.5-coder:14b` | 28 | 0.800 | 1.000 | 1.000 | 0.883 |
+| structure-aware | 512 | 0.1 | vector | hybrid-rerank, `deepseek-r1:14b` | 28 | 0.850 | 1.000 | 1.000 | 0.925 |
+
+### all
+
+| Chunker | MaxTokens | Overlap | Mode | Retrieval | Chunks | R@1 | R@3 | R@5 | MRR |
+|---|---:|---:|---|---|---:|---:|---:|---:|---:|
+| structure-aware | 512 | 0.1 | vector | vector | 136 | 0.735 | 0.853 | 0.897 | 0.800 |
+| structure-aware | 512 | 0.1 | vector | hybrid | 136 | 0.706 | 0.824 | 0.897 | 0.788 |
+| structure-aware | 512 | 0.1 | vector | hybrid-rerank, `llama3.2:3b` | 136 | 0.368 | 0.574 | 0.765 | 0.527 |
+| structure-aware | 512 | 0.1 | vector | hybrid-rerank, `qwen2.5:7b` | 136 | 0.544 | 0.882 | 0.941 | 0.721 |
+| structure-aware | 512 | 0.1 | vector | hybrid-rerank, `qwen2.5:14b` | 136 | 0.809 | 1.000 | 1.000 | 0.895 |
+| structure-aware | 512 | 0.1 | vector | hybrid-rerank, `qwen2.5-coder:14b` | 136 | 0.779 | 0.971 | 1.000 | 0.872 |
+| structure-aware | 512 | 0.1 | vector | hybrid-rerank, `deepseek-r1:14b` | 136 | 0.809 | 1.000 | 1.000 | 0.902 |

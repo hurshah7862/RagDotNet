@@ -56,4 +56,13 @@ public interface IRagAdmin
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The statistics.</returns>
     Task<RagStats> GetStatsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Rebuilds the keyword index from the stored chunks, for when it has drifted from the vector store (a log warning
+    /// says so). Run it when no ingest is in progress: writes made during the rebuild may be lost until the next one.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task that completes when the index is rebuilt.</returns>
+    /// <exception cref="InvalidOperationException">The keyword index is not in use (Hybrid is Off, or the vector store's native hybrid search is used).</exception>
+    Task RebuildKeywordIndexAsync(CancellationToken cancellationToken = default);
 }

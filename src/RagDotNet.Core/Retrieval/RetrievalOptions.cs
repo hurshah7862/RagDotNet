@@ -24,4 +24,13 @@ public sealed record RetrievalOptions
     /// Query transformers for this call. Null uses <see cref="Configuration.RagOptions.QueryTransformers"/>; an empty list runs none.
     /// </summary>
     public IReadOnlyList<IQueryTransformer>? QueryTransformers { get; init; }
+
+    /// <summary>Hybrid mode for this call. Null uses <see cref="Configuration.RagOptions.Hybrid"/>; Off is vector-only.</summary>
+    public HybridMode? Hybrid { get; init; }
+
+    /// <summary>
+    /// Whether the registered reranker runs on this call. Null runs it when one is registered; false skips it; true
+    /// throws <see cref="InvalidOperationException"/> when none is registered.
+    /// </summary>
+    public bool? UseReranker { get; init; }
 }

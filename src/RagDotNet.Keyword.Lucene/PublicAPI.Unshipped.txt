@@ -1,0 +1,18 @@
+#nullable enable
+Microsoft.Extensions.DependencyInjection.LuceneKeywordIndexExtensions
+RagDotNet.Configuration.LuceneKeywordIndexBuilderExtensions
+RagDotNet.Keyword.Lucene.LuceneKeywordIndex
+RagDotNet.Keyword.Lucene.LuceneKeywordIndex.CountAsync(System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<long>!
+RagDotNet.Keyword.Lucene.LuceneKeywordIndex.DeleteAsync(System.Collections.Generic.IReadOnlyCollection<string!>! chunkKeys, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task!
+RagDotNet.Keyword.Lucene.LuceneKeywordIndex.Dispose() -> void
+RagDotNet.Keyword.Lucene.LuceneKeywordIndex.LuceneKeywordIndex(RagDotNet.Keyword.Lucene.LuceneKeywordIndexOptions! options) -> void
+RagDotNet.Keyword.Lucene.LuceneKeywordIndex.Name.get -> string!
+RagDotNet.Keyword.Lucene.LuceneKeywordIndex.RebuildAsync(System.Collections.Generic.IAsyncEnumerable<RagDotNet.Keyword.KeywordChunk!>! source, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task!
+RagDotNet.Keyword.Lucene.LuceneKeywordIndex.SearchAsync(string! query, RagDotNet.Keyword.KeywordFilter! filter, int top, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<RagDotNet.Keyword.KeywordHit!>!>!
+RagDotNet.Keyword.Lucene.LuceneKeywordIndex.UpsertAsync(System.Collections.Generic.IReadOnlyList<RagDotNet.Keyword.KeywordChunk!>! chunks, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task!
+RagDotNet.Keyword.Lucene.LuceneKeywordIndexOptions
+RagDotNet.Keyword.Lucene.LuceneKeywordIndexOptions.Directory.get -> string!
+RagDotNet.Keyword.Lucene.LuceneKeywordIndexOptions.Directory.set -> void
+RagDotNet.Keyword.Lucene.LuceneKeywordIndexOptions.LuceneKeywordIndexOptions() -> void
+static Microsoft.Extensions.DependencyInjection.LuceneKeywordIndexExtensions.AddLuceneKeywordIndex(this RagDotNet.Configuration.IRagBuilder! builder, System.Action<RagDotNet.Keyword.Lucene.LuceneKeywordIndexOptions!>! configure) -> RagDotNet.Configuration.IRagBuilder!
+static RagDotNet.Configuration.LuceneKeywordIndexBuilderExtensions.AddLuceneKeywordIndex(this RagDotNet.Configuration.RagPipelineBuilder! builder, System.Action<RagDotNet.Keyword.Lucene.LuceneKeywordIndexOptions!>! configure) -> RagDotNet.Configuration.RagPipelineBuilder!

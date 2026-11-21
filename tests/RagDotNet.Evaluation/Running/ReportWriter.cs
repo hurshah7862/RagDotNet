@@ -33,6 +33,8 @@ public static class ReportWriter
         ArgumentNullException.ThrowIfNull(results);
         var inv = CultureInfo.InvariantCulture;
         var sb = new StringBuilder();
+        // Reports of vector-only runs keep their pre-hybrid layout byte for byte.
+        var showRetrieval = results.Any(r => r.Config.Retrieval != EvaluationConfig.RetrievalVector);
         void Line(string s = "") => sb.Append(s).Append('\n');
 
         Line("# RagDotNet retrieval evaluation");
@@ -60,7 +62,20 @@ public static class ReportWriter
                 note += string.Create(inv, $"\n- Evidence intact after OCR: {total - set.Unscorable} of {total}");
             }
 
-            Table(set.Label, [.. results.Where(r => r.Set == set.Label)], note);
+            var rows = results.Where(r => r.Set == set.Label).ToList();
+            Table(set.Label, rows, note);
+            var exact = set.Dataset.Questions
+                .Select((q, i) => (q, i))
+                .Where(x => x.q.Tags?.Contains(Question.ExactTerm) == true)
+                .Select(x => x.i)
+                .ToList();
+            if (showRetrieval && exact.Count > 0)
+            {
+                // Questions whose answer hinges on an exact term, where keyword search should help most.
+                Table(string.Create(inv, $"{set.Label} · {Question.ExactTerm} ({exact.Count} questions)"),
+                    [.. rows.Select(r => r with { Scores = Metrics.Summarize([.. exact.Select(i => r.Ranks[i])]) })],
+                    heading: "###");
+            }
         }
 
         // The pooled section covers the sets' own Markdown only, so it stays comparable across runs with other formats.
@@ -77,10 +92,10 @@ public static class ReportWriter
                 })]);
         }
 
-        void Table(string title, IReadOnlyList<ConfigResult> rows, string? note = null)
+        void Table(string title, IReadOnlyList<ConfigResult> rows, string? note = null, string heading = "##")
         {
             Line();
-            Line($"## {title}");
+            Line($"{heading} {title}");
             Line();
             if (note is not null)
             {
@@ -88,15 +103,17 @@ public static class ReportWriter
                 Line();
             }
 
-            Line("| Chunker | MaxTokens | Overlap | Mode | Chunks | R@1 | R@3 | R@5 | MRR |");
-            Line("|---|---:|---:|---|---:|---:|---:|---:|---:|");
+            Line(showRetrieval
+                ? "| Chunker | MaxTokens | Overlap | Mode | Retrieval | Chunks | R@1 | R@3 | R@5 | MRR |"
+                : "| Chunker | MaxTokens | Overlap | Mode | Chunks | R@1 | R@3 | R@5 | MRR |");
+            Line(showRetrieval ? "|---|---:|---:|---|---|---:|---:|---:|---:|---:|" : "|---|---:|---:|---|---:|---:|---:|---:|---:|");
             foreach (var r in rows)
             {
                 var c = r.Config;
                 var s = r.Scores;
                 var overlap = c.UsesOverlap ? c.Overlap.ToString("0.###", inv) : "n/a";
                 Line(string.Create(inv,
-                    $"| {c.Chunker} | {c.MaxTokens} | {overlap} | {c.Mode} | {r.ChunkCount} | {s.RecallAt1:0.000} | {s.RecallAt3:0.000} | {s.RecallAt5:0.000} | {s.Mrr:0.000} |"));
+                    $"| {c.Chunker} | {c.MaxTokens} | {overlap} | {c.Mode} |{(showRetrieval ? $" {c.Retrieval} |" : "")} {r.ChunkCount} | {s.RecallAt1:0.000} | {s.RecallAt3:0.000} | {s.RecallAt5:0.000} | {s.Mrr:0.000} |"));
             }
         }
 

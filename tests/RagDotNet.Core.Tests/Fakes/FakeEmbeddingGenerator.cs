@@ -42,19 +42,27 @@ public sealed class FakeEmbeddingGenerator(int dimensions = 64, string modelId =
     {
     }
 
+    /// <summary>The bucket a lowercase word hashes into.</summary>
+    public static int Bucket(string word, int dimensions)
+    {
+        var hash = 2166136261u;
+        foreach (var b in System.Text.Encoding.UTF8.GetBytes(word))
+        {
+            hash = (hash ^ b) * 16777619u;
+        }
+
+        return (int)(hash % (uint)dimensions);
+    }
+
+    /// <summary>Words other than <paramref name="word"/> that embed exactly like it (same bucket), so vector search cannot tell them apart.</summary>
+    public static IEnumerable<string> Colliding(string word, int dimensions) =>
+        Enumerable.Range(0, int.MaxValue).Select(i => "w" + i).Where(w => Bucket(w, dimensions) == Bucket(word.ToLowerInvariant(), dimensions));
+
     private float[] Embed(string text)
     {
         var vector = new float[dimensions];
         foreach (var word in text.ToLowerInvariant().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
-        {
-            var hash = 2166136261u;
-            foreach (var b in System.Text.Encoding.UTF8.GetBytes(word))
-            {
-                hash = (hash ^ b) * 16777619u;
-            }
-
-            vector[(int)(hash % (uint)dimensions)] += 1f;
-        }
+            vector[Bucket(word, dimensions)] += 1f;
 
         var norm = Math.Sqrt(vector.Sum(x => (double)x * x));
         if (norm > 0)

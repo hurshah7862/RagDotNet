@@ -29,7 +29,7 @@ public class FormatTests
         Assert.Equal(["md", "pdf"], sets.Select(s => s.Format));
         Assert.All(sets, s => Assert.Equal("base", s.Name));
         Assert.Equal(sets[0].Dataset.Questions, sets[1].Dataset.Questions);
-        Assert.Equal("cb1f2ea1af73", sets[0].Dataset.Hash);
+        Assert.Equal("ca2b85ecf304", sets[0].Dataset.Hash);
         Assert.NotEqual(sets[0].Dataset.Hash, sets[1].Dataset.Hash);
         Assert.Equal(["base", "base · pdf"], sets.Select(s => s.Label));
     }
@@ -86,7 +86,7 @@ public class FormatTests
         Assert.True(code == 0, err);
         var headings = report.Split('\n').Where(l => l.StartsWith("## ", StringComparison.Ordinal)).ToArray();
         Assert.Equal(["## base", "## base · html"], headings);
-        Assert.Contains("- Set `base` · html: 8 documents, 40 questions, hash ", report, StringComparison.Ordinal);
+        Assert.Contains("- Set `base` · html: 8 documents, 48 questions, hash ", report, StringComparison.Ordinal);
         Assert.Contains("## base · html\n\n- Unscorable questions: 0\n", report, StringComparison.Ordinal);
     }
 
