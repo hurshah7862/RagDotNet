@@ -173,7 +173,7 @@ var chunks = await rag.RetrieveAsync(question, new RetrievalOptions { Hybrid = H
 
 - A vector store with its own hybrid search (`IKeywordHybridSearchable`) is used directly, and no keyword index is kept.
 - `RagDotNet.Keyword.Lucene` (preview, because Lucene.NET 4.8 is a prerelease) keeps the index on disk; one process can write to a directory at a time.
-- `LlmReranker` scores the candidates with your chat model, 2 chat calls per retrieval with the defaults. If the model's reply cannot be read, retrieval keeps the fused order instead of failing. It needs a capable model: in our check a 3B local model made results much worse.
+- `LlmReranker` scores the candidates with your chat model, 4 chat calls per retrieval with the defaults. If the model's reply cannot be read, retrieval keeps the fused order instead of failing. It needs a capable model: in our check `qwen2.5:14b` raised MRR from 0.788 (hybrid) to 0.895, a 7B model was a trade-off, and a 3B model made results much worse. A reasoning model needs `MaxOutputTokens` raised.
 - In our check hybrid search beat vector search on exact-term questions and on large chunks, and lost to it on paraphrased questions over short sections, so measure both on your own documents.
 
 [docs/retrieval.md](docs/retrieval.md) covers the modes, choosing an index, the in-memory index's limits, scores and `MinScore`, and the measured results.

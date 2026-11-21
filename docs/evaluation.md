@@ -207,32 +207,40 @@ What this shows:
 
 ## Hybrid check
 
-The hybrid check asks whether keyword search and reranking improve retrieval, overall and on the questions where an exact term decides the answer.
+The hybrid check asks whether keyword search and reranking improve retrieval, overall and on the questions where an exact term decides the answer, and how much the reranker depends on its chat model.
 
 **Method.**
-- **Retrieval:** each set is ingested once; every question is then retrieved three ways: `vector` (vector search only), `hybrid` (vector and keyword search through the in-memory index, fused with reciprocal rank fusion) and `hybrid-rerank` (hybrid, then `LlmReranker` with `llama3.2:3b` over the top 20 candidates).
+- **Retrieval:** each set is ingested once; every question is then retrieved three ways: `vector` (vector search only), `hybrid` (vector and keyword search through the in-memory index, fused with reciprocal rank fusion) and `hybrid-rerank` (hybrid, then `LlmReranker` over the top 20 candidates, at its defaults).
+- **Reranker models:** five Ollama chat models, one run each: `llama3.2:3b`, `qwen2.5:7b`, `qwen2.5:14b`, `qwen2.5-coder:14b` (tuned for code) and `deepseek-r1:14b` (a reasoning model, which thinks before it answers).
 - **Questions:** all of them, and the 8 `exact-term` questions on their own.
-- **Command:** `--embedder ollama --formats md,scanned --retrieval vector,hybrid,hybrid-rerank --chunkers structure-aware --max-tokens 512 --overlap 0.1 --tessdata <dir>`.
-- **What was run:** `vector` and `hybrid` on every set, Markdown and scanned. `hybrid-rerank` on `base` only (`--formats md --dataset <Dataset/base>`): on the test machine the chat model runs on the CPU, and reranking the sets with long chunks did not fit in its 16 GB of memory.
+- **Command:** `--embedder ollama --chat-model <model> --formats md,scanned --retrieval vector,hybrid,hybrid-rerank --chunkers structure-aware --max-tokens 512 --overlap 0.1 --tessdata <dir>`; `deepseek-r1:14b` with `--formats md` only.
+- **Where:** a Kaggle notebook with two NVIDIA T4 GPUs; the 16 GB development machine could not hold the chat models and the scanned sets at once. The details, including one run made differently, are in [evaluation-results.md](evaluation-results.md#hybrid-check-stage-7).
 
-**Results** (2026-11-17, `nomic-embed-text`, `llama3.2:3b`; the full report is in [evaluation-results.md](evaluation-results.md#hybrid-check-stage-7)). MRR, with R@5 in brackets:
+**Results** (2026-11-20 and 2026-11-21, `nomic-embed-text`). MRR, with R@1 in brackets for the reranked runs:
 
-| Set | Questions | Vector | Hybrid | Hybrid, reranked |
-|---|---:|---:|---:|---:|
-| `base` | 48 | 0.806 (0.875) | 0.773 (0.854) | 0.273 (0.521) |
-| `base`, exact-term only | 8 | 0.656 (0.750) | 0.705 (0.750) | 0.354 (0.750) |
-| `base` scanned | 48 | 0.722 (0.875) | 0.772 (0.896) | not run |
-| `base` scanned, exact-term only | 8 | 0.781 (1.000) | 0.938 (1.000) | not run |
-| `long-sections` | 20 | 0.783 (0.950) | 0.823 (1.000) | not run |
-| `all` | 68 | 0.800 (0.897) | 0.788 (0.897) | not run |
+| Set | Questions | Vector | Hybrid | `llama3.2:3b` | `qwen2.5:7b` | `qwen2.5:14b` | `qwen2.5-coder:14b` | `deepseek-r1:14b` |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `base` | 48 | 0.806 | 0.773 | 0.404 (0.229) | 0.690 (0.500) | 0.885 (0.792) | 0.867 (0.771) | 0.892 (0.792) |
+| `base`, exact-term only | 8 | 0.656 | 0.705 | 0.475 (0.375) | 0.750 (0.625) | 0.875 (0.750) | 0.938 (0.875) | 0.813 (0.625) |
+| `base` scanned | 48 | 0.722 | 0.762 | 0.762 (0.646) | 0.810 (0.708) | 0.923 (0.896) | 0.905 (0.854) | not run |
+| `base` scanned, exact-term only | 8 | 0.781 | 0.938 | 0.938 (0.875) | 0.875 (0.750) | 1.000 (1.000) | 1.000 (1.000) | not run |
+| `long-sections` | 20 | 0.783 | 0.823 | 0.823 (0.700) | 0.796 (0.650) | 0.917 (0.850) | 0.883 (0.800) | 0.925 (0.850) |
+| `all` | 68 | 0.800 | 0.788 | 0.527 (0.368) | 0.721 (0.544) | 0.895 (0.809) | 0.872 (0.779) | 0.902 (0.809) |
 
-The reranked column was measured before the keyword index received section headings, when hybrid scored 0.743 on `base`; the other columns after. Indexing headings raised hybrid MRR on `base` from 0.743 to 0.773, on `long-sections` from 0.798 to 0.823, and on `all` from 0.759 to 0.788; the scanned set has no headings and did not change.
+The `qwen2.5:7b` scanned rows compare with hybrid at 0.772, from the same run (see the results file). A run took about 22 minutes with a 14B model and 89 minutes with `deepseek-r1:14b` on Markdown alone.
 
 What this shows:
 
 - **Hybrid helps where an exact term decides the answer.** On the exact-term questions MRR rises from 0.656 to 0.705 on Markdown and from 0.781 to 0.938 on scans.
-- **Hybrid helps on large chunks.** On the scanned set (24 page-sized chunks) MRR rises from 0.722 to 0.772, and on `long-sections` from 0.783 to 0.823, with R@5 reaching 1.000. A plausible reason: a large chunk that mixes topics has a diluted embedding, but still contains the question's words.
-- **Hybrid is still worse on `base` as a whole:** MRR falls from 0.806 to 0.773 and R@5 from 0.875 to 0.854, which also pulls `all` down slightly, from 0.800 to 0.788. About half of these questions are paraphrased to share few words with the answer. The likely cause, not checked question by question: on those, keyword search ranks other passages first, and fusion gives them equal weight with the vector results. An app whose users mostly ask in their own words about short, well-structured sections may do better with `Hybrid = Off`.
-- **Reranking with `llama3.2:3b` makes retrieval much worse:** MRR fell from 0.743 (hybrid, at the time) to 0.273 and R@1 from 0.667 to 0.083. The replies are valid scores, so the fallback to the fused order never applies; the scores are simply poor. Given ten short passages of which one plainly answers the question, this model gave that passage the top score in two of three tries. A 3-billion-parameter model is too small for this job. Reranking with a stronger chat model was not measured.
+- **Hybrid helps on large chunks.** On the scanned set (24 page-sized chunks) MRR rises from 0.722 to 0.762, and on `long-sections` from 0.783 to 0.823, with R@5 reaching 1.000. A plausible reason: a large chunk that mixes topics has a diluted embedding, but still contains the question's words.
+- **Hybrid alone is still worse on `base` as a whole:** MRR falls from 0.806 to 0.773, which also pulls `all` down slightly, from 0.800 to 0.788. About half of these questions are paraphrased to share few words with the answer; on those, keyword search likely ranks other passages first, and fusion gives them equal weight with the vector results (not checked question by question).
+- **Reranking with a 14B model is the best of everything measured.** With `qwen2.5:14b`, MRR on `all` rises from 0.788 (hybrid) to 0.895, R@1 from 0.706 to 0.809, and R@3 reaches 1.000: the answer is in the top three for every question. It also wins on scans (0.923) and on `base`, where hybrid alone loses to vector.
+- **A 7B model is a trade-off.** `qwen2.5:7b` brings more answers into the top five on `base` (R@5 0.917 against 0.854) but puts fewer first (R@1 0.500 against 0.708), and is worse overall (0.721 on `all`). It helps on scans.
+- **A 3B model makes retrieval worse.** `llama3.2:3b` cut MRR on `base` to 0.404, with its whole prompt read. On the scanned set and `long-sections` its results equal hybrid's exactly, which is what falling back to the fused order gives; the harness does not show the reranker's warnings, so that was not confirmed.
+- **A reasoning model adds nothing for its cost.** `deepseek-r1:14b` scored like `qwen2.5:14b` but took about four times as long. The code-tuned `qwen2.5-coder:14b` was a little below the general model.
 
-**Limits.** 8 exact-term questions is a small sample: one question changes R@1 by 0.125. The corpus is small, 136 chunks at most, so vector search rarely has to pick among many near matches, which is where keyword search usually earns more. Reranking was measured with one small model on one set.
+**Two bugs this check found, both fixed.**
+- With 10 passages per call, a prompt was about 5,000 tokens, and Ollama's default 4,096-token window on the development machine cut it without an error: in a test call with 10 passages, `llama3.2:3b` read 2,050 of about 4,400 tokens and replied as if it had seen neither the question nor the reply format. The run made that way scored MRR 0.273 on `base`. `BatchSize` now defaults to 5, and `LlmReranker` warns when the model reports reading much less than it was sent.
+- `llama3.2:3b` once kept generating until the harness's 30-minute HTTP timeout. `LlmRerankerOptions.MaxOutputTokens` (default 512) now limits each reply, and the harness reports a timeout as an Ollama failure (exit code 2).
+
+**Limits.** 8 exact-term questions is a small sample: one question changes R@1 by 0.125. The corpus is small, 136 chunks at most, so vector search rarely has to pick among many near matches, which is where keyword search usually earns more. Each model was run once, and chat models are not fully deterministic. Hosted models were not measured.

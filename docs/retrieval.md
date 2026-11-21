@@ -125,11 +125,13 @@ A custom reranker implements `IReranker` and returns candidate indexes with scor
 
 `LlmReranker` asks the app's chat model to score each candidate from 0 to 10 for how well it answers the question:
 
-- Candidates go in groups of `BatchSize` (default 10) per chat call, at most `MaxConcurrency` (default 4) calls at once, each candidate cut to `MaxCandidateTokens` (default 512) tokens.
-- **Cost:** `ceil(RerankCandidates / BatchSize)` chat calls per retrieval, 2 with the defaults, on top of the answer itself. They run before the first streamed token.
-- A reply that cannot be read as scores is retried once. If it still cannot be read, retrieval returns the fused order and logs a warning instead of failing. Chat errors and cancellation are not caught. This guards against unreadable replies only: a model that returns valid but poor scores is used as is (see [How well it works](#how-well-it-works)).
-- **Prompt size:** one call carries up to `BatchSize × MaxCandidateTokens` tokens of passages, about 5,000 with the defaults. Make sure the model's context window holds that. Ollama's default window was 4,096 tokens in our runs, and it cuts longer prompts without an error; lower `BatchSize` or `MaxCandidateTokens`, or raise the window.
-- **Speed on a CPU:** `llama3.2:3b` read about 70 tokens a second, so a call took 10 to 30 seconds with short chunks and up to two minutes with 512-token chunks. Raise your HTTP client's timeout accordingly, or use a hosted model.
+- **It needs a capable model.** In our check a 14B model (`qwen2.5:14b`) raised MRR well above hybrid search alone, a 7B model was a trade-off, and a 3B model made results much worse (see [How well it works](#how-well-it-works)). Measure it with your own model and documents before relying on it.
+- Candidates go in groups of `BatchSize` (default 5) per chat call, at most `MaxConcurrency` (default 4) calls at once, each candidate cut to `MaxCandidateTokens` (default 512) tokens.
+- **Cost:** `ceil(RerankCandidates / BatchSize)` chat calls per retrieval, 4 with the defaults, on top of the answer itself. They run before the first streamed token.
+- A reply that cannot be read as scores is retried once. If it still cannot be read, retrieval returns the fused order and logs a warning instead of failing. Chat errors and cancellation are not caught. This guards against unreadable replies only: a model that returns valid but poor scores is used as is.
+- **Prompt size:** one call carries up to `BatchSize × MaxCandidateTokens` tokens of passages, about 2,600 with the defaults, so it fits a 4,096-token context window. Ollama has used 4,096 as its default window, and it cuts a longer prompt without an error, from the front, losing the question. If you raise `BatchSize` or `MaxCandidateTokens`, make sure the window holds the prompt. When the chat client reports reading less than 85% of the tokens sent, `LlmReranker` logs a warning that the prompt was probably cut.
+- **Reply size:** `MaxOutputTokens` (default 512) limits each reply; the scores need about 30 tokens, and the limit stops a model that keeps generating. A reasoning model, such as `deepseek-r1`, writes its thinking first and needs a higher limit, often 4,096: a reply cut off before its scores falls back to the fused order with a warning that names the option. Its `<think>` block is skipped when the scores are read. For example: `.AddLlmReranker(o => o.MaxOutputTokens = 4096)`.
+- **Speed:** on a CPU, `llama3.2:3b` read about 70 tokens a second, so a call took 10 to 30 seconds with 512-token chunks. On a T4 GPU a whole run of the check with a 14B model, ingestion and OCR included, took about 22 minutes; a reasoning model took about four times as long. Raise your HTTP client's timeout accordingly, or use a hosted model.
 - `Instructions` replaces the scoring instruction, for domain wording; the reply format is always requested.
 
 ## Scores and MinScore
@@ -158,21 +160,20 @@ The `rag.retrieve` span gains `rag.hybrid.path` (`native`, `index` or `none`) an
 
 ## How well it works
 
-Measured with the evaluation harness on 2026-11-17 (`nomic-embed-text` embeddings, library default chunking). MRR per set:
+Measured with the evaluation harness on 2026-11-20 and 2026-11-21 (`nomic-embed-text` embeddings, library default chunking, `LlmReranker` at its defaults over Ollama chat models). MRR per set:
 
-| Set | Vector | Hybrid | Hybrid, reranked with `llama3.2:3b` |
-|---|---:|---:|---:|
-| `base` (48 questions, short sections) | 0.806 | 0.773 | 0.273 |
-| `base`, the 8 exact-term questions | 0.656 | 0.705 | 0.354 |
-| `base` as scanned PDFs | 0.722 | 0.772 | not run |
-| scanned, the 8 exact-term questions | 0.781 | 0.938 | not run |
-| `long-sections` (20 questions) | 0.783 | 0.823 | not run |
-| `all` (68 questions) | 0.800 | 0.788 | not run |
+| Set | Vector | Hybrid | Reranked, `llama3.2:3b` | Reranked, `qwen2.5:7b` | Reranked, `qwen2.5:14b` |
+|---|---:|---:|---:|---:|---:|
+| `base` (48 questions, short sections) | 0.806 | 0.773 | 0.404 | 0.690 | 0.885 |
+| `base`, the 8 exact-term questions | 0.656 | 0.705 | 0.475 | 0.750 | 0.875 |
+| `base` as scanned PDFs | 0.722 | 0.762 | 0.762 | 0.810 | 0.923 |
+| scanned, the 8 exact-term questions | 0.781 | 0.938 | 0.938 | 0.875 | 1.000 |
+| `long-sections` (20 questions) | 0.783 | 0.823 | 0.823 | 0.796 | 0.917 |
+| `all` (68 questions) | 0.800 | 0.788 | 0.527 | 0.721 | 0.895 |
 
-The reranked column was measured before section headings were indexed, when hybrid scored 0.743 on `base`.
-
-- **Hybrid is better** on questions that hinge on an exact term, and on large chunks (scans, long sections).
-- **Hybrid is worse on `base` as a whole**, and slightly worse on `all`. Many of its questions are paraphrased to share few words with the answer, where keyword search has little to go on. If your users mostly ask in their own words about short sections, compare `Hybrid = Off` on your own documents.
-- **A small local model is a poor reranker.** `llama3.2:3b` returned valid scores, so nothing fell back, but the scores were bad enough to cut MRR from 0.743 to 0.273. Use `LlmReranker` with a capable chat model, and measure it before relying on it. Stronger models were not measured here.
+- **Hybrid is better** than vector search on questions that hinge on an exact term, and on large chunks (scans, long sections).
+- **Hybrid alone is worse on `base` as a whole**, and slightly worse on `all`. Many of its questions are paraphrased to share few words with the answer, where keyword search has little to go on. If your users mostly ask in their own words about short sections, compare `Hybrid = Off` on your own documents.
+- **Reranking with a 14B model gave the best results on every set**: on `all`, MRR 0.895 against 0.788 for hybrid, with the answer in the top three for every question. `qwen2.5-coder:14b` (0.872) and the reasoning model `deepseek-r1:14b` (0.902, four times slower, Markdown only) were close.
+- **A 7B model is a trade-off**: more answers in the top five, fewer in first place. **A 3B model makes results worse**, even with its whole prompt read.
 
 [evaluation.md](evaluation.md#hybrid-check) has the method, the full discussion and the limits.
