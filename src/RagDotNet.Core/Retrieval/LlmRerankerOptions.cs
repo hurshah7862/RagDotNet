@@ -17,6 +17,13 @@ public sealed class LlmRerankerOptions
     public int MaxCandidateTokens { get; set; } = 512;
 
     /// <summary>
+    /// The most tokens the model may write in one reply. Default 512: the scores need about 30, and the limit stops a
+    /// model that keeps generating. A reasoning model (one that thinks before it answers) needs more, often 4,096; a reply
+    /// cut off before its scores falls back to the fused order with a warning that names this option.
+    /// </summary>
+    public int MaxOutputTokens { get; set; } = 512;
+
+    /// <summary>
     /// Replaces the scoring instruction (how to judge a passage against the question), for domain wording. The reply
     /// format (a JSON array of 0 to 10 scores) is always requested. Null uses the built-in instruction.
     /// </summary>

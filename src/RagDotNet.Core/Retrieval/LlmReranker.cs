@@ -48,6 +48,7 @@ public sealed class LlmReranker : IReranker
         ArgumentOutOfRangeException.ThrowIfLessThan(_options.BatchSize, 1, "BatchSize");
         ArgumentOutOfRangeException.ThrowIfLessThan(_options.MaxConcurrency, 1, "MaxConcurrency");
         ArgumentOutOfRangeException.ThrowIfLessThan(_options.MaxCandidateTokens, 1, "MaxCandidateTokens");
+        ArgumentOutOfRangeException.ThrowIfLessThan(_options.MaxOutputTokens, 1, "MaxOutputTokens");
         _tokenizer = tokenizer ?? TokenCounter.CreateDefault();
     }
 
@@ -109,12 +110,14 @@ public sealed class LlmReranker : IReranker
         var system = (_options.Instructions ?? DefaultInstruction) + "\n" + FormatInstruction;
         var user = UserPrompt(query, candidates, start, count);
         var messages = new List<ChatMessage> { new(ChatRole.System, system), new(ChatRole.User, user) };
+        var chatOptions = new ChatOptions { MaxOutputTokens = _options.MaxOutputTokens };
         long? sent = null;
+        var cutOff = false;
 
         for (var attempt = 0; attempt < 2; attempt++)
         {
             countCall();
-            var response = await _chat.GetResponseAsync(messages, cancellationToken: ct).ConfigureAwait(false);
+            var response = await _chat.GetResponseAsync(messages, chatOptions, ct).ConfigureAwait(false);
             if (response.Usage?.InputTokenCount is { } read)
             {
                 sent ??= _tokenizer.CountTokens(system) + _tokenizer.CountTokens(user);
@@ -129,9 +132,12 @@ public sealed class LlmReranker : IReranker
             }
 
             if (Parse(response.Text, count) is { } parsed) return parsed;
+            cutOff |= response.FinishReason == ChatFinishReason.Length;
         }
 
-        throw new RerankFallbackException($"the model's reply could not be read as {count} scores from 0 to 10, twice");
+        throw new RerankFallbackException(cutOff
+            ? $"the model's reply stopped at LlmRerankerOptions.MaxOutputTokens ({_options.MaxOutputTokens}) before its {count} scores; a reasoning model needs a higher limit"
+            : $"the model's reply could not be read as {count} scores from 0 to 10, twice");
     }
 
     private string UserPrompt(string query, IReadOnlyList<RetrievedChunk> candidates, int start, int count)

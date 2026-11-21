@@ -956,5 +956,7 @@ RagDotNet.Retrieval.LlmRerankerOptions.MaxCandidateTokens.get -> int
 RagDotNet.Retrieval.LlmRerankerOptions.MaxCandidateTokens.set -> void
 RagDotNet.Retrieval.LlmRerankerOptions.MaxConcurrency.get -> int
 RagDotNet.Retrieval.LlmRerankerOptions.MaxConcurrency.set -> void
+RagDotNet.Retrieval.LlmRerankerOptions.MaxOutputTokens.get -> int
+RagDotNet.Retrieval.LlmRerankerOptions.MaxOutputTokens.set -> void
 static Microsoft.Extensions.DependencyInjection.RagHybridBuilderExtensions.AddLlmReranker(this RagDotNet.Configuration.IRagBuilder! builder, System.Action<RagDotNet.Retrieval.LlmRerankerOptions!>? configure = null) -> RagDotNet.Configuration.IRagBuilder!
 static RagDotNet.Configuration.LlmRerankerBuilderExtensions.AddLlmReranker(this RagDotNet.Configuration.RagPipelineBuilder! builder, System.Action<RagDotNet.Retrieval.LlmRerankerOptions!>? configure = null) -> RagDotNet.Configuration.RagPipelineBuilder!

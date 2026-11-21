@@ -56,6 +56,12 @@ public static class OllamaProviders
         return null;
     }
 
+    /// <summary>
+    /// True when <paramref name="ex"/> is an <see cref="HttpClient.Timeout"/> elapsing, such as a chat call running past
+    /// <see cref="ChatTimeout"/>; false for a cancelled token.
+    /// </summary>
+    public static bool IsTimeout(Exception ex) => ex is TaskCanceledException { InnerException: TimeoutException };
+
     /// <summary>One line for an exception, with its inner message when that adds anything.</summary>
     public static string Describe(Exception ex)
     {

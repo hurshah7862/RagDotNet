@@ -20,7 +20,7 @@ public class LlmRerankerTests
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     /// <summary>A chat client answering through a function of the request.</summary>
-    private sealed class ScriptChat(Func<IList<ChatMessage>, CancellationToken, Task<string>> reply, Func<IList<ChatMessage>, long?>? inputTokens = null) : IChatClient
+    private sealed class ScriptChat(Func<IList<ChatMessage>, CancellationToken, Task<string>> reply, Func<IList<ChatMessage>, long?>? inputTokens = null, ChatFinishReason? finish = null) : IChatClient
     {
         private int _calls;
 
@@ -28,13 +28,20 @@ public class LlmRerankerTests
 
         public List<IList<ChatMessage>> Requests { get; } = [];
 
+        public List<ChatOptions?> Options { get; } = [];
+
         public async Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default)
         {
             var list = messages.ToList();
-            lock (Requests) Requests.Add(list);
+            lock (Requests)
+            {
+                Requests.Add(list);
+                Options.Add(options);
+            }
             Interlocked.Increment(ref _calls);
             var response = new ChatResponse(new ChatMessage(ChatRole.Assistant, await reply(list, cancellationToken)));
             if (inputTokens?.Invoke(list) is { } tokens) response.Usage = new UsageDetails { InputTokenCount = tokens };
+            response.FinishReason = finish;
             return response;
         }
 
@@ -132,6 +139,29 @@ public class LlmRerankerTests
         await rag.RetrieveAsync("zorblax1", cancellationToken: Ct);
 
         Assert.Contains(provider.Collector.GetSnapshot(), r => r.Level == LogLevel.Warning && r.Message.Contains("context window"));
+    }
+
+    [Fact]
+    public async Task Each_call_limits_the_reply_to_MaxOutputTokens()
+    {
+        Assert.Equal(512, new LlmRerankerOptions().MaxOutputTokens);
+        var chat = new ScriptChat((r, _) => Task.FromResult(Fives(r)));
+
+        await new LlmReranker(chat).RerankAsync("q", Candidates(7), 7, Ct);
+        await new LlmReranker(chat, new LlmRerankerOptions { MaxOutputTokens = 4096 }).RerankAsync("q", Candidates(1), 1, Ct);
+
+        Assert.Equal([512, 512, 4096], chat.Options.Select(o => o?.MaxOutputTokens));
+    }
+
+    [Fact]
+    public async Task A_reply_cut_off_at_MaxOutputTokens_falls_back_naming_the_option()
+    {
+        var chat = new ScriptChat((_, _) => Task.FromResult("<think>Let me look at passage one. It says"), finish: ChatFinishReason.Length);
+
+        var ex = await Assert.ThrowsAsync<RerankFallbackException>(() => new LlmReranker(chat).RerankAsync("q", Candidates(3), 3, Ct));
+
+        Assert.Equal(2, chat.Calls);
+        Assert.Contains("MaxOutputTokens", ex.Message);
     }
 
     [Fact]
@@ -291,12 +321,13 @@ public class LlmRerankerTests
     }
 
     [Theory]
-    [InlineData(0, 4, 512)]
-    [InlineData(10, 0, 512)]
-    [InlineData(10, 4, 0)]
-    public void Options_below_1_are_rejected(int batch, int concurrency, int tokens)
+    [InlineData(0, 4, 512, 512)]
+    [InlineData(10, 0, 512, 512)]
+    [InlineData(10, 4, 0, 512)]
+    [InlineData(10, 4, 512, 0)]
+    public void Options_below_1_are_rejected(int batch, int concurrency, int tokens, int outputTokens)
     {
-        var options = new LlmRerankerOptions { BatchSize = batch, MaxConcurrency = concurrency, MaxCandidateTokens = tokens };
+        var options = new LlmRerankerOptions { BatchSize = batch, MaxConcurrency = concurrency, MaxCandidateTokens = tokens, MaxOutputTokens = outputTokens };
 
         Assert.Throws<ArgumentOutOfRangeException>(() => new LlmReranker(new FakeChatClient(), options));
     }
@@ -327,6 +358,20 @@ public class LlmRerankerTests
 
         var ex = await Assert.ThrowsAsync<OptionsValidationException>(() => host.StartAsync(Ct));
         Assert.Contains("IChatClient", ex.Message);
+    }
+
+    [Fact]
+    public async Task Di_rejects_MaxOutputTokens_below_1_at_start()
+    {
+        var builder = Host.CreateApplicationBuilder();
+        builder.Services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(new FakeEmbeddingGenerator(64));
+        builder.Services.AddSingleton<VectorStore>(new InMemoryVectorStore());
+        builder.Services.AddSingleton<IChatClient>(new FakeChatClient());
+        builder.Services.AddRag(o => o.EmbeddingDimensions = 64).AddLlmReranker(o => o.MaxOutputTokens = 0);
+        using var host = builder.Build();
+
+        var ex = await Assert.ThrowsAsync<OptionsValidationException>(() => host.StartAsync(Ct));
+        Assert.Contains("MaxOutputTokens", ex.Message);
     }
 
     [Fact]

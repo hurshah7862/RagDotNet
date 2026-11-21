@@ -69,6 +69,7 @@ public static class RagHybridBuilderExtensions
             if (options.BatchSize < 1) failures.Add("LlmRerankerOptions.BatchSize must be at least 1.");
             if (options.MaxConcurrency < 1) failures.Add("LlmRerankerOptions.MaxConcurrency must be at least 1.");
             if (options.MaxCandidateTokens < 1) failures.Add("LlmRerankerOptions.MaxCandidateTokens must be at least 1.");
+            if (options.MaxOutputTokens < 1) failures.Add("LlmRerankerOptions.MaxOutputTokens must be at least 1.");
             return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
         }
     }

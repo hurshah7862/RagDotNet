@@ -69,6 +69,11 @@ public static class Program
             await stderr.WriteLineAsync($"Ollama request failed during the run: {OllamaProviders.Describe(ex)}").ConfigureAwait(false);
             return ProviderUnreachable;
         }
+        catch (TaskCanceledException ex) when (options.IsReal && OllamaProviders.IsTimeout(ex))
+        {
+            await stderr.WriteLineAsync($"Ollama request timed out during the run: {OllamaProviders.Describe(ex)}").ConfigureAwait(false);
+            return ProviderUnreachable;
+        }
     }
 
     private static async Task<int> RunCoreAsync(Options options, TextWriter stdout, TextWriter stderr, CancellationToken ct)
