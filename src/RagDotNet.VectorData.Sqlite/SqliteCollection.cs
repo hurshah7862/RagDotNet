@@ -166,8 +166,41 @@ internal sealed partial class SqliteCollection
         return row;
     }
 
-    public override IAsyncEnumerable<Dictionary<string, object?>> GetAsync(Expression<Func<Dictionary<string, object?>, bool>> filter, int top, FilteredRecordRetrievalOptions<Dictionary<string, object?>>? options = null, CancellationToken cancellationToken = default) =>
-        throw new NotImplementedException();
+    public override async IAsyncEnumerable<Dictionary<string, object?>> GetAsync(Expression<Func<Dictionary<string, object?>, bool>> filter, int top, FilteredRecordRetrievalOptions<Dictionary<string, object?>>? options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(filter);
+        ArgumentOutOfRangeException.ThrowIfLessThan(top, 1);
+        options ??= new();
+        ArgumentOutOfRangeException.ThrowIfNegative(options.Skip);
+        var (where, parameters) = FilterTranslator.Translate(filter, _schema, "f");
+        var orderBy = OrderBy(options);
+        var includeVectors = options.IncludeVectors;
+
+        var rows = await RunAsync("Get", async (connection, ct) =>
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText = $"SELECT {_schema.SelectList(includeVectors)} FROM {_schema.Table} WHERE {where} ORDER BY {orderBy} LIMIT @top OFFSET @skip";
+            command.Parameters.AddRange(parameters);
+            command.Parameters.AddWithValue("@top", top);
+            command.Parameters.AddWithValue("@skip", options.Skip);
+            return await ReadAllAsync(command, includeVectors, ct).ConfigureAwait(false);
+        }, cancellationToken).ConfigureAwait(false);
+        foreach (var row in rows) yield return row;
+    }
+
+    /// <summary>The ORDER BY list: each sort's column, then rowid so ties come back in a stable order.</summary>
+    private string OrderBy(FilteredRecordRetrievalOptions<Dictionary<string, object?>> options)
+    {
+        if (options.OrderBy is null) return "rowid";
+        var sorts = options.OrderBy(new FilteredRecordRetrievalOptions<Dictionary<string, object?>>.OrderByDefinition()).Values;
+        var parts = sorts.Select(s =>
+        {
+            var column = FilterTranslator.Field(s.PropertySelector.Body, s.PropertySelector.Parameters[0], _schema)
+                ?? throw new NotSupportedException("RagDotNet.VectorData.Sqlite orders only by a record field, like r => r[\"Key\"].");
+            return $"{column.Quoted} {(s.Ascending ? "ASC" : "DESC")}";
+        });
+        return string.Join(", ", parts.Append("rowid"));
+    }
 
     public override IAsyncEnumerable<VectorSearchResult<Dictionary<string, object?>>> SearchAsync<TInput>(TInput searchValue, int top, VectorSearchOptions<Dictionary<string, object?>>? options = null, CancellationToken cancellationToken = default) =>
         throw new NotImplementedException();
