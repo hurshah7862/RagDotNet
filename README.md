@@ -39,7 +39,7 @@ dotnet add reference path/to/RagDotNet/src/RagDotNet.Core/RagDotNet.Core.csproj
 
 Once published, it will be `dotnet add package RagDotNet.Core`.
 
-RagDotNet.Core targets net8.0 and net10.0. You bring your own `IChatClient`, `IEmbeddingGenerator<string, Embedding<float>>` (Microsoft.Extensions.AI) and `VectorStore` (any Microsoft.Extensions.VectorData connector). The samples and tests use the in-memory store from `CommunityToolkit.VectorData.InMemory`, which is not meant for production. [docs/vector-stores.md](docs/vector-stores.md) lists the stores RagDotNet tests and any settings each one needs.
+RagDotNet.Core targets net8.0 and net10.0. You bring your own `IChatClient`, `IEmbeddingGenerator<string, Embedding<float>>` (Microsoft.Extensions.AI) and `VectorStore` (any Microsoft.Extensions.VectorData connector). The samples and tests use the in-memory store from `CommunityToolkit.VectorData.InMemory`, which is not meant for production. For a store in a single file, `RagDotNet.VectorData.Sqlite` runs on SQLite with sqlite-vec. [docs/vector-stores.md](docs/vector-stores.md) lists the stores RagDotNet tests and any settings each one needs.
 
 ## Quick start with dependency injection
 

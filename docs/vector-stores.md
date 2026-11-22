@@ -5,7 +5,7 @@ RagDotNet works with any [Microsoft.Extensions.VectorData](https://learn.microso
 | Store | Package | Key types | Hybrid search | Status |
 |---|---|---|---|---|
 | In-memory | `CommunityToolkit.VectorData.InMemory` | String, Guid | In-memory keyword index | Tested. For development and tests, not production |
-| SQLite (sqlite-vec) | `RagDotNet.VectorData.Sqlite` | | | Coming in stage 8 |
+| SQLite (sqlite-vec) | `RagDotNet.VectorData.Sqlite` | String, Guid | Native (FTS5) | Tested on Linux, Windows and macOS |
 | PostgreSQL (pgvector) | `CommunityToolkit.VectorData.PgVector` | | | Coming in stage 8 |
 | Qdrant | `CommunityToolkit.VectorData.Qdrant` | | | Coming in stage 8 |
 | Redis (Redis Stack) | `CommunityToolkit.VectorData.Redis` | | | Coming in stage 8 |
@@ -18,6 +18,28 @@ Other connectors (Weaviate, Azure AI Search, Cosmos DB and more) may work but ar
 Some stores need settings different from the defaults. Qdrant, for example, needs `RagOptions.KeyType = RagKeyType.Guid`. Each store's settings are listed in its section on this page as the store is added. Set them when you pick the store. If a setting is wrong, RagDotNet fails at startup, or at the latest on the first call to the store, with an error that names the setting to change. It does not detect the store or change its defaults for you.
 
 `RagOptions.DistanceFunction` applies to both of RagDotNet's collections: the chunks and the document list.
+
+## SQLite
+
+`RagDotNet.VectorData.Sqlite` is RagDotNet's own connector for SQLite with [sqlite-vec](https://github.com/asg017/sqlite-vec). Everything lives in one database file, which suits desktop apps, local tools and single-node services.
+
+```csharp
+var rag = new RagPipelineBuilder()
+    // ...
+    .UseVectorStore(new SqliteVectorStore("Data Source=rag.db"), "docs", dimensions: 768)
+    .Build();
+```
+
+- Use a database file. Each pooled connection to `:memory:` opens its own empty database, so an in-memory connection string does not keep data between calls.
+- sqlite-vec is included for win-x64, linux-x64 and osx-arm64. On any other platform, set `SqliteVectorStoreOptions.VecExtensionPath` to a sqlite-vec loadable extension; without it the store fails at construction with an error naming that option.
+- No settings beyond the defaults are needed. Both key types work, and so do `CosineSimilarity` and `CosineDistance`.
+- Several threads, and processes on the same machine, can use the file at once: the store turns on write-ahead logging (WAL) and writes in short transactions. Keep the file on a local disk; WAL does not work over network file systems.
+
+Known differences:
+
+- Vector search is an exact scan of every chunk, so a filter never cuts the results short. Its cost grows with the number of chunks: it is fine for a local or single-node app, and a server store is the better choice for millions of chunks.
+- `DateTimeOffset` metadata comes back in UTC: the same instant, with a zero offset.
+- Hybrid search is native, on SQLite full-text search (FTS5) with the `unicode61` tokenizer. Its word splitting can differ from the in-memory keyword index's, so the order of keyword matches can differ slightly between the two.
 
 ## How stores are tested
 
@@ -37,4 +59,4 @@ Run it with:
 dotnet test --project tests/RagDotNet.StoreTests
 ```
 
-The in-memory store needs nothing and always runs. Stores that need Docker run only when `RAGDOTNET_INTEGRATION=1` is set, and are skipped with the reason when their dependency is missing. In CI, `RAGDOTNET_STORES_REQUIRED=1` turns a store that cannot start into a failure, and a minimum test count fails the run if tests go missing.
+The in-memory and SQLite stores need nothing and always run. Stores that need Docker run only when `RAGDOTNET_INTEGRATION=1` is set, and are skipped with the reason when their dependency is missing. In CI, `RAGDOTNET_STORES_REQUIRED=1` turns a store that cannot start into a failure, and a minimum test count fails the run if tests go missing.
