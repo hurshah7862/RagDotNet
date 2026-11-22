@@ -6,7 +6,7 @@ RagDotNet works with any [Microsoft.Extensions.VectorData](https://learn.microso
 |---|---|---|---|---|
 | In-memory | `CommunityToolkit.VectorData.InMemory` | String, Guid | In-memory keyword index | Tested. For development and tests, not production |
 | SQLite (sqlite-vec) | `RagDotNet.VectorData.Sqlite` | String, Guid | Native (FTS5) | Tested on Linux, Windows and macOS |
-| PostgreSQL (pgvector) | `CommunityToolkit.VectorData.PgVector` | | | Coming in stage 8 |
+| PostgreSQL (pgvector) | `CommunityToolkit.VectorData.PgVector` | String, Guid | Native (PostgreSQL full-text search) | Tested |
 | Qdrant | `CommunityToolkit.VectorData.Qdrant` | | | Coming in stage 8 |
 | Redis (Redis Stack) | `CommunityToolkit.VectorData.Redis` | | | Coming in stage 8 |
 | SQL Server 2025 | `CommunityToolkit.VectorData.SqlServer` | | | Coming in stage 8 |
@@ -18,6 +18,8 @@ Other connectors (Weaviate, Azure AI Search, Cosmos DB and more) may work but ar
 Some stores need settings different from the defaults. Qdrant, for example, needs `RagOptions.KeyType = RagKeyType.Guid`. Each store's settings are listed in its section on this page as the store is added. Set them when you pick the store. If a setting is wrong, RagDotNet fails at startup, or at the latest on the first call to the store, with an error that names the setting to change. It does not detect the store or change its defaults for you.
 
 `RagOptions.DistanceFunction` applies to both of RagDotNet's collections: the chunks and the document list.
+
+Metadata dates (`DateTimeOffset`) are stored in UTC on every store: a date comes back as the same instant with a zero offset, and filters compare instants. Some stores (PostgreSQL) accept no other offset.
 
 ## SQLite
 
@@ -41,6 +43,26 @@ Known differences:
 - `DateTimeOffset` metadata comes back in UTC: the same instant, with a zero offset.
 - Hybrid search is native, on SQLite full-text search (FTS5) with the `unicode61` tokenizer. Its word splitting can differ from the in-memory keyword index's, so the order of keyword matches can differ slightly between the two.
 
+## PostgreSQL (pgvector)
+
+Use `CommunityToolkit.VectorData.PgVector` with PostgreSQL and the [pgvector](https://github.com/pgvector/pgvector) extension.
+
+```csharp
+var rag = new RagPipelineBuilder()
+    // ...
+    .UseVectorStore(new PostgresVectorStore("Host=localhost;Database=rag;Username=rag;Password=..."), "docs", dimensions: 768)
+    .Build();
+```
+
+- The database needs the extension: run `CREATE EXTENSION IF NOT EXISTS vector;` once, as a user allowed to create extensions. The `pgvector/pgvector` Docker images include it.
+- No settings beyond the defaults are needed. Both key types work.
+- RagDotNet creates its two tables (the collection name and `<name>_documents`) on first use.
+
+Known differences:
+
+- Hybrid search is native, on PostgreSQL full-text search. Word splitting and stemming follow PostgreSQL's text search rules, so the order of keyword matches can differ slightly from the in-memory keyword index.
+- There is no separate keyword index, so `IRagAdmin.RebuildKeywordIndexAsync` throws `InvalidOperationException` saying keyword search is native.
+
 ## How stores are tested
 
 `tests/RagDotNet.StoreTests` holds one shared suite, written against RagDotNet's public API with a deterministic fake embedder, so it needs no model. Every store runs it once for each key type it supports. A test-only binding, the in-memory store with a fake native hybrid search, keeps the native hybrid path covered; it is not a supported store. Settings a store needs are applied in one place, its test fixture, and must match the settings documented here. The suite covers:
@@ -59,4 +81,4 @@ Run it with:
 dotnet test --project tests/RagDotNet.StoreTests
 ```
 
-The in-memory and SQLite stores need nothing and always run. Stores that need Docker run only when `RAGDOTNET_INTEGRATION=1` is set, and are skipped with the reason when their dependency is missing. In CI, `RAGDOTNET_STORES_REQUIRED=1` turns a store that cannot start into a failure, and a minimum test count fails the run if tests go missing.
+The in-memory and SQLite stores need nothing and always run. Stores that need Docker (PostgreSQL so far) run only when `RAGDOTNET_INTEGRATION=1` is set, and are skipped with the reason when their dependency is missing. Each starts one container per test run through Testcontainers, from a pinned image (`pgvector/pgvector:0.8.7-pg17`). With the repository's Docker build image, `./docker/sdk/run.ps1` mounts the Docker socket so these containers can start. In CI, `RAGDOTNET_STORES_REQUIRED=1` turns a store that cannot start into a failure, and a minimum test count fails the run if tests go missing.
