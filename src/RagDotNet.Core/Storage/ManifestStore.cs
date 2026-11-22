@@ -39,7 +39,7 @@ internal sealed class ManifestStore(VectorStore store, RagOptions options)
             {
                 Skip = skip,
                 IncludeVectors = false,
-                OrderBy = o => o.Ascending(r => r["Key"]!),
+                OrderBy = o => o.Ascending(r => r["ListOrder"]!),
             };
             await foreach (var r in _collection.GetAsync(filter, PageSize, query, ct).ConfigureAwait(false))
                 page.Add(r);
@@ -96,6 +96,7 @@ internal sealed class ManifestStore(VectorStore store, RagOptions options)
             ["ContentStorage"] = options.ContentStorage.ToString(),
             ["MetadataHash"] = "",
             ["ChunkHighWater"] = 0,
+            ["ListOrder"] = ListOrder.Of(ChunkKeys.ReindexMarkerKey),
             ["Placeholder"] = new ReadOnlyMemory<float>([1f]),
         };
         return _collection.UpsertAsync(d, ct);

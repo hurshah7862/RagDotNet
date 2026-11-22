@@ -27,6 +27,9 @@ public sealed class FailingVectorStore(VectorStore inner) : VectorStore
     /// <summary>When set, awaited once (then cleared) before the next single-key manifest read runs.</summary>
     public Func<Task>? BeforeNextManifestGet { get; set; }
 
+    /// <summary>The options of the latest filtered manifest read.</summary>
+    public FilteredRecordRetrievalOptions<Dictionary<string, object?>>? LastManifestQuery { get; set; }
+
     public override VectorStoreCollection<TKey, TRecord> GetCollection<TKey, TRecord>(string name, VectorStoreCollectionDefinition? definition = null) =>
         inner.GetCollection<TKey, TRecord>(name, definition);
 
@@ -72,8 +75,11 @@ public sealed class FailingVectorStore(VectorStore inner) : VectorStore
         public override IAsyncEnumerable<Dictionary<string, object?>> GetAsync(IEnumerable<object> keys, RecordRetrievalOptions? options = null, CancellationToken cancellationToken = default) =>
             c.GetAsync(keys, options, cancellationToken);
 
-        public override IAsyncEnumerable<Dictionary<string, object?>> GetAsync(Expression<Func<Dictionary<string, object?>, bool>> filter, int top, FilteredRecordRetrievalOptions<Dictionary<string, object?>>? options = null, CancellationToken cancellationToken = default) =>
-            c.GetAsync(filter, top, options, cancellationToken);
+        public override IAsyncEnumerable<Dictionary<string, object?>> GetAsync(Expression<Func<Dictionary<string, object?>, bool>> filter, int top, FilteredRecordRetrievalOptions<Dictionary<string, object?>>? options = null, CancellationToken cancellationToken = default)
+        {
+            if (isManifest) owner.LastManifestQuery = options;
+            return c.GetAsync(filter, top, options, cancellationToken);
+        }
 
         public override Task DeleteAsync(object key, CancellationToken cancellationToken = default) => c.DeleteAsync(key, cancellationToken);
 
