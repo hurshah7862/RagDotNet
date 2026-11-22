@@ -30,11 +30,18 @@ public sealed class FailingVectorStore(VectorStore inner) : VectorStore
     /// <summary>The options of the latest filtered manifest read.</summary>
     public FilteredRecordRetrievalOptions<Dictionary<string, object?>>? LastManifestQuery { get; set; }
 
+    /// <summary>When set, getting a collection throws this, as a store that rejects the definition does.</summary>
+    public Exception? RejectCollection { get; set; }
+
+    /// <summary>When set, creating a collection throws this.</summary>
+    public Exception? FailEnsureExists { get; set; }
+
     public override VectorStoreCollection<TKey, TRecord> GetCollection<TKey, TRecord>(string name, VectorStoreCollectionDefinition? definition = null) =>
         inner.GetCollection<TKey, TRecord>(name, definition);
 
     public override VectorStoreCollection<object, Dictionary<string, object?>> GetDynamicCollection(string name, VectorStoreCollectionDefinition definition)
     {
+        if (RejectCollection is { } rejection) throw rejection;
         var c = inner.GetDynamicCollection(name, definition);
         return new FailingCollection(this, c, name.EndsWith("_documents", StringComparison.Ordinal));
     }
@@ -57,7 +64,8 @@ public sealed class FailingVectorStore(VectorStore inner) : VectorStore
 
         public override Task<bool> CollectionExistsAsync(CancellationToken cancellationToken = default) => c.CollectionExistsAsync(cancellationToken);
 
-        public override Task EnsureCollectionExistsAsync(CancellationToken cancellationToken = default) => c.EnsureCollectionExistsAsync(cancellationToken);
+        public override Task EnsureCollectionExistsAsync(CancellationToken cancellationToken = default) =>
+            owner.FailEnsureExists is { } failure ? Task.FromException(failure) : c.EnsureCollectionExistsAsync(cancellationToken);
 
         public override Task EnsureCollectionDeletedAsync(CancellationToken cancellationToken = default) => c.EnsureCollectionDeletedAsync(cancellationToken);
 

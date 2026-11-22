@@ -11,9 +11,9 @@ internal sealed class ManifestStore(VectorStore store, RagOptions options)
     private const int PageSize = 100;
 
     private readonly VectorStoreCollection<object, Dictionary<string, object?>> _collection =
-        store.GetDynamicCollection(options.CollectionName + "_documents", RecordDefinitions.Manifests(options));
+        StoreCollections.Open(store, options.CollectionName + "_documents", RecordDefinitions.Manifests(options), options);
 
-    public Task EnsureExistsAsync(CancellationToken ct) => _collection.EnsureCollectionExistsAsync(ct);
+    public Task EnsureExistsAsync(CancellationToken ct) => StoreCollections.EnsureExistsAsync(_collection, options, ct);
 
     public async Task<ManifestRecord?> GetAsync(string partitionKey, string documentId, CancellationToken ct)
     {
