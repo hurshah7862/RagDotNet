@@ -1,0 +1,13 @@
+#nullable enable
+RagDotNet.VectorData.Sqlite.SqliteVectorStore
+RagDotNet.VectorData.Sqlite.SqliteVectorStore.SqliteVectorStore(string! connectionString, RagDotNet.VectorData.Sqlite.SqliteVectorStoreOptions? options = null) -> void
+RagDotNet.VectorData.Sqlite.SqliteVectorStoreOptions
+RagDotNet.VectorData.Sqlite.SqliteVectorStoreOptions.SqliteVectorStoreOptions() -> void
+RagDotNet.VectorData.Sqlite.SqliteVectorStoreOptions.VecExtensionPath.get -> string?
+RagDotNet.VectorData.Sqlite.SqliteVectorStoreOptions.VecExtensionPath.set -> void
+override RagDotNet.VectorData.Sqlite.SqliteVectorStore.CollectionExistsAsync(string! name, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
+override RagDotNet.VectorData.Sqlite.SqliteVectorStore.EnsureCollectionDeletedAsync(string! name, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+override RagDotNet.VectorData.Sqlite.SqliteVectorStore.GetCollection<TKey, TRecord>(string! name, Microsoft.Extensions.VectorData.VectorStoreCollectionDefinition? definition = null) -> Microsoft.Extensions.VectorData.VectorStoreCollection<TKey, TRecord!>!
+override RagDotNet.VectorData.Sqlite.SqliteVectorStore.GetDynamicCollection(string! name, Microsoft.Extensions.VectorData.VectorStoreCollectionDefinition! definition) -> Microsoft.Extensions.VectorData.VectorStoreCollection<object!, System.Collections.Generic.Dictionary<string!, object?>!>!
+override RagDotNet.VectorData.Sqlite.SqliteVectorStore.GetService(System.Type! serviceType, object? serviceKey = null) -> object?
+override RagDotNet.VectorData.Sqlite.SqliteVectorStore.ListCollectionNamesAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Collections.Generic.IAsyncEnumerable<string!>!

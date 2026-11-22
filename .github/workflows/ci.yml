@@ -49,6 +49,9 @@ jobs:
       - name: Test Lucene keyword index (net8.0)
         run: dotnet test --project tests/RagDotNet.Keyword.Lucene.Tests --no-build --configuration Release --framework net8.0
 
+      - name: Test SQLite connector (net8.0)
+        run: dotnet test --project tests/RagDotNet.VectorData.Sqlite.Tests --no-build --configuration Release --framework net8.0
+
   store-tests:
     name: Store integration tests (net8.0)
     runs-on: ubuntu-latest
@@ -71,9 +74,9 @@ jobs:
         run: dotnet build tests/RagDotNet.StoreTests --configuration Release
 
       # The floor fails the run if tests go missing; raise it whenever a slice adds a store, a binding or a test.
-      # Today: 3 gate tests + 39 suite tests x 3 bindings (InMemory String, InMemory Guid, NativeHybridFake String).
+      # Today: 3 gate tests + 39 suite tests x 5 bindings (InMemory String/Guid, NativeHybridFake String, SQLite String/Guid).
       - name: Test stores (net8.0)
-        run: dotnet test --project tests/RagDotNet.StoreTests --no-build --configuration Release --framework net8.0 --minimum-expected-tests 120
+        run: dotnet test --project tests/RagDotNet.StoreTests --no-build --configuration Release --framework net8.0 --minimum-expected-tests 198
 
   windows:
     name: Windows unit and OCR tests (net8.0)
@@ -116,3 +119,41 @@ jobs:
 
       - name: Test Lucene keyword index (net8.0)
         run: dotnet test --project tests/RagDotNet.Keyword.Lucene.Tests --no-build --configuration Release --framework net8.0
+
+      - name: Test SQLite connector (net8.0)
+        run: dotnet test --project tests/RagDotNet.VectorData.Sqlite.Tests --no-build --configuration Release --framework net8.0
+
+      # SQLite needs no service, so the suite runs here too, on the win-x64 sqlite-vec native.
+      - name: Test store suite on SQLite (net8.0)
+        env:
+          RAGDOTNET_STORES_REQUIRED: 1
+        run: dotnet test --project tests/RagDotNet.StoreTests --no-build --configuration Release --framework net8.0 --filter-class "RagDotNet.StoreTests.Stores.Sqlite*" --minimum-expected-tests 78
+
+  macos:
+    name: macOS SQLite tests (net8.0)
+    # The only job that loads the osx-arm64 sqlite-vec native (macos-latest is Apple Silicon).
+    runs-on: macos-latest
+    timeout-minutes: 20
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+          dotnet-version: 8.0.x
+
+      - name: Build
+        run: |
+          dotnet build tests/RagDotNet.VectorData.Sqlite.Tests --configuration Release
+          dotnet build tests/RagDotNet.StoreTests --configuration Release
+
+      - name: Test SQLite connector (net8.0)
+        run: dotnet test --project tests/RagDotNet.VectorData.Sqlite.Tests --no-build --configuration Release --framework net8.0
+
+      - name: Test store suite on SQLite (net8.0)
+        env:
+          RAGDOTNET_STORES_REQUIRED: 1
+        run: dotnet test --project tests/RagDotNet.StoreTests --no-build --configuration Release --framework net8.0 --filter-class "RagDotNet.StoreTests.Stores.Sqlite*" --minimum-expected-tests 78

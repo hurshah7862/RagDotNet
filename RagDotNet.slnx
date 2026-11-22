@@ -10,6 +10,7 @@
     <Project Path="src/RagDotNet.Readers.Html/RagDotNet.Readers.Html.csproj" />
     <Project Path="src/RagDotNet.Readers.Pdf/RagDotNet.Readers.Pdf.csproj" />
     <Project Path="src/RagDotNet.Readers.Pdf.Rendering/RagDotNet.Readers.Pdf.Rendering.csproj" />
+    <Project Path="src/RagDotNet.VectorData.Sqlite/RagDotNet.VectorData.Sqlite.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/RagDotNet.Core.Tests/RagDotNet.Core.Tests.csproj" />
@@ -21,5 +22,6 @@
     <Project Path="tests/RagDotNet.Readers.Tests/RagDotNet.Readers.Tests.csproj" />
     <Project Path="tests/RagDotNet.StoreTests/RagDotNet.StoreTests.csproj" />
     <Project Path="tests/RagDotNet.TestAssetGen/RagDotNet.TestAssetGen.csproj" />
+    <Project Path="tests/RagDotNet.VectorData.Sqlite.Tests/RagDotNet.VectorData.Sqlite.Tests.csproj" />
   </Folder>
 </Solution>
