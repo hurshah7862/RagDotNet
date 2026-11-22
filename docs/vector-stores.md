@@ -21,7 +21,7 @@ Some stores need settings different from the defaults. Qdrant, for example, need
 
 ## How stores are tested
 
-`tests/RagDotNet.StoreTests` holds one shared suite, written against RagDotNet's public API with a deterministic fake embedder, so it needs no model. Every store runs it twice, once with String keys and once with Guid keys. The suite covers:
+`tests/RagDotNet.StoreTests` holds one shared suite, written against RagDotNet's public API with a deterministic fake embedder, so it needs no model. Every store runs it once for each key type it supports. A test-only binding, the in-memory store with a fake native hybrid search, keeps the native hybrid path covered; it is not a supported store. Settings a store needs are applied in one place, its test fixture, and must match the settings documented here. The suite covers:
 
 - Ingest, unchanged re-ingest, updates with fewer and more chunks (no chunks left behind), delete and stats.
 - Document listing across more than one page.

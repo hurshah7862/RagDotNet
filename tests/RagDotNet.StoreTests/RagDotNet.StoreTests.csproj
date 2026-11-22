@@ -10,6 +10,7 @@
     <PackageReference Include="xunit.runner.visualstudio" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="CommunityToolkit.VectorData.InMemory" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />
@@ -22,5 +23,6 @@
     <Compile Include="..\RagDotNet.Core.Tests\Fakes\FakeEmbeddingGenerator.cs" Link="Fakes\FakeEmbeddingGenerator.cs" />
     <Compile Include="..\RagDotNet.Core.Tests\Fakes\FakeChatClient.cs" Link="Fakes\FakeChatClient.cs" />
     <Compile Include="..\RagDotNet.Core.Tests\Fakes\GatedEmbeddingGenerator.cs" Link="Fakes\GatedEmbeddingGenerator.cs" />
+    <Compile Include="..\RagDotNet.Core.Tests\Fakes\HybridVectorStore.cs" Link="Fakes\HybridVectorStore.cs" />
   </ItemGroup>
 </Project>

@@ -17,7 +17,7 @@ namespace RagDotNet.StoreTests.Suite;
 /// to a fixture and a key type in a sealed class under Stores/. A fresh store instance and collection name per test keep
 /// tests apart.
 /// </summary>
-public abstract partial class StoreSuite<TFixture> : IClassFixture<TFixture>
+public abstract partial class StoreSuite<TFixture> : IClassFixture<TFixture>, IAsyncDisposable
     where TFixture : StoreFixture
 {
     protected const int Dimensions = 64;
@@ -52,8 +52,25 @@ public abstract partial class StoreSuite<TFixture> : IClassFixture<TFixture>
             {
                 o.KeyType = KeyType;
                 o.ModelCheckInterval = TimeSpan.Zero;
+                Fixture.Configure(o);
                 configure?.Invoke(o);
             });
+
+    /// <summary>Deletes this test's two collections and disposes its store, so a shared container doesn't fill up.</summary>
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await Store.EnsureCollectionDeletedAsync(Collection, CancellationToken.None);
+            await Store.EnsureCollectionDeletedAsync(Collection + "_documents", CancellationToken.None);
+        }
+        finally
+        {
+            Store.Dispose();
+        }
+
+        GC.SuppressFinalize(this);
+    }
 
     protected static DocumentSource Md(string id, string markdown, IDictionary<string, object?>? metadata = null)
     {

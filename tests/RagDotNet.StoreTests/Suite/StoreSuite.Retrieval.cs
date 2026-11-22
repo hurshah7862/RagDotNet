@@ -53,8 +53,17 @@ public abstract partial class StoreSuite<TFixture>
         await old.IngestAsync(Md("d1", "alpha one"), cancellationToken: Ct);
         await old.IngestAsync(Md("d2", "alpha two"), cancellationToken: Ct);
 
-        var gate = new GatedEmbeddingGenerator(
-            new FakeEmbeddingGenerator(Dimensions), batch => batch.Any(t => t.Contains("alpha two", StringComparison.Ordinal)));
+        // Reindex works through documents in the store's key order, which differs between stores (and for Guid keys).
+        // So pause the second document's embedding, whichever it is, and expect reads to see only the first.
+        var calls = 0;
+        string? firstText = null;
+        // Only document batches count: reindex also embeds a dimension probe first.
+        var gate = new GatedEmbeddingGenerator(new FakeEmbeddingGenerator(Dimensions), batch =>
+        {
+            if (!batch.Any(t => t.Contains("alpha", StringComparison.Ordinal))) return false;
+            if (++calls == 1) firstText = string.Join(' ', batch);
+            return calls == 2;
+        });
         var builder = Builder(o => o.EmbeddingModelId = "m2", gate);
         var rag = builder.Build();
         var admin = builder.BuildAdmin();
@@ -62,7 +71,10 @@ public abstract partial class StoreSuite<TFixture>
         var reindex = admin.ReindexAsync(cancellationToken: Ct);
         await gate.Reached.WaitAsync(TimeSpan.FromSeconds(30), Ct);
 
-        Assert.Equal(["d1"], await IdsAsync(rag, "alpha"));
+        var first = firstText!.Contains("alpha one", StringComparison.Ordinal) ? "d1"
+            : firstText.Contains("alpha two", StringComparison.Ordinal) ? "d2"
+            : throw new InvalidOperationException($"Unexpected first reindex batch: {firstText}");
+        Assert.Equal([first], await IdsAsync(rag, "alpha"));
 
         gate.Gate.SetResult();
         Assert.Equal(2, (await reindex.WaitAsync(TimeSpan.FromSeconds(30), Ct)).DocumentsReindexed);

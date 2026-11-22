@@ -1,4 +1,5 @@
 using Microsoft.Extensions.VectorData;
+using RagDotNet.Configuration;
 
 namespace RagDotNet.StoreTests.Infrastructure;
 
@@ -17,8 +18,19 @@ public abstract class StoreFixture : IAsyncLifetime
     /// <summary>Why the store could not start, or null when it is available.</summary>
     public string? UnavailableReason { get; protected set; }
 
-    /// <summary>A store instance for one test. Each test also uses its own collection name.</summary>
+    /// <summary>
+    /// A store instance for one test; the suite disposes it after the test. Each test also uses its own collection name.
+    /// A store over a shared service may return a light wrapper over one shared client.
+    /// </summary>
     public abstract VectorStore CreateStore();
+
+    /// <summary>
+    /// The store's own settings (spec §2.2), applied to every pipeline the suite builds before the test's own settings.
+    /// Every override must match a setting documented for the store in docs/vector-stores.md.
+    /// </summary>
+    public virtual void Configure(RagOptions options)
+    {
+    }
 
     public virtual ValueTask InitializeAsync() => ValueTask.CompletedTask;
 

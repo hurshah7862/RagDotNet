@@ -1,6 +1,7 @@
 using RagDotNet.Chunking;
 using RagDotNet.Core.Tests.Fakes;
 using RagDotNet.Ingestion;
+using RagDotNet.Pipeline;
 using RagDotNet.Retrieval;
 
 namespace RagDotNet.StoreTests.Suite;
@@ -98,11 +99,38 @@ public abstract partial class StoreSuite<TFixture>
 
         Assert.Equal(201, Assert.Single((await admin.GetStatsAsync(Ct)).Partitions).DocumentCount);
 
-        await admin.RebuildKeywordIndexAsync(Ct);
-        var hits = await rag.RetrieveAsync("u200", new RetrievalOptions { Hybrid = HybridMode.On }, Ct);
-        Assert.Equal("doc200", hits[0].DocumentId);
-
-        var reindex = await admin.ReindexAsync(cancellationToken: Ct);
+        // Distinct ids, not a count: unstable paging could repeat some documents and miss others and still total 201.
+        var progress = new DistinctIds();
+        var reindex = await admin.ReindexAsync(progress, Ct);
         Assert.Equal(201, reindex.DocumentsReindexed + reindex.DocumentsSkipped);
+        Assert.Equal(sources.Select(s => s.DocumentId).Order(), progress.Ids.Order());
+
+        // The keyword index is rebuilt from the listing too; with native hybrid search there is no index to rebuild.
+        if (!Fixture.NativeHybrid)
+        {
+            await admin.RebuildKeywordIndexAsync(Ct);
+            foreach (var i in new[] { 0, 100, 200 })
+            {
+                var hits = await rag.RetrieveAsync($"u{i:000}", new RetrievalOptions { Hybrid = HybridMode.On }, Ct);
+                Assert.Equal($"doc{i:000}", hits[0].DocumentId);
+            }
+        }
+    }
+
+    /// <summary>Collects reindex progress synchronously (Progress&lt;T&gt; would post to the thread pool).</summary>
+    private sealed class DistinctIds : IProgress<ReindexProgress>
+    {
+        private readonly HashSet<string> _ids = [];
+
+        public IReadOnlyCollection<string> Ids
+        {
+            get { lock (_ids) return _ids.ToList(); }
+        }
+
+        public void Report(ReindexProgress value)
+        {
+            if (value.CurrentDocumentId is { } id)
+                lock (_ids) _ids.Add(id);
+        }
     }
 }

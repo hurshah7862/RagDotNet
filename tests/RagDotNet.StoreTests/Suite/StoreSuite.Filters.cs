@@ -8,8 +8,10 @@ namespace RagDotNet.StoreTests.Suite;
 
 public abstract partial class StoreSuite<TFixture>
 {
-    private static readonly DateTimeOffset FullDate = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
-    private static readonly DateTimeOffset OtherDate = new(2026, 6, 1, 0, 0, 0, TimeSpan.Zero);
+    // Non-zero offsets and milliseconds: a store that keeps the wall-clock time but drops or misreads the offset
+    // shifts the instant, which a UTC value on a UTC CI runner would never show.
+    private static readonly DateTimeOffset FullDate = new(2026, 1, 1, 10, 30, 15, 123, TimeSpan.FromHours(5.5));
+    private static readonly DateTimeOffset OtherDate = new(2026, 6, 1, 8, 0, 0, 456, TimeSpan.FromHours(-7));
 
     /// <summary>Every case: its filter and the documents it must return. "bare" has no metadata and must never match.</summary>
     private static readonly Dictionary<string, (F Filter, string[] Expected)> FilterCases = new()
@@ -24,6 +26,8 @@ public abstract partial class StoreSuite<TFixture>
         ["in-string"] = (F.In("s", ["x", "y"]), ["full", "other"]),
         ["in-int"] = (F.In("i", [1, 2]), ["full", "other"]),
         ["in-long"] = (F.In("l", [20_000_000_000L]), ["other"]),
+        ["in-bool"] = (F.In("b", [false]), ["other"]),
+        ["in-date"] = (F.In("d", [FullDate, OtherDate]), ["full", "other"]),
         ["contains"] = (F.Contains("tags", "red"), ["full"]),
         ["contains-any"] = (F.ContainsAny("tags", ["green", "blue"]), ["full", "other"]),
         ["contains-none"] = (F.Contains("tags", "purple"), []),
