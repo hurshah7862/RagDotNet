@@ -7,8 +7,6 @@ namespace RagDotNet.Filtering;
 /// <summary>Translates <see cref="RagFilter"/> trees into store filter expressions over dynamic records.</summary>
 internal static class RagFilterTranslator
 {
-    private static readonly PropertyInfo Indexer = typeof(Dictionary<string, object?>).GetProperty("Item")!;
-
     private static readonly MethodInfo EnumerableContains = typeof(Enumerable).GetMethods()
         .Single(m => m.Name == nameof(Enumerable.Contains) && m.GetParameters().Length == 2)
         .MakeGenericMethod(typeof(string));
@@ -119,7 +117,7 @@ internal static class RagFilterTranslator
     };
 
     private static Expression Field(string field, Type type, MetadataSchema schema, ParameterExpression p) =>
-        Expression.Convert(Expression.MakeIndex(p, Indexer, [Expression.Constant(StorageName(field, schema))]), type);
+        RagDotNet.Storage.RecordFields.Read(p, StorageName(field, schema), type);
 
     private static Expression BuildEq(string field, object value, MetadataSchema schema, ParameterExpression p)
     {
@@ -145,6 +143,8 @@ internal static class RagFilterTranslator
     internal static object ConvertValue(object? value, Type type, string field)
     {
         if (value is null) throw new ArgumentException($"Filter value for '{field}' must not be null.");
+        // Dates compare as instants; some stores (PostgreSQL) accept only offset-zero values, so every date is sent in UTC.
+        if (value is DateTimeOffset dto && type == typeof(DateTimeOffset)) return dto.ToUniversalTime();
         if (type.IsInstanceOfType(value)) return value;
 
         object? converted = null;
@@ -167,6 +167,7 @@ internal static class RagFilterTranslator
             };
         }
 
+        if (converted is DateTimeOffset c) return c.ToUniversalTime();
         return converted ?? throw new ArgumentException(
             $"Filter value of type {value.GetType().Name} for field '{field}' cannot be converted exactly to {type.Name}."
             + (type == typeof(DateTimeOffset) ? " Use a DateTimeOffset, a UTC or local DateTime, or an ISO-8601 string with an explicit offset." : ""));

@@ -330,6 +330,7 @@ internal sealed class Ingestor(RagEngine engine)
             s.Metadata.TryGetValue(name, out var v);
             result[name] = type == typeof(long) && v is int i ? (long)i
                 : type == typeof(string[]) ? v ?? Array.Empty<string>() // omitted arrays are stored empty so Contains never sees null
+                : v is DateTimeOffset dto ? dto.ToUniversalTime() // the same instant; some stores accept only offset zero
                 : v;
         }
 

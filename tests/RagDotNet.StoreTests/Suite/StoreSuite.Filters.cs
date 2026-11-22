@@ -80,7 +80,9 @@ public abstract partial class StoreSuite<TFixture>
         Assert.Equal(1, Assert.IsType<int>(hit.Metadata["i"]));
         Assert.Equal(10_000_000_000L, Assert.IsType<long>(hit.Metadata["l"]));
         Assert.True(Assert.IsType<bool>(hit.Metadata["b"]));
-        Assert.Equal(FullDate, Assert.IsType<DateTimeOffset>(hit.Metadata["d"]));
+        var d = Assert.IsType<DateTimeOffset>(hit.Metadata["d"]);
+        Assert.Equal(FullDate, d);
+        Assert.Equal(TimeSpan.Zero, d.Offset); // every store returns dates in UTC (docs/vector-stores.md)
         Assert.Equal(["red", "green"], Assert.IsType<string[]>(hit.Metadata["tags"]));
     }
 }
