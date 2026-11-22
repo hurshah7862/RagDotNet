@@ -63,14 +63,20 @@ public abstract partial class StoreSuite<TFixture> : IClassFixture<TFixture>
         return source;
     }
 
-    /// <summary>The number of chunks the store holds for a document, read back through a filtered vector-only retrieve.</summary>
+    /// <summary>
+    /// The number of chunks the store holds for a document, read back through a filtered vector-only retrieve. Retrieval
+    /// returns at most 100, so a test document must stay below that; reaching it fails instead of undercounting.
+    /// </summary>
     protected static async Task<int> CountChunksAsync(IRagPipeline rag, string documentId)
     {
+        const int max = 100;
         var hits = await rag.RetrieveAsync(
             "count",
-            new RetrievalOptions { TopK = 1000, Hybrid = HybridMode.Off, Filter = RagFilter.Eq("DocumentId", documentId) },
+            new RetrievalOptions { TopK = max, Hybrid = HybridMode.Off, Filter = RagFilter.Eq("DocumentId", documentId) },
             Ct);
-        return hits.Select(h => h.ChunkKey).Distinct().Count();
+        var count = hits.Select(h => h.ChunkKey).Distinct().Count();
+        Assert.True(count < max, $"'{documentId}' has {max} or more chunks; CountChunksAsync can only count fewer than {max}.");
+        return count;
     }
 
     [Fact]
