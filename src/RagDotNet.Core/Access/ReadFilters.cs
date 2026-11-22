@@ -1,14 +1,12 @@
 using System.Linq.Expressions;
-using System.Reflection;
 using RagDotNet.Filtering;
+using RagDotNet.Storage;
 
 namespace RagDotNet.Access;
 
 /// <summary>Builds the store filter for reads: partition visibility, the scope's own filter and the caller's filter.</summary>
 internal static class ReadFilters
 {
-    private static readonly PropertyInfo Indexer = typeof(Dictionary<string, object?>).GetProperty("Item")!;
-
     /// <summary>
     /// Scoped: (Partition == own || (includeCommon &amp;&amp; Partition == "")) AND user filter AND caller filter.
     /// Full access: caller filter only, or Partition != "" when the common area is excluded.
@@ -36,7 +34,7 @@ internal static class ReadFilters
         if (requireModelId is not null)
         {
             var model = Expression.Equal(
-                Expression.Convert(Expression.MakeIndex(p, Indexer, [Expression.Constant("EmbeddingModelId")]), typeof(string)),
+                RecordFields.Read(p, "EmbeddingModelId", typeof(string)),
                 Expression.Constant(requireModelId, typeof(string)));
             body = body is null ? model : Expression.AndAlso(model, body);
         }
@@ -53,7 +51,7 @@ internal static class ReadFilters
 
     private static Expression? PartitionClause(ResolvedScope scope, bool includeCommon, ParameterExpression p)
     {
-        var field = Expression.Convert(Expression.MakeIndex(p, Indexer, [Expression.Constant("Partition")]), typeof(string));
+        var field = RecordFields.Read(p, "Partition", typeof(string));
         Expression Eq(string v) => Expression.Equal(field, Expression.Constant(v, typeof(string)));
 
         if (scope.IsFullAccess)

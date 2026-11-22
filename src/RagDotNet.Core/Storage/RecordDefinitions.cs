@@ -27,7 +27,7 @@ internal static class RecordDefinitions
         props.Add(new VectorStoreDataProperty("HeadingPath", typeof(string)));
         props.Add(new VectorStoreDataProperty("SourceName", typeof(string)));
         foreach (var (name, type) in o.Metadata.Fields)
-            props.Add(new VectorStoreDataProperty(MetaName(name), type) { IsIndexed = true });
+            props.Add(new VectorStoreDataProperty(MetaName(name), StoredType(type)) { IsIndexed = true });
         props.Add(new VectorStoreVectorProperty("Embedding", typeof(ReadOnlyMemory<float>), o.EmbeddingDimensions)
         {
             DistanceFunction = o.DistanceFunction,
@@ -45,7 +45,7 @@ internal static class RecordDefinitions
             new VectorStoreDataProperty("Partition", typeof(string)) { IsIndexed = true },
         };
         foreach (var (name, type) in o.Metadata.Fields)
-            props.Add(new VectorStoreDataProperty(MetaName(name), type) { IsIndexed = true });
+            props.Add(new VectorStoreDataProperty(MetaName(name), StoredType(type)) { IsIndexed = true });
         props.Add(new VectorStoreDataProperty("ContentHash", typeof(string)));
         props.Add(new VectorStoreDataProperty("ChunkingHash", typeof(string)));
         props.Add(new VectorStoreDataProperty("EmbeddingModelId", typeof(string)) { IsIndexed = true });
@@ -64,6 +64,13 @@ internal static class RecordDefinitions
     }
 
     internal static string MetaName(string field) => RagFilterTranslator.MetaPrefix + field;
+
+    /// <summary>
+    /// A metadata field's type in the store: value types become nullable, because a document may omit the field (a store
+    /// that maps <c>int</c> to a NOT NULL column would reject it).
+    /// </summary>
+    internal static Type StoredType(Type declared) =>
+        declared.IsValueType && Nullable.GetUnderlyingType(declared) is null ? typeof(Nullable<>).MakeGenericType(declared) : declared;
 
     private static Type KeyClrType(RagKeyType t) => t == RagKeyType.Guid ? typeof(Guid) : typeof(string);
 

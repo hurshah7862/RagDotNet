@@ -7,8 +7,6 @@ namespace RagDotNet.Filtering;
 /// <summary>Translates <see cref="RagFilter"/> trees into store filter expressions over dynamic records.</summary>
 internal static class RagFilterTranslator
 {
-    private static readonly PropertyInfo Indexer = typeof(Dictionary<string, object?>).GetProperty("Item")!;
-
     private static readonly MethodInfo EnumerableContains = typeof(Enumerable).GetMethods()
         .Single(m => m.Name == nameof(Enumerable.Contains) && m.GetParameters().Length == 2)
         .MakeGenericMethod(typeof(string));
@@ -119,7 +117,7 @@ internal static class RagFilterTranslator
     };
 
     private static Expression Field(string field, Type type, MetadataSchema schema, ParameterExpression p) =>
-        Expression.Convert(Expression.MakeIndex(p, Indexer, [Expression.Constant(StorageName(field, schema))]), type);
+        RagDotNet.Storage.RecordFields.Read(p, StorageName(field, schema), type);
 
     private static Expression BuildEq(string field, object value, MetadataSchema schema, ParameterExpression p)
     {
