@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="CommunityToolkit.VectorData.InMemory" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" />
+  </ItemGroup>
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\RagDotNet.Core\RagDotNet.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The same deterministic fakes as the Core tests, linked rather than copied. -->
+    <Compile Include="..\RagDotNet.Core.Tests\Fakes\FakeEmbeddingGenerator.cs" Link="Fakes\FakeEmbeddingGenerator.cs" />
+    <Compile Include="..\RagDotNet.Core.Tests\Fakes\FakeChatClient.cs" Link="Fakes\FakeChatClient.cs" />
+    <Compile Include="..\RagDotNet.Core.Tests\Fakes\GatedEmbeddingGenerator.cs" Link="Fakes\GatedEmbeddingGenerator.cs" />
+    <Compile Include="..\RagDotNet.Core.Tests\Fakes\HybridVectorStore.cs" Link="Fakes\HybridVectorStore.cs" />
+  </ItemGroup>
+</Project>

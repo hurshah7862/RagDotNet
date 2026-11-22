@@ -79,7 +79,7 @@ Microsoft's options either do too much (Kernel Memory: its own abstractions and 
 - **Package naming:** `RagDotNet.*`. Check that the names are free on NuGet before the first publish.
 - **Dev machine:** Windows, Core Ultra 7 266V, 16 GB RAM, Intel Arc 140V iGPU (no CUDA). The .NET 10 SDK, .NET 8 runtime, Docker, and Ollama are installed.
 - **Local models:** `nomic-embed-text` (768 dimensions) and `llama3.2:3b` (about 38 tokens/s on CPU) via Ollama.
-- Unit tests and CI must never need a model, network access, or Docker.
+- Unit tests must never need a model, network access, or Docker. Store integration tests run in CI on every pull request and may use Docker (stage 8, see the [store design](2026-11-21-ragdotnet-stage8-stores-design.md)).
 - **Supported vector stores (v1)** *(owner's decision)*: InMemory, Qdrant, PostgreSQL (pgvector), SQLite (sqlite-vec), Redis, and SQL Server. Each has an integration test.
   - InMemory, Qdrant, PostgreSQL, Redis, and SQL Server use the maintained `CommunityToolkit.VectorData.*` connectors. (The older `Microsoft.SemanticKernel.Connectors.*` packages are built on VectorData 10.1 and fail at runtime against current versions.)
   - SQLite has no maintained connector for current VectorData, so RagDotNet ships its own: `RagDotNet.VectorData.Sqlite` (see 4) *(owner's decision)*.
@@ -565,7 +565,7 @@ docs/
 
 ### 9.2 Integration tests (opt-in)
 
-- Run when `RAGDOTNET_INTEGRATION=1` is set. They need Ollama, Docker, or both, and each test is skipped if its dependency isn't available.
+- Run when `RAGDOTNET_INTEGRATION=1` is set. They need Ollama, Docker, or both, and each test is skipped if its dependency isn't available. In CI, `RAGDOTNET_STORES_REQUIRED=1` turns a store that can't start into a failure.
 - Coverage: an end-to-end ask over the sample corpus with Ollama; the shared store suite against all six supported stores (see 8); native hybrid search where the store offers it; Lucene persistence across restarts; Tesseract OCR on the scanned PDF page (Windows only).
 
 ### 9.3 Evaluation harness
