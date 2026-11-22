@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.VectorData;
 
@@ -24,6 +25,7 @@ public sealed class SqliteVectorStore : VectorStore
         _connectionString = builder.ToString();
         _extensionPath = VecExtension.Resolve(options ?? new SqliteVectorStoreOptions());
         _metadata = new VectorStoreMetadata { VectorStoreSystemName = "sqlite", VectorStoreName = builder.DataSource };
+        ProbeExtension(_extensionPath);
 
         if (IsFile(builder))
         {
@@ -65,6 +67,28 @@ public sealed class SqliteVectorStore : VectorStore
         {
             connection.Dispose();
             throw;
+        }
+    }
+
+    /// <summary>
+    /// Loads the extension once on a scratch connection, so a file that exists but cannot load (another platform's build,
+    /// a glibc build on musl, not an extension at all) fails at construction with a message naming the option.
+    /// </summary>
+    private static void ProbeExtension(string path)
+    {
+        using var probe = new SqliteConnection("Data Source=:memory:");
+        probe.Open();
+        probe.EnableExtensions(true);
+        try
+        {
+            probe.LoadExtension(path);
+        }
+        catch (SqliteException e)
+        {
+            throw new InvalidOperationException(
+                $"sqlite-vec at '{path}' could not be loaded on {RuntimeInformation.RuntimeIdentifier} ({RuntimeInformation.OSDescription}/{RuntimeInformation.ProcessArchitecture}): {e.Message} "
+                + "Set SqliteVectorStoreOptions.VecExtensionPath to a sqlite-vec loadable extension built for this platform.",
+                e);
         }
     }
 
@@ -118,7 +142,7 @@ public sealed class SqliteVectorStore : VectorStore
         {
             using var tx = connection.BeginTransaction();
             await EnsureRegistryAsync(connection, ct).ConfigureAwait(false);
-            await SqliteCollection.ExecAsync(connection, $"DROP TABLE IF EXISTS {Schema.Quote(name + "_fts")}", ct).ConfigureAwait(false);
+            await SqliteCollection.ExecAsync(connection, $"DROP TABLE IF EXISTS {Schema.Quote(Schema.FtsName(name))}", ct).ConfigureAwait(false);
             await SqliteCollection.ExecAsync(connection, $"DROP TABLE IF EXISTS {Schema.Quote(name)}", ct).ConfigureAwait(false);
             using (var command = connection.CreateCommand())
             {

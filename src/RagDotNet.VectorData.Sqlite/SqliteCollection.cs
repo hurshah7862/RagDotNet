@@ -134,7 +134,7 @@ internal sealed partial class SqliteCollection
             var parameters = columns.Select((c, i) => command.Parameters.Add("$p" + i, SqliteType.Text)).ToList();
             command.CommandText =
                 $"INSERT INTO {_schema.Table} ({string.Join(", ", columns.Select(c => c.Quoted))}) VALUES ({string.Join(", ", parameters.Select(p => p.ParameterName))}) "
-                + $"ON CONFLICT({_schema.Key.Quoted}) DO UPDATE SET {string.Join(", ", columns.Skip(1).Select(c => $"{c.Quoted} = excluded.{c.Quoted}"))} RETURNING rowid";
+                + $"ON CONFLICT({_schema.Key.Quoted}) DO UPDATE SET {string.Join(", ", columns.Skip(1).Select(c => $"{c.Quoted} = excluded.{c.Quoted}"))} RETURNING {Schema.RowId}";
             foreach (var row in rows)
             {
                 for (var i = 0; i < row.Length; i++)
@@ -188,10 +188,10 @@ internal sealed partial class SqliteCollection
         foreach (var row in rows) yield return row;
     }
 
-    /// <summary>The ORDER BY list: each sort's column, then rowid so ties come back in a stable order.</summary>
+    /// <summary>The ORDER BY list: each sort's column, then the row id so ties come back in a stable order.</summary>
     private string OrderBy(FilteredRecordRetrievalOptions<Dictionary<string, object?>> options)
     {
-        if (options.OrderBy is null) return "rowid";
+        if (options.OrderBy is null) return Schema.RowId;
         var sorts = options.OrderBy(new FilteredRecordRetrievalOptions<Dictionary<string, object?>>.OrderByDefinition()).Values;
         var parts = sorts.Select(s =>
         {
@@ -199,7 +199,7 @@ internal sealed partial class SqliteCollection
                 ?? throw new NotSupportedException("RagDotNet.VectorData.Sqlite orders only by a record field, like r => r[\"Key\"].");
             return $"{column.Quoted} {(s.Ascending ? "ASC" : "DESC")}";
         });
-        return string.Join(", ", parts.Append("rowid"));
+        return string.Join(", ", parts.Append(Schema.RowId));
     }
 
     /// <summary>An exact scan: every record's distance to the query, so a filter never cuts the results short.</summary>
@@ -220,8 +220,8 @@ internal sealed partial class SqliteCollection
             using var command = connection.CreateCommand();
             command.CommandText =
                 $"SELECT {_schema.SelectList(includeVectors)}, {distance} AS d FROM {_schema.Table} "
-                + $"WHERE {_schema.Vector.Quoted} IS NOT NULL AND {where}{(maxDistance is null ? "" : $" AND {distance} <= @maxd")} "
-                + "ORDER BY d, rowid LIMIT @top OFFSET @skip";
+                + $"WHERE {_schema.Vector.Quoted} IS NOT NULL AND {distance} IS NOT NULL AND {where}{(maxDistance is null ? "" : $" AND {distance} <= @maxd")} "
+                + $"ORDER BY d, {Schema.RowId} LIMIT @top OFFSET @skip";
             command.Parameters.AddRange(parameters);
             command.Parameters.AddWithValue("@q", query);
             command.Parameters.AddWithValue("@top", top);
@@ -345,9 +345,9 @@ internal sealed partial class SqliteCollection
             using var command = connection.CreateCommand();
             // The FTS rows are ranked in a CTE with names of its own, so the filter's unqualified columns stay unambiguous.
             command.CommandText =
-                $"WITH ragdotnet_k AS (SELECT rowid AS ragdotnet_rowid, bm25({_schema.FtsTable}) AS ragdotnet_bm25 FROM {_schema.FtsTable} WHERE {_schema.FtsTable} MATCH @match) "
-                + $"SELECT {_schema.SelectList(includeVectors)} FROM {_schema.Table} JOIN ragdotnet_k ON {_schema.Table}.rowid = ragdotnet_k.ragdotnet_rowid "
-                + $"WHERE {where} ORDER BY ragdotnet_k.ragdotnet_bm25, {_schema.Table}.rowid LIMIT @pool";
+                $"WITH ragdotnet_k AS (SELECT rowid AS ragdotnet_fts_rowid, bm25({_schema.FtsTable}) AS ragdotnet_bm25 FROM {_schema.FtsTable} WHERE {_schema.FtsTable} MATCH @match) "
+                + $"SELECT {_schema.SelectList(includeVectors)} FROM {_schema.Table} JOIN ragdotnet_k ON {_schema.Table}.{Schema.RowId} = ragdotnet_k.ragdotnet_fts_rowid "
+                + $"WHERE {where} ORDER BY ragdotnet_k.ragdotnet_bm25, {_schema.Table}.{Schema.RowId} LIMIT @pool";
             command.Parameters.AddRange(parameters);
             command.Parameters.AddWithValue("@match", match);
             command.Parameters.AddWithValue("@pool", pool);
@@ -362,7 +362,7 @@ internal sealed partial class SqliteCollection
     }
 
     /// <summary>
-    /// Creates the FTS5 table (its rowid is the main table's rowid). When it is new on an existing collection, fills it
+    /// Creates the FTS5 table (its rowid is the main table's ragdotnet_rowid). When it is new on an existing collection, fills it
     /// from the rows already there.
     /// </summary>
     private async Task EnsureFullTextAsync(SqliteConnection connection, CancellationToken ct)
@@ -371,12 +371,12 @@ internal sealed partial class SqliteCollection
         using (var exists = connection.CreateCommand())
         {
             exists.CommandText = "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = $n";
-            exists.Parameters.AddWithValue("$n", _schema.Name + "_fts");
+            exists.Parameters.AddWithValue("$n", Schema.FtsName(_schema.Name));
             if (await exists.ExecuteScalarAsync(ct).ConfigureAwait(false) is not null) return;
         }
 
         await ExecAsync(connection, $"CREATE VIRTUAL TABLE {_schema.FtsTable} USING fts5(ragdotnet_text, tokenize = 'unicode61 remove_diacritics 2')", ct).ConfigureAwait(false);
-        await ExecAsync(connection, $"INSERT INTO {_schema.FtsTable} (rowid, ragdotnet_text) SELECT rowid, {text.Quoted} FROM {_schema.Table} WHERE {text.Quoted} IS NOT NULL", ct).ConfigureAwait(false);
+        await ExecAsync(connection, $"INSERT INTO {_schema.FtsTable} (rowid, ragdotnet_text) SELECT {Schema.RowId}, {text.Quoted} FROM {_schema.Table} WHERE {text.Quoted} IS NOT NULL", ct).ConfigureAwait(false);
     }
 
     /// <summary>Replaces the record's FTS row, in the upsert's transaction.</summary>
@@ -399,7 +399,7 @@ internal sealed partial class SqliteCollection
     private async Task DeleteFullTextAsync(SqliteCommand keyed, string keyList, CancellationToken ct)
     {
         if (_schema.FullText is null) return;
-        keyed.CommandText = $"DELETE FROM {_schema.FtsTable} WHERE rowid IN (SELECT rowid FROM {_schema.Table} WHERE {_schema.Key.Quoted} IN ({keyList}))";
+        keyed.CommandText = $"DELETE FROM {_schema.FtsTable} WHERE rowid IN (SELECT {Schema.RowId} FROM {_schema.Table} WHERE {_schema.Key.Quoted} IN ({keyList}))";
         await keyed.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
     }
 

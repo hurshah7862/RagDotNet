@@ -99,7 +99,15 @@ internal sealed partial class Schema
 
     public string Table => Quote(Name);
 
-    public string FtsTable => Quote(Name + "_fts");
+    public string FtsTable => Quote(FtsName(Name));
+
+    /// <summary>The FTS5 table of a collection. User collections cannot start with "ragdotnet_", so it never collides with one.</summary>
+    public static string FtsName(string collection) => "ragdotnet_fts_" + collection;
+
+    /// <summary>
+    /// The explicit INTEGER PRIMARY KEY that links a row to its FTS row. An implicit rowid may change on VACUUM; this one does not.
+    /// </summary>
+    public const string RowId = "\"ragdotnet_rowid\"";
 
     public Column Key { get; }
 
@@ -144,6 +152,8 @@ internal sealed partial class Schema
         foreach (var p in definition.Properties)
         {
             var storage = p.StorageName ?? p.Name;
+            if (storage.StartsWith("ragdotnet_", StringComparison.OrdinalIgnoreCase) || Reserved.Contains(storage))
+                throw new ArgumentException($"Property '{p.Name}' stores to '{storage}', a name SQLite or RagDotNet.VectorData.Sqlite reserves; set a different StorageName.", nameof(definition));
             var type = p.Type ?? throw new ArgumentException($"Property '{p.Name}' has no type; dynamic collections need one.", nameof(definition));
             switch (p)
             {
@@ -184,6 +194,8 @@ internal sealed partial class Schema
         return new Schema(name, key, data, vector, dimensions, distance);
     }
 
+    private static readonly HashSet<string> Reserved = new(StringComparer.OrdinalIgnoreCase) { "rowid", "oid", "_rowid_" };
+
     private static ColumnKind? DataKind(Type t)
     {
         var u = Nullable.GetUnderlyingType(t) ?? t;
@@ -207,7 +219,7 @@ internal sealed partial class Schema
     };
 
     public string CreateTableSql() =>
-        $"CREATE TABLE IF NOT EXISTS {Table} ({Key.Quoted} TEXT PRIMARY KEY NOT NULL, "
+        $"CREATE TABLE IF NOT EXISTS {Table} ({RowId} INTEGER PRIMARY KEY, {Key.Quoted} TEXT NOT NULL UNIQUE, "
         + string.Concat(Data.Select(c => $"{c.Quoted} {SqlType(c.Kind)}, "))
         + $"{Vector.Quoted} BLOB)";
 
