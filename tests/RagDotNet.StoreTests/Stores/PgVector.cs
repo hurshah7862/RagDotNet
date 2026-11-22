@@ -18,7 +18,7 @@ public sealed class PgVectorFixture : StoreFixture
 
     public override async ValueTask InitializeAsync()
     {
-        (_connectionString, UnavailableReason) = await PostgresContainer.GetAsync();
+        (_connectionString, UnavailableReason) = await Containers.Postgres.GetAsync();
     }
 
     public override VectorStore CreateStore() =>

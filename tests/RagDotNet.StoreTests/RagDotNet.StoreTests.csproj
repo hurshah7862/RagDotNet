@@ -13,6 +13,8 @@
     <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" />
     <PackageReference Include="CommunityToolkit.VectorData.PgVector" />
     <PackageReference Include="Testcontainers.PostgreSql" />
+    <PackageReference Include="CommunityToolkit.VectorData.Qdrant" />
+    <PackageReference Include="Testcontainers.Qdrant" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />
