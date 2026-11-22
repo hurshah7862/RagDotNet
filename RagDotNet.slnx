@@ -19,6 +19,7 @@
     <Project Path="tests/RagDotNet.Keyword.Lucene.Tests/RagDotNet.Keyword.Lucene.Tests.csproj" />
     <Project Path="tests/RagDotNet.Ocr.Tests/RagDotNet.Ocr.Tests.csproj" />
     <Project Path="tests/RagDotNet.Readers.Tests/RagDotNet.Readers.Tests.csproj" />
+    <Project Path="tests/RagDotNet.StoreTests/RagDotNet.StoreTests.csproj" />
     <Project Path="tests/RagDotNet.TestAssetGen/RagDotNet.TestAssetGen.csproj" />
   </Folder>
 </Solution>
