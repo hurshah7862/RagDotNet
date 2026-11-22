@@ -25,7 +25,7 @@ RagDotNet is for .NET developers who want an application to answer questions fro
 | Retrieval evaluation harness | Works |
 | OCR: Tesseract package, or your own provider (per image or whole document) | Works |
 | Hybrid search and reranking | Works |
-| More vector stores | Planned |
+| More vector stores | In progress ([vector stores](docs/vector-stores.md)) |
 | Hosting adapters | Planned |
 | NuGet packages | Planned |
 
@@ -39,7 +39,7 @@ dotnet add reference path/to/RagDotNet/src/RagDotNet.Core/RagDotNet.Core.csproj
 
 Once published, it will be `dotnet add package RagDotNet.Core`.
 
-RagDotNet.Core targets net8.0 and net10.0. You bring your own `IChatClient`, `IEmbeddingGenerator<string, Embedding<float>>` (Microsoft.Extensions.AI) and `VectorStore` (any Microsoft.Extensions.VectorData connector). The samples and tests use the in-memory store from `CommunityToolkit.VectorData.InMemory`, which is not meant for production.
+RagDotNet.Core targets net8.0 and net10.0. You bring your own `IChatClient`, `IEmbeddingGenerator<string, Embedding<float>>` (Microsoft.Extensions.AI) and `VectorStore` (any Microsoft.Extensions.VectorData connector). The samples and tests use the in-memory store from `CommunityToolkit.VectorData.InMemory`, which is not meant for production. [docs/vector-stores.md](docs/vector-stores.md) lists the stores RagDotNet tests and any settings each one needs.
 
 ## Quick start with dependency injection
 
@@ -257,6 +257,8 @@ ollama pull llama3.2:3b
 ollama pull nomic-embed-text
 RAGDOTNET_INTEGRATION=1 dotnet test --project tests/RagDotNet.IntegrationTests
 ```
+
+The shared vector-store suite is in `tests/RagDotNet.StoreTests`; [docs/vector-stores.md](docs/vector-stores.md) explains what it covers and how to run it.
 
 ## How retrieval quality is measured
 
