@@ -17,6 +17,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\RagDotNet.Core\RagDotNet.Core.csproj" />
+    <ProjectReference Include="..\..\src\RagDotNet.VectorData.Sqlite\RagDotNet.VectorData.Sqlite.csproj" />
   </ItemGroup>
   <ItemGroup>
     <!-- The same deterministic fakes as the Core tests, linked rather than copied. -->
