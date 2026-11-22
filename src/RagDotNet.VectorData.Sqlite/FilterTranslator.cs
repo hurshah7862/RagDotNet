@@ -18,7 +18,7 @@ internal static class FilterTranslator
     }
 
     /// <summary>The column a field access like <c>r["name"]</c> reads, or null when <paramref name="node"/> is not one.</summary>
-    public static Column? Field(Expression node, ParameterExpression record, Schema schema)
+    public static Column? Field(Expression node, ParameterExpression record, Schema schema, bool allowVector = false)
     {
         while (node is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked or ExpressionType.TypeAs } u) node = u.Operand;
         Expression? argument = node switch
@@ -31,7 +31,7 @@ internal static class FilterTranslator
         if (Uses(argument, record)) throw Unsupported("a field name computed from the record");
         var name = Evaluate(argument) as string ?? throw new NotSupportedException("RagDotNet.VectorData.Sqlite filters need a string field name.");
         var column = schema.Find(name) ?? throw new ArgumentException($"Filter field '{name}' is not a property of collection '{schema.Name}'.");
-        if (column.Kind == ColumnKind.Vector) throw Unsupported($"filtering on the vector property '{name}'");
+        if (column.Kind == ColumnKind.Vector && !allowVector) throw Unsupported($"filtering on the vector property '{name}'");
         return column;
     }
 

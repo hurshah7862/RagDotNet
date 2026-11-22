@@ -202,8 +202,74 @@ internal sealed partial class SqliteCollection
         return string.Join(", ", parts.Append("rowid"));
     }
 
-    public override IAsyncEnumerable<VectorSearchResult<Dictionary<string, object?>>> SearchAsync<TInput>(TInput searchValue, int top, VectorSearchOptions<Dictionary<string, object?>>? options = null, CancellationToken cancellationToken = default) =>
-        throw new NotImplementedException();
+    /// <summary>An exact scan: every record's distance to the query, so a filter never cuts the results short.</summary>
+    public override async IAsyncEnumerable<VectorSearchResult<Dictionary<string, object?>>> SearchAsync<TInput>(TInput searchValue, int top, VectorSearchOptions<Dictionary<string, object?>>? options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(top, 1);
+        options ??= new();
+        ArgumentOutOfRangeException.ThrowIfNegative(options.Skip);
+        var query = QueryBytes(searchValue);
+        CheckVectorProperty(options.VectorProperty);
+        var (where, parameters) = Where(options.Filter);
+        var includeVectors = options.IncludeVectors;
+        var maxDistance = MaxDistance(options.ScoreThreshold);
+        var distance = $"vec_distance_cosine({_schema.Vector.Quoted}, @q)";
+
+        var rows = await RunAsync("Search", async (connection, ct) =>
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText =
+                $"SELECT {_schema.SelectList(includeVectors)}, {distance} AS d FROM {_schema.Table} "
+                + $"WHERE {_schema.Vector.Quoted} IS NOT NULL AND {where}{(maxDistance is null ? "" : $" AND {distance} <= @maxd")} "
+                + "ORDER BY d, rowid LIMIT @top OFFSET @skip";
+            command.Parameters.AddRange(parameters);
+            command.Parameters.AddWithValue("@q", query);
+            command.Parameters.AddWithValue("@top", top);
+            command.Parameters.AddWithValue("@skip", options.Skip);
+            if (maxDistance is not null) command.Parameters.AddWithValue("@maxd", maxDistance.Value);
+
+            var results = new List<VectorSearchResult<Dictionary<string, object?>>>();
+            var d = _schema.Data.Count + 1 + (includeVectors ? 1 : 0);
+            using var reader = await command.ExecuteReaderAsync(ct).ConfigureAwait(false);
+            while (await reader.ReadAsync(ct).ConfigureAwait(false))
+                results.Add(new(_schema.Read(reader, includeVectors), Score(reader.GetDouble(d))));
+            return results;
+        }, cancellationToken).ConfigureAwait(false);
+        foreach (var result in rows) yield return result;
+    }
+
+    private bool IsSimilarity => _schema.Distance == DistanceFunction.CosineSimilarity;
+
+    /// <summary>The score RagDotNet expects for a cosine distance: the similarity, or the distance itself.</summary>
+    private double Score(double distance) => IsSimilarity ? 1 - distance : distance;
+
+    /// <summary>A score threshold as the largest distance it lets through.</summary>
+    private double? MaxDistance(double? threshold) => threshold is null ? null : IsSimilarity ? 1 - threshold.Value : threshold.Value;
+
+    private byte[] QueryBytes<TInput>(TInput value)
+    {
+        ReadOnlyMemory<float> v = value switch
+        {
+            ReadOnlyMemory<float> m => m,
+            float[] a => a,
+            null => throw new ArgumentNullException(nameof(value)),
+            _ => throw new NotSupportedException($"RagDotNet.VectorData.Sqlite searches with a ReadOnlyMemory<float> or float[] vector, not a {typeof(TInput).Name}; generate the embedding first."),
+        };
+        if (v.Length != _schema.Dimensions)
+            throw new ArgumentException($"The query vector has {v.Length} dimensions but '{_schema.Vector.Name}' expects {_schema.Dimensions}.", nameof(value));
+        return Schema.QueryBytes(v);
+    }
+
+    private void CheckVectorProperty(Expression<Func<Dictionary<string, object?>, object?>>? selector)
+    {
+        if (selector is null) return;
+        var column = FilterTranslator.Field(selector.Body, selector.Parameters[0], _schema, allowVector: true);
+        if (column != _schema.Vector)
+            throw new NotSupportedException($"RagDotNet.VectorData.Sqlite searches the vector property '{_schema.Vector.Name}' only.");
+    }
+
+    private (string Sql, IReadOnlyList<SqliteParameter> Parameters) Where(Expression<Func<Dictionary<string, object?>, bool>>? filter) =>
+        filter is null ? ("1", []) : FilterTranslator.Translate(filter, _schema, "f");
 
     public IAsyncEnumerable<VectorSearchResult<Dictionary<string, object?>>> HybridSearchAsync<TInput>(TInput searchValue, ICollection<string> keywords, int top, HybridSearchOptions<Dictionary<string, object?>>? options = null, CancellationToken cancellationToken = default)
         where TInput : notnull =>
