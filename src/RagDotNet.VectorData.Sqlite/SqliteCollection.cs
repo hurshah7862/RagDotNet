@@ -104,7 +104,7 @@ internal sealed partial class SqliteCollection
             {
                 using var command = connection.CreateCommand();
                 var keyList = KeyParameters(command, batch);
-                await DeleteFullTextAsync(connection, command, keyList, ct).ConfigureAwait(false);
+                await DeleteFullTextAsync(command, keyList, ct).ConfigureAwait(false);
                 command.CommandText = $"DELETE FROM {_schema.Table} WHERE {_schema.Key.Quoted} IN ({keyList})";
                 await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
             }
@@ -271,9 +271,89 @@ internal sealed partial class SqliteCollection
     private (string Sql, IReadOnlyList<SqliteParameter> Parameters) Where(Expression<Func<Dictionary<string, object?>, bool>>? filter) =>
         filter is null ? ("1", []) : FilterTranslator.Translate(filter, _schema, "f");
 
-    public IAsyncEnumerable<VectorSearchResult<Dictionary<string, object?>>> HybridSearchAsync<TInput>(TInput searchValue, ICollection<string> keywords, int top, HybridSearchOptions<Dictionary<string, object?>>? options = null, CancellationToken cancellationToken = default)
-        where TInput : notnull =>
-        throw new NotImplementedException();
+    /// <summary>Reciprocal rank fusion constant.</summary>
+    private const int RrfK = 60;
+
+    /// <summary>
+    /// Candidates taken from each ranking before fusing. A pool larger than one page keeps a later page consistent with
+    /// a larger first page; the vector ranking is an exact scan either way, so the pool size costs little.
+    /// </summary>
+    private const int MinPool = 100;
+
+    /// <summary>FTS5 keyword ranking (bm25) fused with the exact vector ranking by reciprocal rank fusion (k = 60).</summary>
+    public async IAsyncEnumerable<VectorSearchResult<Dictionary<string, object?>>> HybridSearchAsync<TInput>(TInput searchValue, ICollection<string> keywords, int top, HybridSearchOptions<Dictionary<string, object?>>? options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        where TInput : notnull
+    {
+        ArgumentNullException.ThrowIfNull(keywords);
+        ArgumentOutOfRangeException.ThrowIfLessThan(top, 1);
+        options ??= new();
+        ArgumentOutOfRangeException.ThrowIfNegative(options.Skip);
+        var text = _schema.FullText
+            ?? throw new NotSupportedException($"Collection '{Name}' has no full-text indexed property, so RagDotNet.VectorData.Sqlite cannot run hybrid search on it.");
+        if (options.AdditionalProperty is not null
+            && FilterTranslator.Field(options.AdditionalProperty.Body, options.AdditionalProperty.Parameters[0], _schema) != text)
+            throw new NotSupportedException($"RagDotNet.VectorData.Sqlite runs keyword search on the full-text property '{text.Name}' only.");
+        if (options.ScoreThreshold is not null)
+            throw new NotSupportedException("RagDotNet.VectorData.Sqlite does not support ScoreThreshold for hybrid search: fused scores are ranks, not similarities.");
+
+        var match = MatchQuery(keywords);
+        var vectorOptions = new VectorSearchOptions<Dictionary<string, object?>> { Filter = options.Filter, IncludeVectors = options.IncludeVectors, Skip = match is null ? options.Skip : 0 };
+        if (match is null)
+        {
+            await foreach (var hit in SearchAsync(searchValue, top, vectorOptions, cancellationToken).ConfigureAwait(false)) yield return hit;
+            yield break;
+        }
+
+        var pool = Math.Max(top + options.Skip, MinPool);
+        var byVector = new List<Dictionary<string, object?>>();
+        await foreach (var hit in SearchAsync(searchValue, pool, vectorOptions, cancellationToken).ConfigureAwait(false)) byVector.Add(hit.Record);
+        var byKeyword = await KeywordRankingAsync(match, options.Filter, options.IncludeVectors, pool, cancellationToken).ConfigureAwait(false);
+
+        var fused = new Dictionary<string, (Dictionary<string, object?> Record, double Score)>(StringComparer.Ordinal);
+        foreach (var ranking in new[] { byVector, byKeyword })
+            for (var rank = 1; rank <= ranking.Count; rank++)
+            {
+                var record = ranking[rank - 1];
+                var key = (string)_schema.Key.ToDb(record[_schema.Key.Name]);
+                var score = 1.0 / (RrfK + rank);
+                fused[key] = fused.TryGetValue(key, out var seen) ? (seen.Record, seen.Score + score) : (record, score);
+            }
+
+        foreach (var (_, (record, score)) in fused.OrderByDescending(f => f.Value.Score).ThenBy(f => f.Key, StringComparer.Ordinal).Skip(options.Skip).Take(top))
+            yield return new VectorSearchResult<Dictionary<string, object?>>(record, score);
+    }
+
+    /// <summary>
+    /// Each keyword as a quoted FTS5 phrase, joined with OR, so quotes, operators and column syntax in the input are
+    /// plain text. Keywords with no letters or digits produce no tokens and are dropped; null when none are left.
+    /// </summary>
+    internal static string? MatchQuery(IEnumerable<string> keywords)
+    {
+        var phrases = keywords
+            .Where(k => k is not null && k.Any(char.IsLetterOrDigit))
+            .Select(k => "\"" + k.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"")
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        return phrases.Count == 0 ? null : string.Join(" OR ", phrases);
+    }
+
+    private Task<List<Dictionary<string, object?>>> KeywordRankingAsync(string match, Expression<Func<Dictionary<string, object?>, bool>>? filter, bool includeVectors, int pool, CancellationToken cancellationToken)
+    {
+        var (where, parameters) = Where(filter);
+        return RunAsync("HybridSearch", async (connection, ct) =>
+        {
+            using var command = connection.CreateCommand();
+            // The FTS rows are ranked in a CTE with names of its own, so the filter's unqualified columns stay unambiguous.
+            command.CommandText =
+                $"WITH ragdotnet_k AS (SELECT rowid AS ragdotnet_rowid, bm25({_schema.FtsTable}) AS ragdotnet_bm25 FROM {_schema.FtsTable} WHERE {_schema.FtsTable} MATCH @match) "
+                + $"SELECT {_schema.SelectList(includeVectors)} FROM {_schema.Table} JOIN ragdotnet_k ON {_schema.Table}.rowid = ragdotnet_k.ragdotnet_rowid "
+                + $"WHERE {where} ORDER BY ragdotnet_k.ragdotnet_bm25, {_schema.Table}.rowid LIMIT @pool";
+            command.Parameters.AddRange(parameters);
+            command.Parameters.AddWithValue("@match", match);
+            command.Parameters.AddWithValue("@pool", pool);
+            return await ReadAllAsync(command, includeVectors, ct).ConfigureAwait(false);
+        }, cancellationToken);
+    }
 
     public override object? GetService(Type serviceType, object? serviceKey = null)
     {
@@ -281,12 +361,54 @@ internal sealed partial class SqliteCollection
         return serviceKey is null && serviceType == typeof(VectorStoreCollectionMetadata) ? _metadata : null;
     }
 
-    // Full-text sync; the FTS5 table arrives in Task 5.
-    private static Task EnsureFullTextAsync(SqliteConnection connection, CancellationToken ct) => Task.CompletedTask;
+    /// <summary>
+    /// Creates the FTS5 table (its rowid is the main table's rowid). When it is new on an existing collection, fills it
+    /// from the rows already there.
+    /// </summary>
+    private async Task EnsureFullTextAsync(SqliteConnection connection, CancellationToken ct)
+    {
+        if (_schema.FullText is not { } text) return;
+        using (var exists = connection.CreateCommand())
+        {
+            exists.CommandText = "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = $n";
+            exists.Parameters.AddWithValue("$n", _schema.Name + "_fts");
+            if (await exists.ExecuteScalarAsync(ct).ConfigureAwait(false) is not null) return;
+        }
 
-    private static Task UpsertFullTextAsync(SqliteConnection connection, long rowid, object[] row, CancellationToken ct) => Task.CompletedTask;
+        await ExecAsync(connection, $"CREATE VIRTUAL TABLE {_schema.FtsTable} USING fts5(ragdotnet_text, tokenize = 'unicode61 remove_diacritics 2')", ct).ConfigureAwait(false);
+        await ExecAsync(connection, $"INSERT INTO {_schema.FtsTable} (rowid, ragdotnet_text) SELECT rowid, {text.Quoted} FROM {_schema.Table} WHERE {text.Quoted} IS NOT NULL", ct).ConfigureAwait(false);
+    }
 
-    private static Task DeleteFullTextAsync(SqliteConnection connection, SqliteCommand keyed, string keyList, CancellationToken ct) => Task.CompletedTask;
+    /// <summary>Replaces the record's FTS row, in the upsert's transaction.</summary>
+    private async Task UpsertFullTextAsync(SqliteConnection connection, long rowid, object[] row, CancellationToken ct)
+    {
+        if (_schema.FullText is not { } text) return;
+        using var command = connection.CreateCommand();
+        command.CommandText = $"DELETE FROM {_schema.FtsTable} WHERE rowid = @r";
+        command.Parameters.AddWithValue("@r", rowid);
+        await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+
+        var value = row[1 + IndexOf(text)];
+        if (value is DBNull) return;
+        command.CommandText = $"INSERT INTO {_schema.FtsTable} (rowid, ragdotnet_text) VALUES (@r, @t)";
+        command.Parameters.AddWithValue("@t", value);
+        await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Deletes the FTS rows of the keys bound in <paramref name="keyed"/>, before their main rows go.</summary>
+    private async Task DeleteFullTextAsync(SqliteCommand keyed, string keyList, CancellationToken ct)
+    {
+        if (_schema.FullText is null) return;
+        keyed.CommandText = $"DELETE FROM {_schema.FtsTable} WHERE rowid IN (SELECT rowid FROM {_schema.Table} WHERE {_schema.Key.Quoted} IN ({keyList}))";
+        await keyed.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+    }
+
+    private int IndexOf(Column column)
+    {
+        for (var i = 0; i < _schema.Data.Count; i++)
+            if (_schema.Data[i] == column) return i;
+        throw new InvalidOperationException($"'{column.Name}' is not a data column.");
+    }
 
     private string KeyParameters(SqliteCommand command, IReadOnlyList<object> keys)
     {
