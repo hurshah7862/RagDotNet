@@ -62,6 +62,7 @@ Known differences:
 
 - Hybrid search is native, on PostgreSQL full-text search. Word splitting and stemming follow PostgreSQL's text search rules, so the order of keyword matches can differ slightly from the in-memory keyword index.
 - There is no separate keyword index, so `IRagAdmin.RebuildKeywordIndexAsync` throws `InvalidOperationException` saying keyword search is native.
+- Dates are kept to the microsecond (PostgreSQL's `timestamptz` precision). A value with finer ticks, such as `DateTimeOffset.UtcNow`, can come back changed in its last digit, so compare such values with a tolerance of one microsecond.
 
 ## How stores are tested
 
