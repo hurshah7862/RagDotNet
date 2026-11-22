@@ -158,6 +158,25 @@ public class StorageSchemaTests
         Assert.Equal(1, Assert.IsType<VectorStoreVectorProperty>(def.Properties.Single(p => p.Name == "Placeholder")).Dimensions);
     }
 
+    [Theory]
+    [InlineData(DistanceFunction.CosineSimilarity)]
+    [InlineData(DistanceFunction.CosineDistance)]
+    public void Manifest_placeholder_uses_the_configured_distance_function(string distance)
+    {
+        var o = Options();
+        o.DistanceFunction = distance;
+        var p = Assert.IsType<VectorStoreVectorProperty>(RecordDefinitions.Manifests(o).Properties.Single(x => x.Name == "Placeholder"));
+        Assert.Equal(distance, p.DistanceFunction);
+    }
+
+    [Fact]
+    public void Manifest_definition_rejects_an_unsupported_distance_function()
+    {
+        var o = Options();
+        o.DistanceFunction = DistanceFunction.EuclideanDistance;
+        Assert.Throws<ArgumentException>(() => RecordDefinitions.Manifests(o));
+    }
+
     [Fact]
     public void Manifest_round_trips_through_dynamic_record()
     {

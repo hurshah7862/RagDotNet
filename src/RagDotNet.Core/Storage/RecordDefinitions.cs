@@ -37,6 +37,7 @@ internal static class RecordDefinitions
 
     public static VectorStoreCollectionDefinition Manifests(RagOptions o)
     {
+        ValidateDistance(o.DistanceFunction);
         var props = new List<VectorStoreProperty>
         {
             new VectorStoreKeyProperty("Key", KeyClrType(o.KeyType)),
@@ -54,9 +55,10 @@ internal static class RecordDefinitions
         props.Add(new VectorStoreDataProperty("ContentStorage", typeof(string)));
         props.Add(new VectorStoreDataProperty("MetadataHash", typeof(string)));
         props.Add(new VectorStoreDataProperty("ChunkHighWater", typeof(int)));
+        // The placeholder is never searched; it follows the configured distance so a store sees one setting for both collections.
         props.Add(new VectorStoreVectorProperty("Placeholder", typeof(ReadOnlyMemory<float>), 1)
         {
-            DistanceFunction = DistanceFunction.CosineSimilarity,
+            DistanceFunction = o.DistanceFunction,
         });
         return new VectorStoreCollectionDefinition { Properties = props };
     }
