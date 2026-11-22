@@ -9,4 +9,6 @@ docker build -t ragdotnet-sdk:ocr docker/sdk
 
 `run.ps1` mounts the repository at `/work`, keeps NuGet packages in the `ragdotnet-nuget` volume, and lets the container reach a local Ollama at `http://host.docker.internal:11434`.
 
+It also mounts the Docker socket, so the store tests can start their database containers next to this one. To run them, set the variable first: `$env:RAGDOTNET_INTEGRATION = '1'; ./docker/sdk/run.ps1 test --project tests/RagDotNet.StoreTests`.
+
 The image exists because Windows Smart App Control on the development machine blocks freshly built binaries. Any machine with Docker can use it the same way.
