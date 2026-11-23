@@ -1,5 +1,6 @@
 using RagDotNet.Configuration;
 using RagDotNet.Content;
+using RagDotNet.Filtering;
 
 namespace RagDotNet.Storage;
 
@@ -20,7 +21,7 @@ internal sealed record ManifestRecord(
     int ChunkHighWater,
     IReadOnlyDictionary<string, object?> Metadata)
 {
-    public Dictionary<string, object?> ToDynamic(RagKeyType keyType)
+    public Dictionary<string, object?> ToDynamic(RagKeyType keyType, MetadataSchema schema)
     {
         Validate();
         var d = new Dictionary<string, object?>
@@ -29,7 +30,7 @@ internal sealed record ManifestRecord(
             ["DocumentId"] = DocumentId,
             ["Partition"] = StoredPartition.ToStore(Partition),
         };
-        foreach (var (k, v) in Metadata) d[RecordDefinitions.MetaName(k)] = v;
+        foreach (var (k, v) in Metadata) d[RecordDefinitions.MetaName(k)] = schema.Fields.TryGetValue(k, out var type) ? StoredValues.ToStore(v, type) : v;
         d["ContentHash"] = ContentHash;
         d["ChunkingHash"] = ChunkingHash;
         d["EmbeddingModelId"] = EmbeddingModelId;
@@ -65,7 +66,7 @@ internal sealed record ManifestRecord(
             }
         var metadata = new Dictionary<string, object?>();
         foreach (var name in options.Metadata.Fields.Keys)
-            metadata[name] = r.TryGetValue(RecordDefinitions.MetaName(name), out var mv) ? mv : null;
+            metadata[name] = r.TryGetValue(RecordDefinitions.MetaName(name), out var mv) ? StoredValues.FromStore(mv, options.Metadata.Fields[name]) : null;
         var record = new ManifestRecord(
             ChunkKeys.Document(partition, documentId), documentId, partition, values,
             (string)r["ContentHash"]!, (string)r["ChunkingHash"]!, (string)r["EmbeddingModelId"]!,

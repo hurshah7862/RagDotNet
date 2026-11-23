@@ -74,8 +74,8 @@ public sealed class StoreShapeTests
             Assert.Equal(typeof(string), TypeOf("s"));
             Assert.Equal(typeof(int?), TypeOf("i"));
             Assert.Equal(typeof(long?), TypeOf("l"));
-            Assert.Equal(typeof(bool?), TypeOf("b"));
-            Assert.Equal(typeof(DateTimeOffset?), TypeOf("d"));
+            Assert.Equal(typeof(int?), TypeOf("b")); // bools and dates are stored as numbers: StoredValues
+            Assert.Equal(typeof(long?), TypeOf("d"));
             Assert.Equal(typeof(string[]), TypeOf("tags"));
         }
     }

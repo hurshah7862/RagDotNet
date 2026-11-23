@@ -138,7 +138,7 @@ internal sealed class Ingestor(RagEngine engine)
                 ["SourceName"] = sourceName,
             };
             if (engine.ContentStore is null) r["Text"] = c.Text;
-            foreach (var (name, value) in metadata) r[RecordDefinitions.MetaName(name)] = value;
+            foreach (var (name, value) in metadata) r[RecordDefinitions.MetaName(name)] = StoredValues.ToStore(value, options.Metadata.Fields[name]);
             r["Embedding"] = vectors[i];
             records.Add(r);
         }

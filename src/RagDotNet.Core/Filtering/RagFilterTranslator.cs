@@ -122,15 +122,11 @@ internal static class RagFilterTranslator
     private static Expression BuildEq(string field, object value, MetadataSchema schema, ParameterExpression p)
     {
         var type = FieldType(field, schema);
-        var converted = ConvertValue(value, type, field);
-        // Value types compare through Nullable<T> so a missing (null) value is simply "not equal" instead of throwing.
-        if (type.IsValueType)
-        {
-            var nullable = typeof(Nullable<>).MakeGenericType(type);
-            return Expression.Equal(Field(field, nullable, schema, p), Expression.Constant(converted, nullable));
-        }
-
-        return Expression.Equal(Field(field, type, schema, p), Expression.Constant(converted, type));
+        // Compared as stored (bools and dates are numbers). Value types compare through Nullable<T> so a missing (null)
+        // value is simply "not equal" instead of throwing.
+        var stored = RagDotNet.Storage.StoredValues.StoreType(type);
+        var converted = RagDotNet.Storage.StoredValues.ToStore(ConvertValue(value, type, field), type);
+        return Expression.Equal(Field(field, stored, schema, p), Expression.Constant(converted, stored));
     }
 
     private static Expression BuildContains(string field, string value, MetadataSchema schema, ParameterExpression p)

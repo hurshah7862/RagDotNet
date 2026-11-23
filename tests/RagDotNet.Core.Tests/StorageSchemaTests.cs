@@ -64,7 +64,7 @@ public class StorageSchemaTests
         var o = Options();
         var m = new ManifestRecord("d1", "d1", "", new Dictionary<string, string>(), "h", "c", "m", 1, "d1.md", 0,
             ContentStorageMode.VectorStore, "mh", 1, new Dictionary<string, object?> { ["tenant"] = null });
-        var back = ManifestRecord.FromDynamic(m.ToDynamic(o.KeyType), o);
+        var back = ManifestRecord.FromDynamic(m.ToDynamic(o.KeyType, o.Metadata), o);
         Assert.Empty(back.PartitionValues);
         Assert.Null(back.Metadata["tenant"]);
     }
@@ -184,7 +184,7 @@ public class StorageSchemaTests
             "ch", "kh", "model", 7, "file.md", 1234567890123L, ContentStorageMode.External, "", 0, new Dictionary<string, object?> { ["tenant"] = "a" });
         foreach (var kt in new[] { RagKeyType.String, RagKeyType.Guid })
         {
-            var d = m.ToDynamic(kt);
+            var d = m.ToDynamic(kt, Options().Metadata);
             Assert.Equal("a", d["meta_tenant"]);
             Assert.Equal(new[] { 1f }, ((ReadOnlyMemory<float>)d["Placeholder"]!).ToArray());
             var back = ManifestRecord.FromDynamic(d, Options());
@@ -232,7 +232,7 @@ public class StorageSchemaTests
     {
         var m = new ManifestRecord("tenant=a|d", "d", "tenant=a", new Dictionary<string, string> { ["tenant"] = "a" },
             "c", "k", "m", 1, "s", 1, ContentStorageMode.VectorStore, "", 0, new Dictionary<string, object?> { ["tenant"] = "a" });
-        var d = m.ToDynamic(RagKeyType.String);
+        var d = m.ToDynamic(RagKeyType.String, Options().Metadata);
         d.Remove("meta_tenant");
         Assert.Throws<InvalidOperationException>(() => ManifestRecord.FromDynamic(d, Options()));
         d["meta_tenant"] = 5;
@@ -240,7 +240,7 @@ public class StorageSchemaTests
         d["meta_tenant"] = "b";
         Assert.Throws<InvalidOperationException>(() => ManifestRecord.FromDynamic(d, Options()));
         var bad = m with { Partition = "tenant=zzz" };
-        Assert.Throws<InvalidOperationException>(() => bad.ToDynamic(RagKeyType.String));
+        Assert.Throws<InvalidOperationException>(() => bad.ToDynamic(RagKeyType.String, Options().Metadata));
     }
 
     [Fact]

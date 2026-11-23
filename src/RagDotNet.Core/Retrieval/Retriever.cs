@@ -437,7 +437,7 @@ internal sealed class Retriever(RagEngine engine)
 
         var metadata = new Dictionary<string, object?>();
         foreach (var name in options.Metadata.Fields.Keys)
-            if (r.TryGetValue(RagFilterTranslator.MetaPrefix + name, out var v)) metadata[name] = v;
+            if (r.TryGetValue(RagFilterTranslator.MetaPrefix + name, out var v)) metadata[name] = StoredValues.FromStore(v, options.Metadata.Fields[name]);
 
         var heading = r.TryGetValue("HeadingPath", out var h) ? h as string : null;
         IReadOnlyList<string> path = string.IsNullOrEmpty(heading) ? [] : heading.Split(" > ");
