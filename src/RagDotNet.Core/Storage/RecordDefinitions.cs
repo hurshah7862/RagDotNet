@@ -52,7 +52,7 @@ internal static class RecordDefinitions
         props.Add(new VectorStoreDataProperty("ChunkCount", typeof(int)) { IsIndexed = true });
         props.Add(new VectorStoreDataProperty("SourceName", typeof(string)));
         props.Add(new VectorStoreDataProperty("UpdatedAtUnixMs", typeof(long)));
-        props.Add(new VectorStoreDataProperty("ContentStorage", typeof(string)));
+        props.Add(new VectorStoreDataProperty("ContentStorage", typeof(string)) { IsIndexed = true });
         props.Add(new VectorStoreDataProperty("MetadataHash", typeof(string)));
         props.Add(new VectorStoreDataProperty("ChunkHighWater", typeof(int)));
         // The document list pages by this, not the key: see ListOrder.

@@ -1,4 +1,5 @@
 using System.Linq.Expressions;
+using Microsoft.Extensions.VectorData;
 using RagDotNet.Access;
 using RagDotNet.Configuration;
 using RagDotNet.Filtering;
@@ -77,5 +78,35 @@ public sealed class StoreShapeTests
             Assert.Equal(typeof(DateTimeOffset?), TypeOf("d"));
             Assert.Equal(typeof(string[]), TypeOf("tags"));
         }
+    }
+
+    [Fact]
+    public void Filtered_fields_are_indexed()
+    {
+        // A store may ignore a filter on a field that isn't indexed (Redis returns every record), so every field Core
+        // filters on must be indexed.
+        var o = new RagOptions { CollectionName = "c", EmbeddingDimensions = 4 };
+        o.Metadata.Add<string>("s").Add<int>("i").Add<bool>("b").Add<DateTimeOffset>("d").Add<string[]>("tags");
+
+        static void AssertIndexed(VectorStoreCollectionDefinition definition, IEnumerable<string> fields)
+        {
+            foreach (var field in fields)
+            {
+                var property = Assert.IsType<VectorStoreDataProperty>(definition.Properties.Single(p => p.Name == field));
+                Assert.True(property.IsIndexed, $"{field} is filtered on but not indexed.");
+            }
+        }
+
+        string[] meta = ["s", "i", "b", "d", "tags"];
+        var metaNames = meta.Select(RecordDefinitions.MetaName);
+
+        // Chunks: DocumentId (delete, document filters), Partition (ReadFilters), EmbeddingModelId (ReadFilters while
+        // reindexing), meta_* (RagFilterTranslator).
+        AssertIndexed(RecordDefinitions.Chunks(o), ["DocumentId", "Partition", "EmbeddingModelId", .. metaNames]);
+
+        // Manifests: the same, plus ChunkCount (listing, "ChunkCount >= 0" skips the marker), ContentStorage
+        // (ManifestStore content-mode check) and ListOrder (keyset paging).
+        AssertIndexed(RecordDefinitions.Manifests(o),
+            ["DocumentId", "Partition", "EmbeddingModelId", "ChunkCount", "ContentStorage", "ListOrder", .. metaNames]);
     }
 }
