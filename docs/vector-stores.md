@@ -8,7 +8,7 @@ RagDotNet works with any [Microsoft.Extensions.VectorData](https://learn.microso
 | SQLite (sqlite-vec) | `RagDotNet.VectorData.Sqlite` | String, Guid | Native (FTS5) | Tested on Linux, Windows and macOS |
 | PostgreSQL (pgvector) | `CommunityToolkit.VectorData.PgVector` | String, Guid | Native (PostgreSQL full-text search) | Tested |
 | Qdrant | `CommunityToolkit.VectorData.Qdrant` | Guid only | Native (Qdrant full-text index) | Tested |
-| Redis (Redis Stack) | `CommunityToolkit.VectorData.Redis` | | | Coming in stage 8 |
+| Redis (Redis Stack) | `CommunityToolkit.VectorData.Redis` | String, Guid | In-memory keyword index | Tested |
 | SQL Server 2025 | `CommunityToolkit.VectorData.SqlServer` | | | Coming in stage 8 |
 
 Other connectors (Weaviate, Azure AI Search, Cosmos DB and more) may work but are not tested.
@@ -25,7 +25,10 @@ The other tested stores work with the defaults. Set them when you pick the store
 
 `RagOptions.DistanceFunction` applies to both of RagDotNet's collections: the chunks and the document list.
 
-Metadata dates (`DateTimeOffset`) are stored in UTC on every store: a date comes back as the same instant with a zero offset, and filters compare instants. Some stores (PostgreSQL) accept no other offset.
+Metadata dates (`DateTimeOffset`) are stored as microseconds since 1970 (UTC) on every store, and `bool` metadata as the numbers 0 and 1, because some stores (Redis) can only index strings and numbers. RagDotNet converts them back, so you always see `DateTimeOffset` and `bool`:
+
+- A date comes back as the same instant with a zero offset, and filters compare instants.
+- Dates are kept to the microsecond. A value with finer ticks, such as `DateTimeOffset.UtcNow`, comes back rounded down to the microsecond, so compare such values with a tolerance of one microsecond. A filter with the original value still matches it.
 
 ## SQLite
 
@@ -68,7 +71,6 @@ Known differences:
 
 - Hybrid search is native, on PostgreSQL full-text search. Word splitting and stemming follow PostgreSQL's text search rules, so the order of keyword matches can differ slightly from the in-memory keyword index.
 - There is no separate keyword index, so `IRagAdmin.RebuildKeywordIndexAsync` throws `InvalidOperationException` saying keyword search is native.
-- Dates are kept to the microsecond (PostgreSQL's `timestamptz` precision). A value with finer ticks, such as `DateTimeOffset.UtcNow`, can come back changed in its last digit, so compare such values with a tolerance of one microsecond.
 
 ## Qdrant
 
@@ -91,15 +93,38 @@ Known differences:
 - There is no separate keyword index, so `IRagAdmin.RebuildKeywordIndexAsync` throws `InvalidOperationException` saying keyword search is native.
 - Creating a collection takes a few seconds, because Qdrant builds a payload index for every filterable field.
 
+## Redis
+
+Use `CommunityToolkit.VectorData.Redis` with [Redis Stack](https://redis.io/docs/latest/operate/oss_and_stack/), or Redis 8 with its query engine. The connector needs the JSON and search modules.
+
+```csharp
+var rag = new RagPipelineBuilder()
+    // ...
+    .UseVectorStore(new RedisVectorStore(ConnectionMultiplexer.Connect("localhost").GetDatabase()), "docs", dimensions: 768)
+    .Build();
+```
+
+- Use JSON storage, the connector's default. Hash storage (`RedisStorageType.HashSet`) is not supported.
+- No settings beyond the defaults are needed. Both key types work.
+- RagDotNet creates its two indexes (the collection name and `<name>_documents`) on first use.
+
+Known differences:
+
+- Redis has no native hybrid search, so hybrid search runs through RagDotNet's in-memory keyword index.
+- Redis compares numbers as doubles, so `long` metadata beyond 2^53 (about 9 × 10^15) can compare inexactly in filters.
+- A filter on an empty string (`RagFilter.Eq("tenant", "")`) fails with Redis's own error, which mentions `INDEXEMPTY`: Redis cannot query empty strings in an indexed field.
+
 ## Collections from earlier builds
 
-RagDotNet's document list (`<name>_documents`) has a numeric `ListOrder` field, which the document listing pages by, because some stores (Qdrant) cannot order by the record key. Collections created by a build without it are not upgraded in place:
+RagDotNet's stored layout changed during stage 8, and collections created by an earlier build are not upgraded in place:
 
-- SQLite adds the column, but the existing documents have no value in it, so the calls that list documents (`IRagAdmin.GetStatsAsync`, `IRagAdmin.ReindexAsync`) fail with an `InvalidOperationException` that names `ListOrder` and this page.
-- PostgreSQL does not add the column, so ingesting and listing fail with PostgreSQL's `column "ListOrder" does not exist`.
-- The in-memory store keeps nothing between runs, so it is not affected.
+- **`ListOrder`.** The document list (`<name>_documents`) has a numeric `ListOrder` field, which the document listing pages by, because some stores (Qdrant) cannot order by the record key.
+  - SQLite adds the column, but the existing documents have no value in it, so the calls that list documents (`IRagAdmin.GetStatsAsync`, `IRagAdmin.ReindexAsync`) fail with an `InvalidOperationException` that names `ListOrder` and this page.
+  - PostgreSQL does not add the column, so ingesting and listing fail with PostgreSQL's `column "ListOrder" does not exist`.
+- **Bool and date metadata** are now stored as numbers (see [Per-store settings](#per-store-settings)). A store whose columns were created with the old types rejects the new values or never matches them in filters.
+- **The common area** (documents ingested without a partition) is now stored with the partition value `~common` instead of an empty string, because Redis cannot query empty strings. Common-area documents written by an earlier build are no longer found.
 
-In each case, delete both collections and ingest the documents again.
+The in-memory store keeps nothing between runs, so it is not affected. For every other store, delete both collections and ingest the documents again.
 
 ## How stores are tested
 
@@ -119,4 +144,4 @@ Run it with:
 dotnet test --project tests/RagDotNet.StoreTests
 ```
 
-The in-memory and SQLite stores need nothing and always run. Stores that need Docker (PostgreSQL and Qdrant) run only when `RAGDOTNET_INTEGRATION=1` is set, and are skipped with the reason when their dependency is missing. Each starts one container per test run through Testcontainers, from a pinned image (`pgvector/pgvector:0.8.7-pg17`, `qdrant/qdrant:v1.20.1`). With the repository's Docker build image, `./docker/sdk/run.ps1` mounts the Docker socket so these containers can start. In CI, `RAGDOTNET_STORES_REQUIRED=1` turns a store that cannot start into a failure, and a minimum test count fails the run if tests go missing.
+The in-memory and SQLite stores need nothing and always run. Stores that need Docker (PostgreSQL, Qdrant and Redis) run only when `RAGDOTNET_INTEGRATION=1` is set, and are skipped with the reason when their dependency is missing. Each starts one container per test run through Testcontainers, from a pinned image (`pgvector/pgvector:0.8.7-pg17`, `qdrant/qdrant:v1.20.1`, `redis/redis-stack-server:7.4.0-v8`). With the repository's Docker build image, `./docker/sdk/run.ps1` mounts the Docker socket so these containers can start. In CI, `RAGDOTNET_STORES_REQUIRED=1` turns a store that cannot start into a failure, and a minimum test count fails the run if tests go missing.
