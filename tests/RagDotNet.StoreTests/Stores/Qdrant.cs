@@ -41,17 +41,15 @@ public sealed class QdrantSettingsTests(QdrantFixture fixture) : IClassFixture<Q
         using var store = fixture.CreateStore();
         var collection = "rag" + Guid.NewGuid().ToString("N")[..12];
 
-        var e = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
-        {
-            var rag = new RagPipelineBuilder()
-                .UseEmbeddingGenerator(new FakeEmbeddingGenerator(16))
-                .UseChatClient(new FakeChatClient())
-                .UseVectorStore(store, collection, 16)
-                .Configure(o => o.KeyType = RagKeyType.String)
-                .Build();
-            await rag.RetrieveAsync("alpha", cancellationToken: TestContext.Current.CancellationToken);
-        });
+        // The connector rejects the definition when RagDotNet opens the collection, so building the pipeline fails.
+        var e = Assert.Throws<InvalidOperationException>(() => new RagPipelineBuilder()
+            .UseEmbeddingGenerator(new FakeEmbeddingGenerator(16))
+            .UseChatClient(new FakeChatClient())
+            .UseVectorStore(store, collection, 16)
+            .Configure(o => o.KeyType = RagKeyType.String)
+            .Build());
 
+        Assert.StartsWith($"The vector store rejected RagDotNet's '{collection}' collection (key type String", e.Message);
         Assert.Contains("RagOptions.KeyType", e.Message);
         Assert.Contains("docs/vector-stores.md", e.Message);
         Assert.False(await store.CollectionExistsAsync(collection, TestContext.Current.CancellationToken));
