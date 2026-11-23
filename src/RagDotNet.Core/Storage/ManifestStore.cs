@@ -11,9 +11,9 @@ internal sealed class ManifestStore(VectorStore store, RagOptions options)
     private const int PageSize = 100;
 
     private readonly VectorStoreCollection<object, Dictionary<string, object?>> _collection =
-        store.GetDynamicCollection(options.CollectionName + "_documents", RecordDefinitions.Manifests(options));
+        StoreCollections.Open(store, options.CollectionName + "_documents", RecordDefinitions.Manifests(options), options);
 
-    public Task EnsureExistsAsync(CancellationToken ct) => _collection.EnsureCollectionExistsAsync(ct);
+    public Task EnsureExistsAsync(CancellationToken ct) => StoreCollections.EnsureExistsAsync(_collection, options, ct);
 
     public async Task<ManifestRecord?> GetAsync(string partitionKey, string documentId, CancellationToken ct)
     {
@@ -28,26 +28,51 @@ internal sealed class ManifestStore(VectorStore store, RagOptions options)
     public Task DeleteAsync(string partitionKey, string documentId, CancellationToken ct) =>
         _collection.DeleteAsync(ConvertKey(ChunkKeys.Document(partitionKey, documentId)), ct);
 
+    /// <summary>
+    /// Every manifest matching <paramref name="filter"/>, in ListOrder order. Pages by keyset: each page starts at the last
+    /// page's highest ListOrder, skipping only the records already listed at that value. Some stores (Qdrant) emulate Skip
+    /// by fetching Skip + top records, so paging by Skip alone would cost O(N^2).
+    /// </summary>
     public async IAsyncEnumerable<ManifestRecord> ListAsync(
         Expression<Func<Dictionary<string, object?>, bool>> filter, [EnumeratorCancellation] CancellationToken ct)
     {
-        var skip = 0;
+        long? last = null;
+        var listedAtLast = 0;
         while (true)
         {
             var page = new List<Dictionary<string, object?>>();
             var query = new FilteredRecordRetrievalOptions<Dictionary<string, object?>>
             {
-                Skip = skip,
+                Skip = listedAtLast,
                 IncludeVectors = false,
-                OrderBy = o => o.Ascending(r => r["Key"]!),
+                OrderBy = o => o.Ascending(r => r["ListOrder"]!),
             };
-            await foreach (var r in _collection.GetAsync(filter, PageSize, query, ct).ConfigureAwait(false))
+            await foreach (var r in _collection.GetAsync(From(filter, last), PageSize, query, ct).ConfigureAwait(false))
                 page.Add(r);
+            var orders = page.Select(ListOrderOf).ToList();
             foreach (var r in page)
                 yield return ManifestRecord.FromDynamic(r, options);
             if (page.Count < PageSize) yield break;
-            skip += PageSize;
+            var max = orders[^1];
+            var atMax = orders.Count(o => o == max);
+            listedAtLast = max == last ? listedAtLast + atMax : atMax;
+            last = max;
         }
+    }
+
+    private long ListOrderOf(Dictionary<string, object?> r) =>
+        r.TryGetValue("ListOrder", out var v) && v is not null
+            ? Convert.ToInt64(v, System.Globalization.CultureInfo.InvariantCulture)
+            : throw new InvalidOperationException(
+                $"The document list '{_collection.Name}' has records without ListOrder, written by an earlier RagDotNet build. " +
+                "Delete both collections and ingest the documents again; see docs/vector-stores.md.");
+
+    private static Expression<Func<Dictionary<string, object?>, bool>> From(Expression<Func<Dictionary<string, object?>, bool>> filter, long? last)
+    {
+        if (last is null) return filter;
+        var r = filter.Parameters[0];
+        var atOrAfter = Expression.GreaterThanOrEqual(RecordFields.Read(r, "ListOrder", typeof(long)), Expression.Constant(last.Value));
+        return Expression.Lambda<Func<Dictionary<string, object?>, bool>>(Expression.AndAlso(filter.Body, atOrAfter), r);
     }
 
     /// <summary>Whether any manifest is not on <paramref name="configured"/> (a null stored id counts), with that id (null coerced to empty). Reads the raw field, so it works under any partition schema.</summary>
@@ -96,6 +121,7 @@ internal sealed class ManifestStore(VectorStore store, RagOptions options)
             ["ContentStorage"] = options.ContentStorage.ToString(),
             ["MetadataHash"] = "",
             ["ChunkHighWater"] = 0,
+            ["ListOrder"] = ListOrder.Of(ChunkKeys.ReindexMarkerKey),
             ["Placeholder"] = new ReadOnlyMemory<float>([1f]),
         };
         return _collection.UpsertAsync(d, ct);

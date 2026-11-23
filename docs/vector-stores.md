@@ -7,7 +7,7 @@ RagDotNet works with any [Microsoft.Extensions.VectorData](https://learn.microso
 | In-memory | `CommunityToolkit.VectorData.InMemory` | String, Guid | In-memory keyword index | Tested. For development and tests, not production |
 | SQLite (sqlite-vec) | `RagDotNet.VectorData.Sqlite` | String, Guid | Native (FTS5) | Tested on Linux, Windows and macOS |
 | PostgreSQL (pgvector) | `CommunityToolkit.VectorData.PgVector` | String, Guid | Native (PostgreSQL full-text search) | Tested |
-| Qdrant | `CommunityToolkit.VectorData.Qdrant` | | | Coming in stage 8 |
+| Qdrant | `CommunityToolkit.VectorData.Qdrant` | Guid only | Native (Qdrant full-text index) | Tested |
 | Redis (Redis Stack) | `CommunityToolkit.VectorData.Redis` | | | Coming in stage 8 |
 | SQL Server 2025 | `CommunityToolkit.VectorData.SqlServer` | | | Coming in stage 8 |
 
@@ -15,7 +15,13 @@ Other connectors (Weaviate, Azure AI Search, Cosmos DB and more) may work but ar
 
 ## Per-store settings
 
-Some stores need settings different from the defaults. Qdrant, for example, needs `RagOptions.KeyType = RagKeyType.Guid`. Each store's settings are listed in its section on this page as the store is added. Set them when you pick the store. If a setting is wrong, RagDotNet fails at startup, or at the latest on the first call to the store, with an error that names the setting to change. It does not detect the store or change its defaults for you.
+Some stores need settings different from the defaults. Each store's settings are listed in its section on this page:
+
+| Store | Setting |
+|---|---|
+| Qdrant | `RagOptions.KeyType = RagKeyType.Guid` (required) |
+
+The other tested stores work with the defaults. Set them when you pick the store. If a setting is wrong, RagDotNet fails at startup, or at the latest on the first call to the store, with an error that names the setting to change. It does not detect the store or change its defaults for you.
 
 `RagOptions.DistanceFunction` applies to both of RagDotNet's collections: the chunks and the document list.
 
@@ -64,6 +70,37 @@ Known differences:
 - There is no separate keyword index, so `IRagAdmin.RebuildKeywordIndexAsync` throws `InvalidOperationException` saying keyword search is native.
 - Dates are kept to the microsecond (PostgreSQL's `timestamptz` precision). A value with finer ticks, such as `DateTimeOffset.UtcNow`, can come back changed in its last digit, so compare such values with a tolerance of one microsecond.
 
+## Qdrant
+
+Use `CommunityToolkit.VectorData.Qdrant` with a [Qdrant](https://qdrant.tech/) server. The connector talks to Qdrant over gRPC (port 6334 by default).
+
+```csharp
+var rag = new RagPipelineBuilder()
+    // ...
+    .UseVectorStore(new QdrantVectorStore(new QdrantClient("localhost"), ownsClient: true), "docs", dimensions: 768)
+    .Configure(o => o.KeyType = RagKeyType.Guid) // required on Qdrant
+    .Build();
+```
+
+- **`RagOptions.KeyType = RagKeyType.Guid` is required.** Qdrant point ids are unsigned integers or GUIDs, so the default string keys cannot be stored. Without the setting, building the pipeline fails with an `InvalidOperationException` that starts with "The vector store rejected RagDotNet's 'docs' collection (key type String, ...)" and names `RagOptions.KeyType`.
+- RagDotNet creates its two collections (the collection name and `<name>_documents`) and their payload indexes on first use.
+
+Known differences:
+
+- Hybrid search is native: Qdrant runs the vector query and a keyword query on its full-text payload index and fuses the two result lists. Its word splitting follows Qdrant's full-text tokenizer, so the order of keyword matches can differ slightly from the in-memory keyword index.
+- There is no separate keyword index, so `IRagAdmin.RebuildKeywordIndexAsync` throws `InvalidOperationException` saying keyword search is native.
+- Creating a collection takes a few seconds, because Qdrant builds a payload index for every filterable field.
+
+## Collections from earlier builds
+
+RagDotNet's document list (`<name>_documents`) has a numeric `ListOrder` field, which the document listing pages by, because some stores (Qdrant) cannot order by the record key. Collections created by a build without it are not upgraded in place:
+
+- SQLite adds the column, but the existing documents have no value in it, so the calls that list documents (`IRagAdmin.GetStatsAsync`, `IRagAdmin.ReindexAsync`) fail with an `InvalidOperationException` that names `ListOrder` and this page.
+- PostgreSQL does not add the column, so ingesting and listing fail with PostgreSQL's `column "ListOrder" does not exist`.
+- The in-memory store keeps nothing between runs, so it is not affected.
+
+In each case, delete both collections and ingest the documents again.
+
 ## How stores are tested
 
 `tests/RagDotNet.StoreTests` holds one shared suite, written against RagDotNet's public API with a deterministic fake embedder, so it needs no model. Every store runs it once for each key type it supports. A test-only binding, the in-memory store with a fake native hybrid search, keeps the native hybrid path covered; it is not a supported store. Settings a store needs are applied in one place, its test fixture, and must match the settings documented here. The suite covers:
@@ -82,4 +119,4 @@ Run it with:
 dotnet test --project tests/RagDotNet.StoreTests
 ```
 
-The in-memory and SQLite stores need nothing and always run. Stores that need Docker (PostgreSQL so far) run only when `RAGDOTNET_INTEGRATION=1` is set, and are skipped with the reason when their dependency is missing. Each starts one container per test run through Testcontainers, from a pinned image (`pgvector/pgvector:0.8.7-pg17`). With the repository's Docker build image, `./docker/sdk/run.ps1` mounts the Docker socket so these containers can start. In CI, `RAGDOTNET_STORES_REQUIRED=1` turns a store that cannot start into a failure, and a minimum test count fails the run if tests go missing.
+The in-memory and SQLite stores need nothing and always run. Stores that need Docker (PostgreSQL and Qdrant) run only when `RAGDOTNET_INTEGRATION=1` is set, and are skipped with the reason when their dependency is missing. Each starts one container per test run through Testcontainers, from a pinned image (`pgvector/pgvector:0.8.7-pg17`, `qdrant/qdrant:v1.20.1`). With the repository's Docker build image, `./docker/sdk/run.ps1` mounts the Docker socket so these containers can start. In CI, `RAGDOTNET_STORES_REQUIRED=1` turns a store that cannot start into a failure, and a minimum test count fails the run if tests go missing.

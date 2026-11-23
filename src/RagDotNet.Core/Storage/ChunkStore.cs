@@ -7,12 +7,12 @@ namespace RagDotNet.Storage;
 internal sealed class ChunkStore(VectorStore store, RagOptions options)
 {
     private readonly VectorStoreCollection<object, Dictionary<string, object?>> _collection =
-        store.GetDynamicCollection(options.CollectionName, RecordDefinitions.Chunks(options));
+        StoreCollections.Open(store, options.CollectionName, RecordDefinitions.Chunks(options), options);
 
     /// <summary>The collection's native hybrid search, when it offers one.</summary>
     public IKeywordHybridSearchable<Dictionary<string, object?>>? Hybrid => _collection as IKeywordHybridSearchable<Dictionary<string, object?>>;
 
-    public Task EnsureExistsAsync(CancellationToken ct) => _collection.EnsureCollectionExistsAsync(ct);
+    public Task EnsureExistsAsync(CancellationToken ct) => StoreCollections.EnsureExistsAsync(_collection, options, ct);
 
     public Task UpsertAsync(IReadOnlyList<Dictionary<string, object?>> records, CancellationToken ct) =>
         records.Count == 0 ? Task.CompletedTask : _collection.UpsertAsync(records, ct);

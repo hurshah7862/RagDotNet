@@ -39,6 +39,7 @@ internal sealed record ManifestRecord(
         d["ContentStorage"] = ContentStorage.ToString();
         d["MetadataHash"] = MetadataHash;
         d["ChunkHighWater"] = ChunkHighWater;
+        d["ListOrder"] = ListOrder.Of(Key);
         d["Placeholder"] = new ReadOnlyMemory<float>([1f]);
         return d;
     }

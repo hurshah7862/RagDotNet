@@ -369,7 +369,7 @@ public class IngestionTests
     }
 
     [Fact]
-    public async Task ManifestStore_lists_in_key_order_across_pages()
+    public async Task ManifestStore_lists_in_list_order_across_pages()
     {
         var (rag, _, _, _, store) = Create();
         var sources = Enumerable.Range(0, 120).Select(i => Md($"d{i:000}", "# A\n\ntext " + i)).ToList();
@@ -378,7 +378,8 @@ public class IngestionTests
         var listed = new List<string>();
         await foreach (var m in manifests.ListAsync(r => (string)r["DocumentId"]! != "none", Ct)) listed.Add(m.DocumentId);
         Assert.Equal(120, listed.Count);
-        Assert.Equal(listed.OrderBy(x => x, StringComparer.Ordinal), listed);
+        Assert.Equal(120, listed.Distinct().Count());
+        Assert.Equal(listed.OrderBy(x => ListOrder.Of(ChunkKeys.Document("", x))), listed);
         Assert.Equal("d005", (await manifests.GetAsync("", "d005", Ct))!.DocumentId);
     }
 }

@@ -55,6 +55,8 @@ internal static class RecordDefinitions
         props.Add(new VectorStoreDataProperty("ContentStorage", typeof(string)));
         props.Add(new VectorStoreDataProperty("MetadataHash", typeof(string)));
         props.Add(new VectorStoreDataProperty("ChunkHighWater", typeof(int)));
+        // The document list pages by this, not the key: see ListOrder.
+        props.Add(new VectorStoreDataProperty("ListOrder", typeof(long)) { IsIndexed = true });
         // The placeholder is never searched; it follows the configured distance so a store sees one setting for both collections.
         props.Add(new VectorStoreVectorProperty("Placeholder", typeof(ReadOnlyMemory<float>), 1)
         {
