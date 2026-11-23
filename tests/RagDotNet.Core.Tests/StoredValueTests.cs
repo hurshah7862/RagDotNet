@@ -125,4 +125,32 @@ public sealed class StoredValueTests
         Assert.Equal(typeof(int?), constant.Type);
         Assert.Equal(1, constant.Value);
     }
+
+    [Fact]
+    public async Task Keyword_index_sees_dates_at_the_stored_precision()
+    {
+        // The keyword index gets metadata from ingest and, after a rebuild, from the store; both must hold the date the
+        // store holds (to the microsecond), and a filter with the original value must match either way.
+        var index = new Keyword.InMemoryKeywordIndex();
+        var (_, builder) = Pipeline();
+        builder.UseKeywordIndex(index);
+        var rag = builder.Build();
+        await rag.IngestAsync(Doc(), cancellationToken: Ct);
+        var returned = Assert.Single(await rag.RetrieveAsync("alpha stored text", cancellationToken: Ct)).Metadata["d"]!;
+
+        async Task AssertMatches()
+        {
+            var schema = new MetadataSchema().Add<bool>("b").Add<DateTimeOffset>("d").Add<int>("i");
+            foreach (var value in new[] { Date, returned })
+            {
+                // Converted as the retriever converts it.
+                var filter = Access.KeywordFilters.Build(Access.ResolvedScope.FullAccess, true, false, RagFilter.Eq("d", value), schema, out _)!;
+                Assert.Single(await index.SearchAsync("alpha", filter, 10, Ct));
+            }
+        }
+
+        await AssertMatches();
+        await builder.BuildAdmin().RebuildKeywordIndexAsync(Ct);
+        await AssertMatches();
+    }
 }

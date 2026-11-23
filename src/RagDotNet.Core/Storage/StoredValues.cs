@@ -40,6 +40,13 @@ internal static class StoredValues
         return stored;
     }
 
+    /// <summary>
+    /// The date as the store keeps it: UTC, rounded down to the microsecond. Ingest and filter values use it too, so the
+    /// store, the keyword index and filters all see one value.
+    /// </summary>
+    public static DateTimeOffset ToStoredPrecision(DateTimeOffset d) =>
+        DateTimeOffset.UnixEpoch.AddTicks(UnixMicroseconds(d) * TicksPerMicrosecond);
+
     // Floor division, so a date before 1970 with a sub-microsecond part still rounds down, like a later one.
     private static long UnixMicroseconds(DateTimeOffset d)
     {

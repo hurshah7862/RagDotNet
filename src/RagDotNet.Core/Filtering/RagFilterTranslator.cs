@@ -139,8 +139,8 @@ internal static class RagFilterTranslator
     internal static object ConvertValue(object? value, Type type, string field)
     {
         if (value is null) throw new ArgumentException($"Filter value for '{field}' must not be null.");
-        // Dates compare as instants; some stores (PostgreSQL) accept only offset-zero values, so every date is sent in UTC.
-        if (value is DateTimeOffset dto && type == typeof(DateTimeOffset)) return dto.ToUniversalTime();
+        // Dates compare as instants, in UTC and to the microsecond: the precision every store keeps (StoredValues).
+        if (value is DateTimeOffset dto && type == typeof(DateTimeOffset)) return RagDotNet.Storage.StoredValues.ToStoredPrecision(dto);
         if (type.IsInstanceOfType(value)) return value;
 
         object? converted = null;
@@ -163,7 +163,7 @@ internal static class RagFilterTranslator
             };
         }
 
-        if (converted is DateTimeOffset c) return c.ToUniversalTime();
+        if (converted is DateTimeOffset c) return RagDotNet.Storage.StoredValues.ToStoredPrecision(c);
         return converted ?? throw new ArgumentException(
             $"Filter value of type {value.GetType().Name} for field '{field}' cannot be converted exactly to {type.Name}."
             + (type == typeof(DateTimeOffset) ? " Use a DateTimeOffset, a UTC or local DateTime, or an ISO-8601 string with an explicit offset." : ""));
