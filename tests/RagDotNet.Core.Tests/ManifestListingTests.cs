@@ -23,7 +23,9 @@ public sealed class ManifestListingTests
     {
         Assert.Equal(ListOrder.Of("a"), ListOrder.Of("a"));
         Assert.Equal(10_000, Enumerable.Range(0, 10_000).Select(i => ListOrder.Of("|doc" + i)).Distinct().Count());
-        Assert.Equal(4864613475551056814L, ListOrder.Of("tenant=a|doc1"));
+        // Exact in a double: some stores (Qdrant) compare numeric payloads as doubles in range filters.
+        Assert.All(Enumerable.Range(0, 10_000).Select(i => ListOrder.Of("|doc" + i)), v => Assert.InRange(v, 0L, (1L << 53) - 1));
+        Assert.Equal(2375299548608914L, ListOrder.Of("tenant=a|doc1"));
     }
 
     [Theory]
@@ -58,6 +60,67 @@ public sealed class ManifestListingTests
         var reads = new FieldNames();
         reads.Visit(sort.PropertySelector);
         Assert.Equal(["ListOrder"], reads.Names);
+    }
+
+    [Fact]
+    public async Task Listing_pages_from_the_last_list_order_without_skipping()
+    {
+        // Some stores (Qdrant) emulate Skip by fetching Skip + top records, so a Skip-paged listing costs O(N^2).
+        var store = new FailingVectorStore(new InMemoryVectorStore());
+        var (rag, builder, _, _, _) = TestRag.Create(builder: b => b.UseVectorStore(store, "test", 64));
+        await rag.IngestManyAsync(Enumerable.Range(0, 250).Select(i => TestRag.Md($"d{i:000}", "text " + i)).ToList(), cancellationToken: Ct);
+        store.ManifestQueries.Clear();
+
+        var stats = await builder.BuildAdmin().GetStatsAsync(Ct);
+
+        Assert.Equal(250, Assert.Single(stats.Partitions).DocumentCount);
+        var pages = store.ManifestQueries.Where(q => q.Options?.OrderBy is not null).ToList();
+        Assert.Equal(3, pages.Count);
+        // Skip counts only the records already listed at the previous page's last ListOrder (one, without ties), never the pages before.
+        Assert.Equal([0, 1, 1], pages.Select(q => q.Options!.Skip));
+        var later = new FieldNames();
+        later.Visit(pages[1].Filter);
+        Assert.Contains("ListOrder", later.Names);
+    }
+
+    [Fact]
+    public async Task Equal_list_orders_across_a_page_boundary_are_listed_once()
+    {
+        var (rag, builder, _, _, store) = TestRag.Create();
+        await rag.IngestAsync(TestRag.Md("seed", "alpha text"), cancellationToken: Ct);
+        var manifests = store.GetDynamicCollection("test_documents", RecordDefinitions.Manifests(Options(RagKeyType.String)));
+        var seed = Assert.Single(await manifests.GetAsync(r => true, 10, cancellationToken: Ct).ToListAsync(Ct));
+        for (var i = 0; i < 150; i++)
+        {
+            var copy = new Dictionary<string, object?>(seed)
+            {
+                ["Key"] = ChunkKeys.Document("", $"tie{i:000}"),
+                ["DocumentId"] = $"tie{i:000}",
+                ["ListOrder"] = 42L, // 150 documents sharing one value: more than a page
+            };
+            await manifests.UpsertAsync(copy, Ct);
+        }
+
+        var stats = await builder.BuildAdmin().GetStatsAsync(Ct);
+
+        Assert.Equal(151, Assert.Single(stats.Partitions).DocumentCount);
+    }
+
+    [Fact]
+    public async Task Records_without_list_order_fail_naming_the_fix()
+    {
+        var (rag, builder, _, _, store) = TestRag.Create();
+        await rag.IngestAsync(TestRag.Md("doc1", "alpha text"), cancellationToken: Ct);
+        var manifests = store.GetDynamicCollection("test_documents", RecordDefinitions.Manifests(Options(RagKeyType.String)));
+        var old = Assert.Single(await manifests.GetAsync(r => true, 10, cancellationToken: Ct).ToListAsync(Ct));
+        old["ListOrder"] = null; // as an earlier build left it on a store that added the column (SQLite)
+        await manifests.UpsertAsync(old, Ct);
+
+        var e = await Assert.ThrowsAsync<InvalidOperationException>(() => builder.BuildAdmin().GetStatsAsync(Ct));
+
+        Assert.Contains("ListOrder", e.Message);
+        Assert.Contains("ingest", e.Message);
+        Assert.Contains("docs/vector-stores.md", e.Message);
     }
 
     private sealed class FieldNames : ExpressionVisitor

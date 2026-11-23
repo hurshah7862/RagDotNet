@@ -30,6 +30,9 @@ public sealed class FailingVectorStore(VectorStore inner) : VectorStore
     /// <summary>The options of the latest filtered manifest read.</summary>
     public FilteredRecordRetrievalOptions<Dictionary<string, object?>>? LastManifestQuery { get; set; }
 
+    /// <summary>Every filtered manifest read, in order: the options and the filter.</summary>
+    public List<(FilteredRecordRetrievalOptions<Dictionary<string, object?>>? Options, Expression<Func<Dictionary<string, object?>, bool>> Filter)> ManifestQueries { get; } = [];
+
     /// <summary>When set, getting a collection throws this, as a store that rejects the definition does.</summary>
     public Exception? RejectCollection { get; set; }
 
@@ -85,7 +88,11 @@ public sealed class FailingVectorStore(VectorStore inner) : VectorStore
 
         public override IAsyncEnumerable<Dictionary<string, object?>> GetAsync(Expression<Func<Dictionary<string, object?>, bool>> filter, int top, FilteredRecordRetrievalOptions<Dictionary<string, object?>>? options = null, CancellationToken cancellationToken = default)
         {
-            if (isManifest) owner.LastManifestQuery = options;
+            if (isManifest)
+            {
+                owner.LastManifestQuery = options;
+                owner.ManifestQueries.Add((options, filter));
+            }
             return c.GetAsync(filter, top, options, cancellationToken);
         }
 

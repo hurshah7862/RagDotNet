@@ -93,7 +93,13 @@ Known differences:
 
 ## Collections from earlier builds
 
-RagDotNet's document list (`<name>_documents`) has a numeric `ListOrder` field, which the document listing pages by, because some stores (Qdrant) cannot order by the record key. Collections created by a build without it are not upgraded in place: listing documents in them fails. Delete both collections and ingest the documents again.
+RagDotNet's document list (`<name>_documents`) has a numeric `ListOrder` field, which the document listing pages by, because some stores (Qdrant) cannot order by the record key. Collections created by a build without it are not upgraded in place:
+
+- SQLite adds the column, but the existing documents have no value in it, so the calls that list documents (`IRagAdmin.GetStatsAsync`, `IRagAdmin.ReindexAsync`) fail with an `InvalidOperationException` that names `ListOrder` and this page.
+- PostgreSQL does not add the column, so ingesting and listing fail with PostgreSQL's `column "ListOrder" does not exist`.
+- The in-memory store keeps nothing between runs, so it is not affected.
+
+In each case, delete both collections and ingest the documents again.
 
 ## How stores are tested
 
