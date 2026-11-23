@@ -8,8 +8,9 @@ namespace RagDotNet.Access;
 internal static class ReadFilters
 {
     /// <summary>
-    /// Scoped: (Partition == own || (includeCommon &amp;&amp; Partition == "")) AND user filter AND caller filter.
-    /// Full access: caller filter only, or Partition != "" when the common area is excluded.
+    /// Scoped: (Partition == own || (includeCommon &amp;&amp; Partition == common)) AND user filter AND caller filter.
+    /// Full access: caller filter only, or Partition != common when the common area is excluded. The common area is
+    /// compared as stored: <see cref="StoredPartition.Common"/>.
     /// <paramref name="includeCommon"/> is ignored when <paramref name="partitioned"/> is false: a single-tenant app
     /// has only the common area. <paramref name="matchesNothing"/> is true when the combined filter can never match.
     /// A non-null <paramref name="requireModelId"/> ANDs <c>EmbeddingModelId == requireModelId</c> into the result
@@ -52,10 +53,10 @@ internal static class ReadFilters
     private static Expression? PartitionClause(ResolvedScope scope, bool includeCommon, ParameterExpression p)
     {
         var field = RecordFields.Read(p, "Partition", typeof(string));
-        Expression Eq(string v) => Expression.Equal(field, Expression.Constant(v, typeof(string)));
+        Expression Eq(string v) => Expression.Equal(field, Expression.Constant(StoredPartition.ToStore(v), typeof(string)));
 
         if (scope.IsFullAccess)
-            return includeCommon ? null : Expression.NotEqual(field, Expression.Constant("", typeof(string)));
+            return includeCommon ? null : Expression.NotEqual(field, Expression.Constant(StoredPartition.Common, typeof(string)));
         if (scope.PartitionKey.Length == 0 || !includeCommon) return Eq(scope.PartitionKey);
         return Expression.OrElse(Eq(scope.PartitionKey), Eq(""));
     }

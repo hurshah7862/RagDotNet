@@ -53,7 +53,7 @@ public class StorageSchemaTests
         var manifest = await manifests.GetAsync("d1", cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(chunk);
         Assert.NotNull(manifest);
-        Assert.Equal("", chunk["Partition"]);
+        Assert.Equal(StoredPartition.Common, chunk["Partition"]); // the common area, as stored
         Assert.Equal(new[] { "g1" }, (string[])manifest["meta_groups"]!);
         Assert.Null(manifest["meta_tenant"]);
     }

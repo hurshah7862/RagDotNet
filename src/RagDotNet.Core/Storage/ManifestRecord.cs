@@ -27,7 +27,7 @@ internal sealed record ManifestRecord(
         {
             ["Key"] = keyType == RagKeyType.Guid ? ChunkKeys.ToGuid(Key) : Key,
             ["DocumentId"] = DocumentId,
-            ["Partition"] = Partition,
+            ["Partition"] = StoredPartition.ToStore(Partition),
         };
         foreach (var (k, v) in Metadata) d[RecordDefinitions.MetaName(k)] = v;
         d["ContentHash"] = ContentHash;
@@ -54,7 +54,7 @@ internal sealed record ManifestRecord(
     public static ManifestRecord FromDynamic(Dictionary<string, object?> r, RagOptions options)
     {
         var documentId = (string)r["DocumentId"]!;
-        var partition = (string)r["Partition"]!;
+        var partition = StoredPartition.FromStore((string)r["Partition"]!);
         var values = new Dictionary<string, string>();
         if (partition.Length > 0) // the common area has no partition values
             foreach (var k in options.PartitionKeys)

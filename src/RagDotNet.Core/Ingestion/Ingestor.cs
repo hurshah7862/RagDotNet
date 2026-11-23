@@ -127,7 +127,7 @@ internal sealed class Ingestor(RagEngine engine)
             {
                 ["Key"] = options.KeyType == RagKeyType.Guid ? ChunkKeys.ToGuid(key) : key,
                 ["DocumentId"] = s.DocumentId,
-                ["Partition"] = scope.PartitionKey,
+                ["Partition"] = StoredPartition.ToStore(scope.PartitionKey),
                 ["ChunkIndex"] = c.Index,
                 ["ContentHash"] = contentHash,
                 ["ChunkingHash"] = storedChunkingHash,

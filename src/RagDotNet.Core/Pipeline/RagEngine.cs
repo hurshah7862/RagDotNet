@@ -299,7 +299,7 @@ internal sealed class RagEngine
         var recordTexts = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var r in await Chunks.GetAsync(keys, includeVectors: false, ct).ConfigureAwait(false))
         {
-            var key = ChunkKeys.Chunk((string)r["Partition"]!, (string)r["DocumentId"]!, Convert.ToInt32(r["ChunkIndex"], System.Globalization.CultureInfo.InvariantCulture));
+            var key = ChunkKeys.Chunk(StoredPartition.FromStore((string)r["Partition"]!), (string)r["DocumentId"]!, Convert.ToInt32(r["ChunkIndex"], System.Globalization.CultureInfo.InvariantCulture));
             if (r.TryGetValue("HeadingPath", out var h) && h is string heading) headings[key] = heading;
             if (r.TryGetValue("Text", out var t) && t is string text) recordTexts[key] = text;
         }
