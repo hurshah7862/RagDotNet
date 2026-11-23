@@ -122,15 +122,11 @@ internal static class RagFilterTranslator
     private static Expression BuildEq(string field, object value, MetadataSchema schema, ParameterExpression p)
     {
         var type = FieldType(field, schema);
-        var converted = ConvertValue(value, type, field);
-        // Value types compare through Nullable<T> so a missing (null) value is simply "not equal" instead of throwing.
-        if (type.IsValueType)
-        {
-            var nullable = typeof(Nullable<>).MakeGenericType(type);
-            return Expression.Equal(Field(field, nullable, schema, p), Expression.Constant(converted, nullable));
-        }
-
-        return Expression.Equal(Field(field, type, schema, p), Expression.Constant(converted, type));
+        // Compared as stored (bools and dates are numbers). Value types compare through Nullable<T> so a missing (null)
+        // value is simply "not equal" instead of throwing.
+        var stored = RagDotNet.Storage.StoredValues.StoreType(type);
+        var converted = RagDotNet.Storage.StoredValues.ToStore(ConvertValue(value, type, field), type);
+        return Expression.Equal(Field(field, stored, schema, p), Expression.Constant(converted, stored));
     }
 
     private static Expression BuildContains(string field, string value, MetadataSchema schema, ParameterExpression p)
@@ -143,8 +139,8 @@ internal static class RagFilterTranslator
     internal static object ConvertValue(object? value, Type type, string field)
     {
         if (value is null) throw new ArgumentException($"Filter value for '{field}' must not be null.");
-        // Dates compare as instants; some stores (PostgreSQL) accept only offset-zero values, so every date is sent in UTC.
-        if (value is DateTimeOffset dto && type == typeof(DateTimeOffset)) return dto.ToUniversalTime();
+        // Dates compare as instants, in UTC and to the microsecond: the precision every store keeps (StoredValues).
+        if (value is DateTimeOffset dto && type == typeof(DateTimeOffset)) return RagDotNet.Storage.StoredValues.ToStoredPrecision(dto);
         if (type.IsInstanceOfType(value)) return value;
 
         object? converted = null;
@@ -167,7 +163,7 @@ internal static class RagFilterTranslator
             };
         }
 
-        if (converted is DateTimeOffset c) return c.ToUniversalTime();
+        if (converted is DateTimeOffset c) return RagDotNet.Storage.StoredValues.ToStoredPrecision(c);
         return converted ?? throw new ArgumentException(
             $"Filter value of type {value.GetType().Name} for field '{field}' cannot be converted exactly to {type.Name}."
             + (type == typeof(DateTimeOffset) ? " Use a DateTimeOffset, a UTC or local DateTime, or an ISO-8601 string with an explicit offset." : ""));

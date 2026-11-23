@@ -52,7 +52,7 @@ internal static class RecordDefinitions
         props.Add(new VectorStoreDataProperty("ChunkCount", typeof(int)) { IsIndexed = true });
         props.Add(new VectorStoreDataProperty("SourceName", typeof(string)));
         props.Add(new VectorStoreDataProperty("UpdatedAtUnixMs", typeof(long)));
-        props.Add(new VectorStoreDataProperty("ContentStorage", typeof(string)));
+        props.Add(new VectorStoreDataProperty("ContentStorage", typeof(string)) { IsIndexed = true });
         props.Add(new VectorStoreDataProperty("MetadataHash", typeof(string)));
         props.Add(new VectorStoreDataProperty("ChunkHighWater", typeof(int)));
         // The document list pages by this, not the key: see ListOrder.
@@ -68,11 +68,11 @@ internal static class RecordDefinitions
     internal static string MetaName(string field) => RagFilterTranslator.MetaPrefix + field;
 
     /// <summary>
-    /// A metadata field's type in the store: value types become nullable, because a document may omit the field (a store
-    /// that maps <c>int</c> to a NOT NULL column would reject it).
+    /// A metadata field's type in the store (see <see cref="StoredValues"/>): bools and dates become numbers, and value
+    /// types become nullable, because a document may omit the field (a store that maps <c>int</c> to a NOT NULL column
+    /// would reject it).
     /// </summary>
-    internal static Type StoredType(Type declared) =>
-        declared.IsValueType && Nullable.GetUnderlyingType(declared) is null ? typeof(Nullable<>).MakeGenericType(declared) : declared;
+    internal static Type StoredType(Type declared) => StoredValues.StoreType(declared);
 
     private static Type KeyClrType(RagKeyType t) => t == RagKeyType.Guid ? typeof(Guid) : typeof(string);
 

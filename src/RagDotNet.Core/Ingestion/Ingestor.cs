@@ -127,7 +127,7 @@ internal sealed class Ingestor(RagEngine engine)
             {
                 ["Key"] = options.KeyType == RagKeyType.Guid ? ChunkKeys.ToGuid(key) : key,
                 ["DocumentId"] = s.DocumentId,
-                ["Partition"] = scope.PartitionKey,
+                ["Partition"] = StoredPartition.ToStore(scope.PartitionKey),
                 ["ChunkIndex"] = c.Index,
                 ["ContentHash"] = contentHash,
                 ["ChunkingHash"] = storedChunkingHash,
@@ -138,7 +138,7 @@ internal sealed class Ingestor(RagEngine engine)
                 ["SourceName"] = sourceName,
             };
             if (engine.ContentStore is null) r["Text"] = c.Text;
-            foreach (var (name, value) in metadata) r[RecordDefinitions.MetaName(name)] = value;
+            foreach (var (name, value) in metadata) r[RecordDefinitions.MetaName(name)] = StoredValues.ToStore(value, options.Metadata.Fields[name]);
             r["Embedding"] = vectors[i];
             records.Add(r);
         }
@@ -330,7 +330,7 @@ internal sealed class Ingestor(RagEngine engine)
             s.Metadata.TryGetValue(name, out var v);
             result[name] = type == typeof(long) && v is int i ? (long)i
                 : type == typeof(string[]) ? v ?? Array.Empty<string>() // omitted arrays are stored empty so Contains never sees null
-                : v is DateTimeOffset dto ? dto.ToUniversalTime() // the same instant; some stores accept only offset zero
+                : v is DateTimeOffset dto ? StoredValues.ToStoredPrecision(dto) // UTC, to the microsecond: what every store keeps
                 : v;
         }
 

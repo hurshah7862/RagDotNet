@@ -433,11 +433,11 @@ internal sealed class Retriever(RagEngine engine)
 
         if (!r.TryGetValue("Partition", out var pv) || pv is not string partition)
             throw new InvalidOperationException("Retrieved record has no Partition field; it was written by an older version. Re-ingest into a new collection.");
-        var key = ChunkKeys.Chunk(partition, documentId, chunkIndex);
+        var key = ChunkKeys.Chunk(StoredPartition.FromStore(partition), documentId, chunkIndex);
 
         var metadata = new Dictionary<string, object?>();
         foreach (var name in options.Metadata.Fields.Keys)
-            if (r.TryGetValue(RagFilterTranslator.MetaPrefix + name, out var v)) metadata[name] = v;
+            if (r.TryGetValue(RagFilterTranslator.MetaPrefix + name, out var v)) metadata[name] = StoredValues.FromStore(v, options.Metadata.Fields[name]);
 
         var heading = r.TryGetValue("HeadingPath", out var h) ? h as string : null;
         IReadOnlyList<string> path = string.IsNullOrEmpty(heading) ? [] : heading.Split(" > ");

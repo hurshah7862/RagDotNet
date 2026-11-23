@@ -23,7 +23,7 @@ internal sealed class ManifestStore(VectorStore store, RagOptions options)
     }
 
     public Task UpsertAsync(ManifestRecord m, CancellationToken ct) =>
-        _collection.UpsertAsync(m.ToDynamic(options.KeyType), ct);
+        _collection.UpsertAsync(m.ToDynamic(options.KeyType, options.Metadata), ct);
 
     public Task DeleteAsync(string partitionKey, string documentId, CancellationToken ct) =>
         _collection.DeleteAsync(ConvertKey(ChunkKeys.Document(partitionKey, documentId)), ct);

@@ -1,5 +1,6 @@
 using RagDotNet.Configuration;
 using RagDotNet.Content;
+using RagDotNet.Filtering;
 
 namespace RagDotNet.Storage;
 
@@ -20,16 +21,16 @@ internal sealed record ManifestRecord(
     int ChunkHighWater,
     IReadOnlyDictionary<string, object?> Metadata)
 {
-    public Dictionary<string, object?> ToDynamic(RagKeyType keyType)
+    public Dictionary<string, object?> ToDynamic(RagKeyType keyType, MetadataSchema schema)
     {
         Validate();
         var d = new Dictionary<string, object?>
         {
             ["Key"] = keyType == RagKeyType.Guid ? ChunkKeys.ToGuid(Key) : Key,
             ["DocumentId"] = DocumentId,
-            ["Partition"] = Partition,
+            ["Partition"] = StoredPartition.ToStore(Partition),
         };
-        foreach (var (k, v) in Metadata) d[RecordDefinitions.MetaName(k)] = v;
+        foreach (var (k, v) in Metadata) d[RecordDefinitions.MetaName(k)] = schema.Fields.TryGetValue(k, out var type) ? StoredValues.ToStore(v, type) : v;
         d["ContentHash"] = ContentHash;
         d["ChunkingHash"] = ChunkingHash;
         d["EmbeddingModelId"] = EmbeddingModelId;
@@ -54,7 +55,7 @@ internal sealed record ManifestRecord(
     public static ManifestRecord FromDynamic(Dictionary<string, object?> r, RagOptions options)
     {
         var documentId = (string)r["DocumentId"]!;
-        var partition = (string)r["Partition"]!;
+        var partition = StoredPartition.FromStore((string)r["Partition"]!);
         var values = new Dictionary<string, string>();
         if (partition.Length > 0) // the common area has no partition values
             foreach (var k in options.PartitionKeys)
@@ -65,7 +66,7 @@ internal sealed record ManifestRecord(
             }
         var metadata = new Dictionary<string, object?>();
         foreach (var name in options.Metadata.Fields.Keys)
-            metadata[name] = r.TryGetValue(RecordDefinitions.MetaName(name), out var mv) ? mv : null;
+            metadata[name] = r.TryGetValue(RecordDefinitions.MetaName(name), out var mv) ? StoredValues.FromStore(mv, options.Metadata.Fields[name]) : null;
         var record = new ManifestRecord(
             ChunkKeys.Document(partition, documentId), documentId, partition, values,
             (string)r["ContentHash"]!, (string)r["ChunkingHash"]!, (string)r["EmbeddingModelId"]!,

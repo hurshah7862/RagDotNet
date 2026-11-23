@@ -410,7 +410,7 @@ public class AdminAndModelSafetyTests
         await SeedAsync(store);
         var opts = RawOptions();
         var manifests = new ManifestStore(store, opts);
-        var raw = (await manifests.GetAsync("", "d1", Ct))!.ToDynamic(RagKeyType.String);
+        var raw = (await manifests.GetAsync("", "d1", Ct))!.ToDynamic(RagKeyType.String, opts.Metadata);
         raw["EmbeddingModelId"] = null;
         await store.GetDynamicCollection("test_documents", RecordDefinitions.Manifests(opts)).UpsertAsync(raw, Ct);
 

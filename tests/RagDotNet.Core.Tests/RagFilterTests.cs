@@ -2,6 +2,7 @@ using CommunityToolkit.VectorData.InMemory;
 using Microsoft.Extensions.VectorData;
 using RagDotNet.Filtering;
 using static RagDotNet.Core.Tests.Fakes.TestRag;
+using RagDotNet.Storage;
 
 namespace RagDotNet.Core.Tests;
 
@@ -52,7 +53,7 @@ public class RagFilterTests
     private static void Accepts(string field, object value, object stored)
     {
         var expr = RagFilterTranslator.Translate(RagFilter.Eq(field, value), TypedSchema(), out _);
-        Assert.True(expr!.Compile()(new() { ["meta_" + field] = stored }));
+        Assert.True(expr!.Compile()(new() { ["meta_" + field] = StoredValues.ToStore(stored, TypedSchema().Fields[field]) })); // as the store holds it
     }
 
     private static void Rejects(string field, object value)

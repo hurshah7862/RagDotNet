@@ -2,6 +2,7 @@ using DotNet.Testcontainers.Containers;
 using RagDotNet.StoreTests.Infrastructure;
 using Testcontainers.PostgreSql;
 using Testcontainers.Qdrant;
+using Testcontainers.Redis;
 
 [assembly: AssemblyFixture(typeof(ContainerLifetime))]
 
@@ -100,6 +101,12 @@ internal static class Containers
         "qdrant/qdrant:v1.20.1",
         image => new QdrantBuilder(image).Build(),
         container => Task.FromResult(container.GetGrpcConnectionString()));
+
+    public static readonly SharedContainer<RedisContainer> Redis = new(
+        "Redis",
+        "redis/redis-stack-server:7.4.0-v8",
+        image => new RedisBuilder(image).Build(),
+        container => Task.FromResult(container.GetConnectionString()));
 }
 
 /// <summary>Stops every started container at the end of the run. (Testcontainers' reaper covers a crash.)</summary>
@@ -109,5 +116,6 @@ public sealed class ContainerLifetime : IAsyncDisposable
     {
         await Containers.Postgres.DisposeAsync().ConfigureAwait(false);
         await Containers.Qdrant.DisposeAsync().ConfigureAwait(false);
+        await Containers.Redis.DisposeAsync().ConfigureAwait(false);
     }
 }

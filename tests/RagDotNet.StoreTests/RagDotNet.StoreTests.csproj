@@ -15,6 +15,8 @@
     <PackageReference Include="Testcontainers.PostgreSql" />
     <PackageReference Include="CommunityToolkit.VectorData.Qdrant" />
     <PackageReference Include="Testcontainers.Qdrant" />
+    <PackageReference Include="CommunityToolkit.VectorData.Redis" />
+    <PackageReference Include="Testcontainers.Redis" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />

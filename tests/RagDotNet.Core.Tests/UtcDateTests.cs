@@ -70,7 +70,7 @@ public sealed class UtcDateTests
         {
             var expr = RagFilterTranslator.Translate(RagFilter.Eq("d", value), Options().Metadata, out _)!;
             var constant = Assert.IsAssignableFrom<ConstantExpression>(((BinaryExpression)expr.Body).Right);
-            Assert.Equal(TimeSpan.Zero, ((DateTimeOffset)constant.Value!).Offset);
+            Assert.Equal(StoredValues.ToStore(Local, typeof(DateTimeOffset)), constant.Value); // the instant, as stored
         }
     }
 
@@ -84,7 +84,8 @@ public sealed class UtcDateTests
         var manifests = store.GetDynamicCollection("utc_documents", RecordDefinitions.Manifests(o));
         var manifest = Assert.Single(await manifests.GetAsync(r => true, 10, cancellationToken: Ct).ToListAsync(Ct));
 
-        var d = Assert.IsType<DateTimeOffset>(manifest[RecordDefinitions.MetaName("d")]);
+        var stored = Assert.IsType<long>(manifest[RecordDefinitions.MetaName("d")]); // Unix microseconds, see StoredValues
+        var d = Assert.IsType<DateTimeOffset>(StoredValues.FromStore(stored, typeof(DateTimeOffset)));
         Assert.Equal(TimeSpan.Zero, d.Offset);
         Assert.Equal(Local.UtcTicks, d.UtcTicks);
     }
