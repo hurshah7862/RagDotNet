@@ -1,5 +1,6 @@
 using Npgsql;
 using Qdrant.Client;
+using StackExchange.Redis;
 using RagDotNet.StoreTests.Infrastructure;
 
 namespace RagDotNet.StoreTests;
@@ -8,13 +9,14 @@ public sealed class SharedContainerTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    public static TheoryData<string> Stores => new("PgVector", "Qdrant");
+    public static TheoryData<string> Stores => new("PgVector", "Qdrant", "Redis");
 
     private static (Func<Task<(string? Endpoint, string? UnavailableReason)>> Get, Func<string, Task<(string? Endpoint, string? UnavailableReason)>> Start, Func<int> Starts) Container(string store) =>
         store switch
         {
             "PgVector" => (Containers.Postgres.GetAsync, image => Containers.Postgres.StartAsync(image), () => Containers.Postgres.Starts),
             "Qdrant" => (Containers.Qdrant.GetAsync, image => Containers.Qdrant.StartAsync(image), () => Containers.Qdrant.Starts),
+            "Redis" => (Containers.Redis.GetAsync, image => Containers.Redis.StartAsync(image), () => Containers.Redis.Starts),
             _ => throw new ArgumentOutOfRangeException(nameof(store)),
         };
 
@@ -59,11 +61,19 @@ public sealed class SharedContainerTests
 
         Assert.Equal(first.Endpoint, second.Endpoint);
         Assert.Equal(1, container.Starts());
-        Assert.Equal(store == "PgVector" ? "0.8.7" : "1.20.1", await ServiceVersionAsync(store, first.Endpoint!));
+        var version = await ServiceVersionAsync(store, first.Endpoint!);
+        if (store == "Redis") Assert.StartsWith("7.4", version);
+        else Assert.Equal(store == "PgVector" ? "0.8.7" : "1.20.1", version);
     }
 
     private static async Task<string?> ServiceVersionAsync(string store, string endpoint)
     {
+        if (store == "Redis")
+        {
+            await using var redis = await ConnectionMultiplexer.ConnectAsync(endpoint);
+            return redis.GetServer(redis.GetEndPoints()[0]).Version.ToString();
+        }
+
         if (store == "Qdrant")
         {
             using var client = new QdrantClient(new Uri(endpoint));
