@@ -122,13 +122,57 @@ public sealed class DataIngestionReaderTests
     }
 
     [Fact]
-    public async Task ExtractImages_off_gives_no_candidates()
+    public async Task ExtractImages_off_still_reports_the_image_without_bytes()
     {
-        var image = new IngestionDocumentImage("![chart](x)") { Content = new byte[] { 1 }, AlternativeText = "chart" };
+        var image = new IngestionDocumentImage("![chart](x)") { Content = new byte[] { 1 }, AlternativeText = "chart", PageNumber = 2 };
 
         var parsed = await ReadFakeAsync(Elements(image), Context with { ExtractImages = false });
 
-        Assert.Empty(parsed.OcrCandidates);
+        var candidate = Assert.Single(parsed.OcrCandidates);
+        Assert.Equal((OcrCandidateKind.Image, 0, 2), (candidate.Kind, candidate.InsertAt, candidate.PageNumber));
+        Assert.Null(candidate.Image);
+    }
+
+    [Fact]
+    public async Task Inline_data_uri_image_keeps_paragraph_text()
+    {
+        var parsed = await ReadMarkdownAsync("Body ![the chart](data:image/png;base64,iVBORw0KGgo=) more.\n");
+
+        var block = Assert.Single(parsed.Blocks);
+        Assert.Contains("Body", block.Text);
+        Assert.Contains("the chart", block.Text);
+        Assert.Contains("more.", block.Text);
+        Assert.DoesNotContain("base64", block.Text);
+        Assert.Single(parsed.OcrCandidates);
+    }
+
+    [Fact]
+    public async Task Byte_order_mark_alone_gives_an_empty_document()
+    {
+        var parsed = await new DataIngestionReader(new MarkdownReader(), [".md"]).ReadAsync(new MemoryStream([0xEF, 0xBB, 0xBF]), Context, Ct);
+
+        Assert.Empty(parsed.Blocks);
+    }
+
+    [Fact]
+    public async Task Non_seekable_streams_are_read_and_empty_ones_give_an_empty_document()
+    {
+        var reader = new DataIngestionReader(new MarkdownReader(), [".md"]);
+
+        Assert.Empty((await reader.ReadAsync(new NonSeekableStream([]), Context, Ct)).Blocks);
+        var parsed = await reader.ReadAsync(new NonSeekableStream(Encoding.UTF8.GetBytes("# T\n\nbody\n")), Context, Ct);
+        Assert.Contains(parsed.Blocks, b => b.Text == "body");
+    }
+
+    private sealed class NonSeekableStream(byte[] bytes) : MemoryStream(bytes)
+    {
+        public override bool CanSeek => false;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+
+        public override long Seek(long offset, SeekOrigin loc) => throw new NotSupportedException();
     }
 
     [Fact]

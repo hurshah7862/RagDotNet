@@ -33,11 +33,11 @@ Microsoft's document becomes RagDotNet's like this:
 |---|---|
 | Header | A heading block, and a level of the heading path for what follows. A header with no level counts as level 1. The first level-1 header is the document's title. |
 | Table | A table block (its markdown) |
-| Image with bytes | An OCR candidate, so the [OCR](ocr.md) stage reads its text, plus a paragraph of its alternative text if it has one. With `ExtractImages` off, no candidate. |
+| Image with bytes | An OCR candidate, so the [OCR](ocr.md) stage reads its text, plus a paragraph of the element's text with each image replaced by its alternative text (so the words around an inline image are kept and a data URI never reaches a chunk). With no OCR provider, the candidate carries no bytes and gives the usual `ImageNotRead` warning. |
 | Image without bytes | A paragraph of its markdown, which keeps the text around an inline image |
 | Anything else (paragraphs, footers, list items) | A paragraph |
 
-Page numbers are kept. Blank elements are skipped. An empty stream gives an empty document (and the usual `EmptyDocument` warning) without calling the reader. Any error from the reader becomes a `DocumentReadException`, which the [background queue](hosting.md) treats as permanent; cancellation passes through.
+Page numbers are kept. Blank elements are skipped. An empty stream, or one holding only a byte order mark, gives an empty document (and the usual `EmptyDocument` warning) without calling the reader; a stream that can't seek is read into memory first. Any error from the reader becomes a `DocumentReadException`, which the [background queue](hosting.md) treats as permanent; cancellation passes through.
 
 **Microsoft's MarkdownReader drops content:** fenced and indented code blocks and HTML blocks are left out, and list markers are removed. RagDotNet's own Markdown reader keeps all of these, so it stays the default for `.md`; use Microsoft's when you want its behaviour, or to wrap another Microsoft reader (such as `MarkItDownReader` for Office files, which needs the `markitdown` tool installed).
 

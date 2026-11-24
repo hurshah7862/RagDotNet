@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.DataIngestion;
 using RagDotNet.Documents;
 using RagDotNet.Ocr;
@@ -9,7 +10,7 @@ namespace RagDotNet.DataIngestion;
 /// Headers become heading blocks (and the heading path), tables table blocks, images with bytes OCR candidates, and every
 /// other element a paragraph.
 /// </summary>
-public sealed class DataIngestionReader : IDocumentReader
+public sealed partial class DataIngestionReader : IDocumentReader
 {
     private readonly IngestionDocumentReader _reader;
     private readonly HashSet<string> _extensions;
@@ -55,8 +56,17 @@ public sealed class DataIngestionReader : IDocumentReader
         ArgumentNullException.ThrowIfNull(context);
         cancellationToken.ThrowIfCancellationRequested();
 
-        // Microsoft's readers can throw on empty content; an empty document is the Ingestor's EmptyDocument warning instead.
-        if (stream.CanSeek && stream.Length - stream.Position == 0) return new ParsedDocument([]);
+        // Microsoft's readers can throw on empty content (or a lone byte order mark); an empty document is the Ingestor's
+        // EmptyDocument warning instead. A stream that can't seek is buffered first, so it can be checked.
+        if (!stream.CanSeek)
+        {
+            var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer, cancellationToken).ConfigureAwait(false);
+            buffer.Position = 0;
+            stream = buffer;
+        }
+
+        if (IsEmpty(stream)) return new ParsedDocument([]);
 
         IngestionDocument document;
         try
@@ -76,6 +86,26 @@ public sealed class DataIngestionReader : IDocumentReader
 
         return Map(document, context);
     }
+
+    /// <summary>True when the rest of the stream is nothing or only a UTF-8 or UTF-16 byte order mark.</summary>
+    private static bool IsEmpty(Stream stream)
+    {
+        var remaining = stream.Length - stream.Position;
+        if (remaining == 0) return true;
+        if (remaining > 3) return false;
+
+        var start = stream.Position;
+        Span<byte> head = stackalloc byte[3];
+        var read = 0;
+        while (read < remaining && stream.Read(head[read..(int)remaining]) is var n and > 0) read += n;
+        stream.Position = start;
+        var bytes = head[..read];
+        return bytes.SequenceEqual(new byte[] { 0xEF, 0xBB, 0xBF }) || bytes.SequenceEqual(new byte[] { 0xFF, 0xFE }) || bytes.SequenceEqual(new byte[] { 0xFE, 0xFF });
+    }
+
+    /// <summary>Markdown images, <c>![alt](target)</c>, so an embedded image's data URI can be replaced by its alt text.</summary>
+    [GeneratedRegex(@"!\[([^\]]*)\]\([^)]*\)")]
+    private static partial Regex MarkdownImage();
 
     private static ParsedDocument Map(IngestionDocument document, DocumentReadContext context)
     {
@@ -115,14 +145,16 @@ public sealed class DataIngestionReader : IDocumentReader
                     break;
 
                 case IngestionDocumentImage image when image.Content is { } bytes:
-                    if (context.ExtractImages)
-                    {
-                        candidates.Add(new OcrCandidate(
-                            OcrCandidateKind.Image, blocks.Count, image.PageNumber,
-                            new ImageInput(bytes, string.IsNullOrWhiteSpace(image.MediaType) ? "application/octet-stream" : image.MediaType)));
-                    }
+                    // Every image is a candidate (Core's contract); its bytes only when images are extracted. With no OCR
+                    // provider, the candidate still gives the ImageNotRead warning and marks the document for OCR later.
+                    var input = context.ExtractImages
+                        ? new ImageInput(bytes, string.IsNullOrWhiteSpace(image.MediaType) ? "application/octet-stream" : image.MediaType)
+                        : null;
+                    candidates.Add(new OcrCandidate(OcrCandidateKind.Image, blocks.Count, image.PageNumber, input));
 
-                    Add(BlockKind.Paragraph, image.AlternativeText, image.PageNumber);
+                    // The element can be a whole paragraph around an inline image: keep that text, with each image as its alt text.
+                    var around = MarkdownImage().Replace(image.GetMarkdown() ?? string.Empty, m => m.Groups[1].Value);
+                    Add(BlockKind.Paragraph, string.IsNullOrWhiteSpace(around) ? image.AlternativeText : around, image.PageNumber);
                     break;
 
                 default:
