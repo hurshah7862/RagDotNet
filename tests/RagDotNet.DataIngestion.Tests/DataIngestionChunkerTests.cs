@@ -39,6 +39,28 @@ public sealed class DataIngestionChunkerTests
     }
 
     [Fact]
+    public async Task Context_prefix_is_removed_with_either_line_ending()
+    {
+        // HeaderChunker ends its context line with Environment.NewLine, which is \r\n on Windows.
+        var chunker = new DataIngestionChunker("fake", "1", _ => new FixedChunker("# A\r\nbody one", "# A\nbody two"));
+
+        var chunks = await chunker.ChunkAsync(await ParseAsync("# A\n\nbody\n"), new ChunkingOptions(), Ct);
+
+        Assert.Equal(["body one", "body two"], chunks.Select(c => c.Text));
+        Assert.All(chunks, c => Assert.Equal(["A"], c.HeadingPath));
+    }
+
+    private sealed class FixedChunker(params string[] contents) : IngestionChunker<string>
+    {
+        public override async IAsyncEnumerable<IngestionChunk<string>> ProcessAsync(
+            IngestionDocument document, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await Task.Yield();
+            foreach (var content in contents) yield return new IngestionChunk<string>(content, document, "# A");
+        }
+    }
+
+    [Fact]
     public async Task Unknown_context_gives_an_empty_path()
     {
         var tokens = new DataIngestionChunker("ms-tokens", "1", o => new DocumentTokenChunker(DataIngestionChunker.CreateOptions(o)));

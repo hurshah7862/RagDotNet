@@ -69,7 +69,13 @@ public sealed class DataIngestionChunker : IChunker
         {
             var context = chunk.Context ?? string.Empty;
             var text = chunk.Content ?? string.Empty;
-            if (context.Length > 0 && text.StartsWith(context + "\n", StringComparison.Ordinal)) text = text[(context.Length + 1)..];
+            // HeaderChunker ends the context line with Environment.NewLine: \r\n on Windows, \n elsewhere.
+            if (context.Length > 0 && text.StartsWith(context, StringComparison.Ordinal))
+            {
+                var rest = text.AsSpan(context.Length);
+                if (rest.StartsWith("\r\n", StringComparison.Ordinal)) text = text[(context.Length + 2)..];
+                else if (rest.StartsWith("\n", StringComparison.Ordinal)) text = text[(context.Length + 1)..];
+            }
             var path = paths.TryGetValue(context, out var p) ? p : [];
             chunks.Add(new Chunk(chunks.Count, text.Trim(), path, PageStart: null, PageEnd: null, TokenCount: 0));
         }
