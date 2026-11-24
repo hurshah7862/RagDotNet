@@ -1,4 +1,10 @@
 #nullable enable
+RagDotNet.Hosting.IIngestionJobQueue
+RagDotNet.Hosting.IIngestionJobQueue.CancelAsync(string! jobId, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<bool>
+RagDotNet.Hosting.IIngestionJobQueue.EnqueueAsync(RagDotNet.Hosting.IngestionJob! job, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+RagDotNet.Hosting.IIngestionJobQueue.GetStatusAsync(string! jobId, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<RagDotNet.Hosting.IngestionJobStatus?>
+RagDotNet.Hosting.IIngestionJobQueue.PauseAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+RagDotNet.Hosting.IIngestionJobQueue.ResumeAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
 RagDotNet.Hosting.IngestionJob
 RagDotNet.Hosting.IngestionJob.<Clone>$() -> RagDotNet.Hosting.IngestionJob!
 RagDotNet.Hosting.IngestionJob.Deconstruct(out string! JobId, out RagDotNet.Documents.DocumentSource! Source, out RagDotNet.Access.AccessScope? Scope) -> void
