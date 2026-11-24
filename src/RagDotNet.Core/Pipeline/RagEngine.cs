@@ -168,8 +168,7 @@ internal sealed class RagEngine
         try
         {
             if (_initialized) return;
-            await Chunks.EnsureExistsAsync(cancellationToken).ConfigureAwait(false);
-            await Manifests.EnsureExistsAsync(cancellationToken).ConfigureAwait(false);
+            await StoreCollections.EnsureExistsAsync(Chunks.Collection, Manifests.Collection, Options, cancellationToken).ConfigureAwait(false);
             var (path, detail) = ChooseKeywordPath();
             Logger.LogInformation("Keyword search: {Path} ({Detail})", path.ToString().ToLowerInvariant(), detail);
             if (path == KeywordPath.Index) await CheckKeywordIndexAsync(cancellationToken).ConfigureAwait(false);
