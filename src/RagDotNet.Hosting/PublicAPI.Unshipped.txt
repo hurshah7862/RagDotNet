@@ -1,0 +1,67 @@
+#nullable enable
+RagDotNet.Hosting.IngestionJob
+RagDotNet.Hosting.IngestionJob.<Clone>$() -> RagDotNet.Hosting.IngestionJob!
+RagDotNet.Hosting.IngestionJob.Deconstruct(out string! JobId, out RagDotNet.Documents.DocumentSource! Source, out RagDotNet.Access.AccessScope? Scope) -> void
+RagDotNet.Hosting.IngestionJob.Equals(RagDotNet.Hosting.IngestionJob? other) -> bool
+RagDotNet.Hosting.IngestionJob.IngestionJob(string! JobId, RagDotNet.Documents.DocumentSource! Source, RagDotNet.Access.AccessScope? Scope) -> void
+RagDotNet.Hosting.IngestionJob.JobId.get -> string!
+RagDotNet.Hosting.IngestionJob.JobId.init -> void
+RagDotNet.Hosting.IngestionJob.Scope.get -> RagDotNet.Access.AccessScope?
+RagDotNet.Hosting.IngestionJob.Scope.init -> void
+RagDotNet.Hosting.IngestionJob.Source.get -> RagDotNet.Documents.DocumentSource!
+RagDotNet.Hosting.IngestionJob.Source.init -> void
+RagDotNet.Hosting.IngestionJobRunner
+RagDotNet.Hosting.IngestionJobRunner.IngestionJobRunner(RagDotNet.Pipeline.IRagAdmin! admin, Microsoft.Extensions.Options.IOptions<RagDotNet.Hosting.IngestionQueueOptions!>! options) -> void
+RagDotNet.Hosting.IngestionJobRunner.IsTransient(System.Exception! exception) -> bool
+RagDotNet.Hosting.IngestionJobRunner.RunAsync(RagDotNet.Hosting.IngestionJob! job, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<RagDotNet.Ingestion.IngestResult!>!
+RagDotNet.Hosting.IngestionJobState
+RagDotNet.Hosting.IngestionJobState.Cancelled = 4 -> RagDotNet.Hosting.IngestionJobState
+RagDotNet.Hosting.IngestionJobState.Failed = 3 -> RagDotNet.Hosting.IngestionJobState
+RagDotNet.Hosting.IngestionJobState.Queued = 0 -> RagDotNet.Hosting.IngestionJobState
+RagDotNet.Hosting.IngestionJobState.Running = 1 -> RagDotNet.Hosting.IngestionJobState
+RagDotNet.Hosting.IngestionJobState.Succeeded = 2 -> RagDotNet.Hosting.IngestionJobState
+RagDotNet.Hosting.IngestionJobStatus
+RagDotNet.Hosting.IngestionJobStatus.<Clone>$() -> RagDotNet.Hosting.IngestionJobStatus!
+RagDotNet.Hosting.IngestionJobStatus.Attempts.get -> int
+RagDotNet.Hosting.IngestionJobStatus.Attempts.init -> void
+RagDotNet.Hosting.IngestionJobStatus.Deconstruct(out string! JobId, out string! DocumentId, out RagDotNet.Hosting.IngestionJobState State, out int Attempts, out RagDotNet.Ingestion.IngestResult? Result, out string? Error, out System.DateTimeOffset UpdatedAt) -> void
+RagDotNet.Hosting.IngestionJobStatus.DocumentId.get -> string!
+RagDotNet.Hosting.IngestionJobStatus.DocumentId.init -> void
+RagDotNet.Hosting.IngestionJobStatus.Equals(RagDotNet.Hosting.IngestionJobStatus? other) -> bool
+RagDotNet.Hosting.IngestionJobStatus.Error.get -> string?
+RagDotNet.Hosting.IngestionJobStatus.Error.init -> void
+RagDotNet.Hosting.IngestionJobStatus.IngestionJobStatus(string! JobId, string! DocumentId, RagDotNet.Hosting.IngestionJobState State, int Attempts, RagDotNet.Ingestion.IngestResult? Result, string? Error, System.DateTimeOffset UpdatedAt) -> void
+RagDotNet.Hosting.IngestionJobStatus.JobId.get -> string!
+RagDotNet.Hosting.IngestionJobStatus.JobId.init -> void
+RagDotNet.Hosting.IngestionJobStatus.Result.get -> RagDotNet.Ingestion.IngestResult?
+RagDotNet.Hosting.IngestionJobStatus.Result.init -> void
+RagDotNet.Hosting.IngestionJobStatus.State.get -> RagDotNet.Hosting.IngestionJobState
+RagDotNet.Hosting.IngestionJobStatus.State.init -> void
+RagDotNet.Hosting.IngestionJobStatus.UpdatedAt.get -> System.DateTimeOffset
+RagDotNet.Hosting.IngestionJobStatus.UpdatedAt.init -> void
+RagDotNet.Hosting.IngestionQueueOptions
+RagDotNet.Hosting.IngestionQueueOptions.Capacity.get -> int
+RagDotNet.Hosting.IngestionQueueOptions.Capacity.set -> void
+RagDotNet.Hosting.IngestionQueueOptions.Concurrency.get -> int
+RagDotNet.Hosting.IngestionQueueOptions.Concurrency.set -> void
+RagDotNet.Hosting.IngestionQueueOptions.IngestionQueueOptions() -> void
+RagDotNet.Hosting.IngestionQueueOptions.IsTransient.get -> System.Func<System.Exception!, bool>?
+RagDotNet.Hosting.IngestionQueueOptions.IsTransient.set -> void
+RagDotNet.Hosting.IngestionQueueOptions.MaxAttempts.get -> int
+RagDotNet.Hosting.IngestionQueueOptions.MaxAttempts.set -> void
+RagDotNet.Hosting.IngestionQueueOptions.RetryDelay.get -> System.TimeSpan
+RagDotNet.Hosting.IngestionQueueOptions.RetryDelay.set -> void
+RagDotNet.Hosting.IngestionQueueOptions.StatusRetention.get -> System.TimeSpan
+RagDotNet.Hosting.IngestionQueueOptions.StatusRetention.set -> void
+RagDotNet.Hosting.IngestionQueueOptions.TempDirectory.get -> string?
+RagDotNet.Hosting.IngestionQueueOptions.TempDirectory.set -> void
+override RagDotNet.Hosting.IngestionJob.Equals(object? obj) -> bool
+override RagDotNet.Hosting.IngestionJob.GetHashCode() -> int
+override RagDotNet.Hosting.IngestionJob.ToString() -> string!
+override RagDotNet.Hosting.IngestionJobStatus.Equals(object? obj) -> bool
+override RagDotNet.Hosting.IngestionJobStatus.GetHashCode() -> int
+override RagDotNet.Hosting.IngestionJobStatus.ToString() -> string!
+static RagDotNet.Hosting.IngestionJob.operator !=(RagDotNet.Hosting.IngestionJob? left, RagDotNet.Hosting.IngestionJob? right) -> bool
+static RagDotNet.Hosting.IngestionJob.operator ==(RagDotNet.Hosting.IngestionJob? left, RagDotNet.Hosting.IngestionJob? right) -> bool
+static RagDotNet.Hosting.IngestionJobStatus.operator !=(RagDotNet.Hosting.IngestionJobStatus? left, RagDotNet.Hosting.IngestionJobStatus? right) -> bool
+static RagDotNet.Hosting.IngestionJobStatus.operator ==(RagDotNet.Hosting.IngestionJobStatus? left, RagDotNet.Hosting.IngestionJobStatus? right) -> bool

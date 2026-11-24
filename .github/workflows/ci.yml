@@ -49,6 +49,9 @@ jobs:
       - name: Test Lucene keyword index (net8.0)
         run: dotnet test --project tests/RagDotNet.Keyword.Lucene.Tests --no-build --configuration Release --framework net8.0
 
+      - name: Test hosting (net8.0)
+        run: dotnet test --project tests/RagDotNet.Hosting.Tests --no-build --configuration Release --framework net8.0
+
       - name: Test SQLite connector (net8.0)
         run: dotnet test --project tests/RagDotNet.VectorData.Sqlite.Tests --no-build --configuration Release --framework net8.0
 
@@ -123,6 +126,9 @@ jobs:
 
       - name: Test Lucene keyword index (net8.0)
         run: dotnet test --project tests/RagDotNet.Keyword.Lucene.Tests --no-build --configuration Release --framework net8.0
+
+      - name: Test hosting (net8.0)
+        run: dotnet test --project tests/RagDotNet.Hosting.Tests --no-build --configuration Release --framework net8.0
 
       - name: Test SQLite connector (net8.0)
         run: dotnet test --project tests/RagDotNet.VectorData.Sqlite.Tests --no-build --configuration Release --framework net8.0
