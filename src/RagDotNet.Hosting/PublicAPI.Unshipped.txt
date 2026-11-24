@@ -1,4 +1,6 @@
 #nullable enable
+RagDotNet.Hosting.AccessScopeJsonConverter
+RagDotNet.Hosting.AccessScopeJsonConverter.AccessScopeJsonConverter() -> void
 RagDotNet.Hosting.IIngestionJobQueue
 RagDotNet.Hosting.IIngestionJobQueue.CancelAsync(string! jobId, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<bool>
 RagDotNet.Hosting.IIngestionJobQueue.EnqueueAsync(RagDotNet.Hosting.IngestionJob! job, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
@@ -68,14 +70,22 @@ RagDotNet.Hosting.IngestionQueueOptions.StatusRetention.get -> System.TimeSpan
 RagDotNet.Hosting.IngestionQueueOptions.StatusRetention.set -> void
 RagDotNet.Hosting.IngestionQueueOptions.TempDirectory.get -> string?
 RagDotNet.Hosting.IngestionQueueOptions.TempDirectory.set -> void
+RagDotNet.Hosting.RagFilterJsonConverter
+RagDotNet.Hosting.RagFilterJsonConverter.RagFilterJsonConverter() -> void
+RagDotNet.Hosting.RagJson
+override RagDotNet.Hosting.AccessScopeJsonConverter.Read(ref System.Text.Json.Utf8JsonReader reader, System.Type! typeToConvert, System.Text.Json.JsonSerializerOptions! options) -> RagDotNet.Access.AccessScope!
+override RagDotNet.Hosting.AccessScopeJsonConverter.Write(System.Text.Json.Utf8JsonWriter! writer, RagDotNet.Access.AccessScope! value, System.Text.Json.JsonSerializerOptions! options) -> void
 override RagDotNet.Hosting.IngestionJob.Equals(object? obj) -> bool
 override RagDotNet.Hosting.IngestionJob.GetHashCode() -> int
 override RagDotNet.Hosting.IngestionJob.ToString() -> string!
 override RagDotNet.Hosting.IngestionJobStatus.Equals(object? obj) -> bool
 override RagDotNet.Hosting.IngestionJobStatus.GetHashCode() -> int
 override RagDotNet.Hosting.IngestionJobStatus.ToString() -> string!
+override RagDotNet.Hosting.RagFilterJsonConverter.Read(ref System.Text.Json.Utf8JsonReader reader, System.Type! typeToConvert, System.Text.Json.JsonSerializerOptions! options) -> RagDotNet.Filtering.RagFilter!
+override RagDotNet.Hosting.RagFilterJsonConverter.Write(System.Text.Json.Utf8JsonWriter! writer, RagDotNet.Filtering.RagFilter! value, System.Text.Json.JsonSerializerOptions! options) -> void
 static RagDotNet.Hosting.IngestionJob.operator !=(RagDotNet.Hosting.IngestionJob? left, RagDotNet.Hosting.IngestionJob? right) -> bool
 static RagDotNet.Hosting.IngestionJob.operator ==(RagDotNet.Hosting.IngestionJob? left, RagDotNet.Hosting.IngestionJob? right) -> bool
 static RagDotNet.Hosting.IngestionJobStatus.operator !=(RagDotNet.Hosting.IngestionJobStatus? left, RagDotNet.Hosting.IngestionJobStatus? right) -> bool
 static RagDotNet.Hosting.IngestionJobStatus.operator ==(RagDotNet.Hosting.IngestionJobStatus? left, RagDotNet.Hosting.IngestionJobStatus? right) -> bool
 static RagDotNet.Hosting.IngestionQueueBuilderExtensions.AddIngestionQueue(this RagDotNet.Configuration.IRagBuilder! builder, System.Action<RagDotNet.Hosting.IngestionQueueOptions!>? configure = null) -> RagDotNet.Configuration.IRagBuilder!
+static RagDotNet.Hosting.RagJson.Options.get -> System.Text.Json.JsonSerializerOptions!

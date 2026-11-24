@@ -6,7 +6,7 @@ namespace RagDotNet.Hosting;
 /// </summary>
 /// <remarks>
 /// Every implementation, durable or not, keeps this contract: it stores each job's <see cref="IngestionJob.Source"/> content and
-/// <see cref="IngestionJob.Scope"/> at enqueue time (<c>RagJson.Options</c> serializes the scope), runs each attempt with
+/// <see cref="IngestionJob.Scope"/> at enqueue time (<see cref="RagJson.Options"/> serializes the scope), runs each attempt with
 /// <see cref="IngestionJobRunner.RunAsync"/>, and retries only when <see cref="IngestionJobRunner.IsTransient"/> returns true.
 /// The caller may dispose the source's stream as soon as <see cref="EnqueueAsync"/> returns.
 /// </remarks>
