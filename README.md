@@ -28,7 +28,7 @@ RagDotNet is for .NET developers who want an application to answer questions fro
 | More vector stores | In progress ([vector stores](docs/vector-stores.md)) |
 | Background ingestion queue (`RagDotNet.Hosting`) | Works ([hosting](docs/hosting.md)) |
 | Microsoft.Extensions.DataIngestion adapters (`RagDotNet.DataIngestion`, preview) | Works ([dataingestion](docs/dataingestion.md)) |
-| NuGet packages | Planned |
+| NuGet packages | Packed and checked in CI; not published yet ([publishing](docs/publishing.md)) |
 
 ## Install
 
@@ -38,7 +38,20 @@ No package is on NuGet yet. Until then, clone the repository and reference the p
 dotnet add reference path/to/RagDotNet/src/RagDotNet.Core/RagDotNet.Core.csproj
 ```
 
-Once published, it will be `dotnet add package RagDotNet.Core`.
+Once published, it will be `dotnet add package RagDotNet.Core`, plus any of the optional packages:
+
+| Package | What it adds |
+|---|---|
+| `RagDotNet.Core` | The pipeline, text and Markdown readers, chunkers, hybrid retrieval, cited answers, dependency injection |
+| `RagDotNet.Readers.Pdf` | PDF reader with page numbers |
+| `RagDotNet.Readers.Docx` | DOCX reader with heading paths |
+| `RagDotNet.Readers.Html` | HTML reader that leaves out page boilerplate |
+| `RagDotNet.Readers.Pdf.Rendering` | Renders scanned PDF pages for your own OCR provider |
+| `RagDotNet.Ocr.Tesseract` | Tesseract OCR for scanned pages and embedded images |
+| `RagDotNet.VectorData.Sqlite` | SQLite vector store with sqlite-vec |
+| `RagDotNet.Keyword.Lucene` (preview) | Lucene.NET keyword index persisted on disk |
+| `RagDotNet.Hosting` | Background ingestion queue |
+| `RagDotNet.DataIngestion` (preview) | Microsoft.Extensions.DataIngestion readers and chunkers |
 
 RagDotNet.Core targets net8.0 and net10.0. You bring your own `IChatClient`, `IEmbeddingGenerator<string, Embedding<float>>` (Microsoft.Extensions.AI) and `VectorStore` (any Microsoft.Extensions.VectorData connector). The samples and tests use the in-memory store from `CommunityToolkit.VectorData.InMemory`, which is not meant for production. For a store in a single file, `RagDotNet.VectorData.Sqlite` runs on SQLite with sqlite-vec. [docs/vector-stores.md](docs/vector-stores.md) lists the stores RagDotNet tests and any settings each one needs.
 

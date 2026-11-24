@@ -1,0 +1,54 @@
+# Publishing to NuGet
+
+Every CI run packs all ten packages and checks them (`eng/check-packages.cs`); the packages are kept as the `packages` artifact of each run for 7 days. Nothing reaches nuget.org until a `v*` tag is pushed, which runs `.github/workflows/publish.yml`.
+
+## One-time setup
+
+The publish workflow uses [NuGet trusted publishing](https://learn.microsoft.com/nuget/nuget-org/trusted-publishing): nuget.org trusts this repository's workflow and hands it a short-lived API key for each run, so no long-lived key is stored in GitHub.
+
+1. **On nuget.org**, signed in as the account that will own the packages, open *Trusted Publishing* and add a policy:
+   - Repository owner: `hurshah7862`
+   - Repository: `RagDotNet`
+   - Workflow file: `publish.yml`
+   - Environment: `nuget`
+2. **In GitHub**, under *Settings → Secrets and variables → Actions → Variables*, add the repository variable `NUGET_USER` set to that nuget.org user name (the profile name, not the email address).
+3. **Optional:** under *Settings → Environments → nuget*, add yourself as a required reviewer. Each publish run then waits for your approval before it starts.
+
+The `RagDotNet.*` package names were free on nuget.org on 2026-11-24. The first push of each package claims its name for the account behind the policy.
+
+## Releasing
+
+```
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+Tag a commit on `main` whose CI run passed. The publish job then:
+
+1. builds and runs the unit tests, as CI does;
+2. packs every library under `src/`;
+3. checks the packages, including that their version matches the tag (`v1.0.0` must give `1.0.0`). A tag that MinVer did not pick up fails here, before anything is pushed;
+4. pushes the packages and their symbol packages (`.snupkg`) to nuget.org.
+
+nuget.org validates and indexes new packages, which takes a few minutes before they can be installed.
+
+**A failed run is safe to re-run.** The push uses `--skip-duplicate`, so packages that already reached nuget.org are skipped and the rest are pushed. A version on nuget.org can never be replaced, only unlisted: to fix a released package, release a new version.
+
+## Versions
+
+- MinVer computes the version from the latest `v*` tag reachable from the commit: `v1.2.0` gives `1.2.0`. Commits after a tag get a prerelease version such as `1.2.1-alpha.0.3`; untagged history gives `0.0.0-alpha.0.N`.
+- Every package has the same version, except that `RagDotNet.Keyword.Lucene` and `RagDotNet.DataIngestion` always add a preview label, because the libraries they are built on (Lucene.NET 4.8, Microsoft.Extensions.DataIngestion) are prereleases: `v1.2.0` gives them `1.2.0-preview`, and `v1.2.0-rc.1` gives them `1.2.0-preview.rc.1`.
+- A prerelease tag such as `v1.0.0-rc.1` publishes prerelease packages; people get them only when they ask for prereleases.
+
+## What the package check catches
+
+`dotnet run eng/check-packages.cs -- <folder> [--version <version>]` fails, naming the package, when:
+
+- a library is missing, or a package that is not one of the ten (a test project, the sample) is present;
+- a package has no symbol package, MIT license expression, authors, description, tags, project URL, or repository URL and commit;
+- a package has no README, or its README has a relative link (nuget.org cannot resolve them);
+- the .NET 8 or .NET 10 assembly or its XML documentation is missing;
+- `RagDotNet.VectorData.Sqlite` lacks its sqlite-vec natives for linux-x64, osx-arm64 or win-x64, or its third-party notices;
+- the versions break the rules above, or a stable package (or Core at any version) depends on a prerelease.
+
+Run it locally after `dotnet pack --configuration Release --output artifacts/packages`.
