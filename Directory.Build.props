@@ -7,11 +7,26 @@
     <Authors>HAS</Authors>
     <Copyright>Copyright (c) 2026 HAS</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <!-- Release tags are v1.2.3; MinVer ignores tags without this prefix. -->
+    <MinVerTagPrefix>v</MinVerTagPrefix>
   </PropertyGroup>
 
   <PropertyGroup Condition="$(MSBuildProjectDirectory.Contains('src\')) Or $(MSBuildProjectDirectory.Contains('src/'))">
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <IsPackable>true</IsPackable>
+    <PackageTags>rag;retrieval-augmented-generation;ai;llm;embeddings;vector-search;semantic-search;Microsoft.Extensions.AI</PackageTags>
+    <PackageProjectUrl>https://github.com/hurshah7862/RagDotNet</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/hurshah7862/RagDotNet</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <!-- Symbols go to nuget.org as .snupkg; SourceLink (built into the SDK) lets debuggers fetch the matching source. -->
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(GITHUB_ACTIONS)' == 'true'">
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
   </PropertyGroup>
 
   <ItemGroup Condition="$(MSBuildProjectDirectory.Contains('src\')) Or $(MSBuildProjectDirectory.Contains('src/'))">
