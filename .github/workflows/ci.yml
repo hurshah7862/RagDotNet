@@ -52,6 +52,9 @@ jobs:
       - name: Test hosting (net8.0)
         run: dotnet test --project tests/RagDotNet.Hosting.Tests --no-build --configuration Release --framework net8.0
 
+      - name: Test DataIngestion adapters (net8.0)
+        run: dotnet test --project tests/RagDotNet.DataIngestion.Tests --no-build --configuration Release --framework net8.0
+
       - name: Test SQLite connector (net8.0)
         run: dotnet test --project tests/RagDotNet.VectorData.Sqlite.Tests --no-build --configuration Release --framework net8.0
 
@@ -129,6 +132,9 @@ jobs:
 
       - name: Test hosting (net8.0)
         run: dotnet test --project tests/RagDotNet.Hosting.Tests --no-build --configuration Release --framework net8.0
+
+      - name: Test DataIngestion adapters (net8.0)
+        run: dotnet test --project tests/RagDotNet.DataIngestion.Tests --no-build --configuration Release --framework net8.0
 
       - name: Test SQLite connector (net8.0)
         run: dotnet test --project tests/RagDotNet.VectorData.Sqlite.Tests --no-build --configuration Release --framework net8.0

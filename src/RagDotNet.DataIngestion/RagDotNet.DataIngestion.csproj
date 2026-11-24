@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <Description>Adapters that let RagDotNet use Microsoft.Extensions.DataIngestion readers and chunkers. Microsoft.Extensions.DataIngestion is a preview, so this package is a preview too.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <!-- MEDI001: Microsoft.Extensions.DataIngestion's APIs are experimental. Suppressed here only; apps that use them get the diagnostic themselves. -->
+    <NoWarn>$(NoWarn);MEDI001</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DataIngestion" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="RagDotNet.DataIngestion.Tests" />
+    <None Include="README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\RagDotNet.Core\RagDotNet.Core.csproj" />
+  </ItemGroup>
+
+  <!-- Microsoft.Extensions.DataIngestion is a prerelease, so this package always is too: the version MinVer computes gets a -preview label. -->
+  <Target Name="DataIngestionPreviewVersion" AfterTargets="MinVer">
+    <PropertyGroup>
+      <DataIngestionPreRelease Condition="'$(MinVerPreRelease)' == ''">preview</DataIngestionPreRelease>
+      <DataIngestionPreRelease Condition="'$(MinVerPreRelease)' != '' And !$(MinVerPreRelease.StartsWith('preview'))">preview.$(MinVerPreRelease)</DataIngestionPreRelease>
+      <DataIngestionPreRelease Condition="'$(DataIngestionPreRelease)' == ''">$(MinVerPreRelease)</DataIngestionPreRelease>
+      <PackageVersion>$(MinVerMajor).$(MinVerMinor).$(MinVerPatch)-$(DataIngestionPreRelease)</PackageVersion>
+      <PackageVersion Condition="'$(MinVerBuildMetadata)' != ''">$(PackageVersion)+$(MinVerBuildMetadata)</PackageVersion>
+      <Version>$(PackageVersion)</Version>
+    </PropertyGroup>
+  </Target>
+</Project>

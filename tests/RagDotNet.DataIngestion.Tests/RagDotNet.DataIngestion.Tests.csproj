@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <NoWarn>$(NoWarn);MEDI001</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="CommunityToolkit.VectorData.InMemory" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Microsoft.Extensions.DataIngestion.Markdig" />
+  </ItemGroup>
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\RagDotNet.Core.Tests\Fakes\FakeEmbeddingGenerator.cs" Link="Shared\FakeEmbeddingGenerator.cs" />
+    <Compile Include="..\RagDotNet.Core.Tests\Fakes\FakeChatClient.cs" Link="Shared\FakeChatClient.cs" />
+    <Compile Include="..\RagDotNet.Core.Tests\Fakes\TestRag.cs" Link="Shared\TestRag.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\RagDotNet.Core\RagDotNet.Core.csproj" />
+    <ProjectReference Include="..\..\src\RagDotNet.DataIngestion\RagDotNet.DataIngestion.csproj" />
+  </ItemGroup>
+</Project>
