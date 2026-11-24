@@ -4,7 +4,7 @@
 
 RagDotNet is a .NET library for retrieval-augmented generation (RAG). It ingests documents, chunks and embeds them into a vector store, and answers questions with cited sources, built on Microsoft.Extensions.AI and Microsoft.Extensions.VectorData.
 
-> **Under development.** RagDotNet is not released yet. The public API can still change between commits, stored data may need re-ingesting after an update, and no package is published to NuGet. Core ingestion, hybrid retrieval and reranking, cited answers, chat and query rewriting, three chunkers, PDF, DOCX and HTML readers, and OCR work today; more vector stores and hosting adapters are still to come. Feedback and issues are welcome.
+> **Under development.** RagDotNet is not released yet. The public API can still change between commits, stored data may need re-ingesting after an update, and no package is published to NuGet. Core ingestion, hybrid retrieval and reranking, cited answers, chat and query rewriting, three chunkers, PDF, DOCX and HTML readers, and OCR work today; more vector stores and the Microsoft.Extensions.DataIngestion adapters are still to come. Feedback and issues are welcome.
 
 ## Why this exists
 
@@ -26,7 +26,8 @@ RagDotNet is for .NET developers who want an application to answer questions fro
 | OCR: Tesseract package, or your own provider (per image or whole document) | Works |
 | Hybrid search and reranking | Works |
 | More vector stores | In progress ([vector stores](docs/vector-stores.md)) |
-| Hosting adapters | Planned |
+| Background ingestion queue (`RagDotNet.Hosting`) | Works ([hosting](docs/hosting.md)) |
+| Microsoft.Extensions.DataIngestion adapters | Planned |
 | NuGet packages | Planned |
 
 ## Install
@@ -227,6 +228,19 @@ Their shared settings are `ChunkingOptions.MaxTokens` (default 512, at least 16)
 **What the library guarantees.** Whatever a chunker returns, the library drops chunks whose text is blank, splits chunks longer than `MaxTokens` (keeping the heading path and pages), renumbers `Index` from 0 with no gaps or duplicates, and recomputes `TokenCount` with its own tokenizer. A chunker that returns `null`, or a list containing `null`, fails the ingest with an `InvalidOperationException` naming the chunker.
 
 **Registration.** With dependency injection call `.AddChunker<MyChunker>()` (a singleton); without it call `builder.AddChunker(new MyChunker())`. Two chunkers with the same name, including a built-in name, fail validation.
+
+## Background ingestion
+
+`RagDotNet.Hosting` queues documents for ingestion on a hosted worker, so a request that uploads a file returns at once with a job id:
+
+```csharp
+services.AddRag(o => { /* ... */ }).AddIngestionQueue();
+
+var jobId = await queue.EnqueueAsync(source);   // IIngestionQueue, scoped like IRagPipeline
+var status = await queue.GetStatusAsync(jobId); // Queued, Running, Succeeded, Failed or Cancelled
+```
+
+Jobs run under the caller's access scope, captured at enqueue, with retries on transient errors, cancel, and pause and resume. **The default queue keeps jobs in memory, so unfinished jobs are lost when the app stops**; a durable queue plugs in through `IIngestionJobQueue`. [docs/hosting.md](docs/hosting.md) has the details.
 
 ## Caching
 

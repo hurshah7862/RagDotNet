@@ -37,12 +37,11 @@ public interface IRagAdmin
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled; a marker already written is kept.</exception>
     Task<ReindexResult> ReindexAsync(IProgress<ReindexProgress>? progress = null, CancellationToken cancellationToken = default);
 
-    /// <summary>Creates a pipeline bound to an explicit scope, ignoring any registered <see cref="Access.IAccessScope"/>. Use it for writes that must apply a tenant user's read filter and permissions. The pipeline can ask questions when a chat client is configured.</summary>
-    /// <param name="scope">The scope to apply to every operation of the returned pipeline.</param>
-    /// <returns>A pipeline restricted to <paramref name="scope"/>.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="scope"/> is null.</exception>
+    /// <summary>Creates a pipeline bound to an explicit scope, ignoring any registered <see cref="Access.IAccessScope"/>. Use it for writes that must apply a tenant user's read filter and permissions, or pass null for a full-access pipeline, such as for a background worker. The pipeline can ask questions when a chat client is configured.</summary>
+    /// <param name="scope">The scope to apply to every operation of the returned pipeline; null gives full access (all partitions, no filter, all permissions).</param>
+    /// <returns>A pipeline restricted to <paramref name="scope"/>, or with full access when it is null.</returns>
     /// <exception cref="ArgumentException">The scope fails the validation applied to access scopes: its partition does not match the configured partition keys, a value is empty, or a key is not a declared string field.</exception>
-    IRagPipeline ForScope(Access.AccessScope scope);
+    IRagPipeline ForScope(Access.AccessScope? scope);
 
     /// <summary>Deletes a document from the named partition, ignoring any access scope. It works during an embedding model mismatch, since it writes no vectors.</summary>
     /// <param name="documentId">The document id.</param>

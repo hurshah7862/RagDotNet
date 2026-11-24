@@ -4,6 +4,7 @@
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/RagDotNet.Core/RagDotNet.Core.csproj" />
+    <Project Path="src/RagDotNet.Hosting/RagDotNet.Hosting.csproj" />
     <Project Path="src/RagDotNet.Keyword.Lucene/RagDotNet.Keyword.Lucene.csproj" />
     <Project Path="src/RagDotNet.Ocr.Tesseract/RagDotNet.Ocr.Tesseract.csproj" />
     <Project Path="src/RagDotNet.Readers.Docx/RagDotNet.Readers.Docx.csproj" />
@@ -16,6 +17,7 @@
     <Project Path="tests/RagDotNet.Core.Tests/RagDotNet.Core.Tests.csproj" />
     <Project Path="tests/RagDotNet.Evaluation/RagDotNet.Evaluation.csproj" />
     <Project Path="tests/RagDotNet.Evaluation.Tests/RagDotNet.Evaluation.Tests.csproj" />
+    <Project Path="tests/RagDotNet.Hosting.Tests/RagDotNet.Hosting.Tests.csproj" />
     <Project Path="tests/RagDotNet.IntegrationTests/RagDotNet.IntegrationTests.csproj" />
     <Project Path="tests/RagDotNet.Keyword.Lucene.Tests/RagDotNet.Keyword.Lucene.Tests.csproj" />
     <Project Path="tests/RagDotNet.Ocr.Tests/RagDotNet.Ocr.Tests.csproj" />

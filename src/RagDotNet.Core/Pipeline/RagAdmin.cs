@@ -13,9 +13,9 @@ internal sealed class RagAdmin(RagEngine engine, IChatClient? chat = null) : IRa
         public ValueTask<AccessScope?> GetScopeAsync(CancellationToken cancellationToken) => new(scope);
     }
 
-    public IRagPipeline ForScope(AccessScope scope)
+    public IRagPipeline ForScope(AccessScope? scope)
     {
-        ArgumentNullException.ThrowIfNull(scope);
+        if (scope is null) return new RagPipeline(engine, accessScope: null, chat);
         engine.Scope.ValidateExplicit(scope);
         return new RagPipeline(engine, new FixedAccessScope(scope), chat);
     }

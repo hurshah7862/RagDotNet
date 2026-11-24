@@ -266,9 +266,29 @@ public class AdminAndModelSafetyTests
     public void ForScope_rejects_an_invalid_scope()
     {
         var admin = Partitioned(new InMemoryVectorStore()).BuildAdmin();
-        Assert.Throws<ArgumentNullException>(() => admin.ForScope(null!));
         Assert.Throws<ArgumentException>(() => admin.ForScope(new AccessScope(new Dictionary<string, string>())));
         Assert.Throws<ArgumentException>(() => admin.ForScope(new AccessScope(new Dictionary<string, string> { ["other"] = "a" })));
+    }
+
+    private sealed class ReadOnlyScope : IAccessScope
+    {
+        public ValueTask<AccessScope?> GetScopeAsync(CancellationToken cancellationToken) =>
+            new(TestScopes.Tenant("a", permissions: RagPermissions.Read));
+    }
+
+    [Fact]
+    public async Task ForScope_null_is_full_access_and_ignores_the_registered_scope()
+    {
+        var store = new InMemoryVectorStore();
+        var b = Partitioned(store).UseAccessScope(new ReadOnlyScope());
+        var admin = b.BuildAdmin();
+        await Assert.ThrowsAsync<RagAccessDeniedException>(() => b.Build().IngestAsync(Md("x", "alpha"), cancellationToken: Ct));
+
+        var full = admin.ForScope(null);
+        await full.IngestAsync(Md("d", "alpha beta gamma"), cancellationToken: Ct);
+
+        var hits = await full.RetrieveAsync("alpha", cancellationToken: Ct);
+        Assert.Equal("d", Assert.Single(hits).DocumentId);
     }
 
     [Fact]
