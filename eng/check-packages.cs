@@ -95,7 +95,12 @@ if (packages.TryGetValue("RagDotNet.Core", out var core))
         Fail(core.Id, $"version {core.Version}, expected {expectedVersion}");
     var shared = expectedVersion ?? core.Version;
     var dash = shared.IndexOf('-');
-    var preview = dash < 0 ? $"{shared}-preview" : $"{shared[..dash]}-preview.{shared[(dash + 1)..]}";
+    // The same rule as the preview targets in the Lucene and DataIngestion projects: a label that already starts with
+    // "preview" is kept as it is (v1.0.0-preview.1 gives 1.0.0-preview.1), any other label goes after "preview.".
+    var label = dash < 0 ? "" : shared[(dash + 1)..];
+    var preview = dash < 0 ? $"{shared}-preview"
+        : label.StartsWith("preview", StringComparison.Ordinal) ? shared
+        : $"{shared[..dash]}-preview.{label}";
     foreach (var p in packages.Values.Where(p => expectedIds.Contains(p.Id) && p.Id != core.Id))
     {
         var want = previewIds.Contains(p.Id) ? preview : shared;

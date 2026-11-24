@@ -29,6 +29,14 @@ jobs:
         with:
           fetch-depth: 0
 
+      # A published version can never be replaced, so only commits already on main are published.
+      - name: Check the tag is on main
+        run: |
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || {
+            echo "::error::Tag $GITHUB_REF_NAME is on a commit that is not on main; only commits on main are published."
+            exit 1
+          }
+
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json

@@ -25,10 +25,11 @@ git push origin v1.0.0
 
 Tag a commit on `main` whose CI run passed. The publish job then:
 
-1. builds and runs the unit tests, as CI does;
-2. packs every library under `src/`;
-3. checks the packages, including that their version matches the tag (`v1.0.0` must give `1.0.0`). A tag that MinVer did not pick up fails here, before anything is pushed;
-4. pushes the packages and their symbol packages (`.snupkg`) to nuget.org.
+1. checks the tagged commit is on `main`, and stops if it is not;
+2. builds and runs the unit tests, as CI does;
+3. packs every library under `src/`;
+4. checks the packages, including that their version matches the tag (`v1.0.0` must give `1.0.0`). A tag that MinVer did not pick up fails here, before anything is pushed;
+5. pushes the packages and their symbol packages (`.snupkg`) to nuget.org.
 
 nuget.org validates and indexes new packages, which takes a few minutes before they can be installed.
 
@@ -37,7 +38,7 @@ nuget.org validates and indexes new packages, which takes a few minutes before t
 ## Versions
 
 - MinVer computes the version from the latest `v*` tag reachable from the commit: `v1.2.0` gives `1.2.0`. Commits after a tag get a prerelease version such as `1.2.1-alpha.0.3`; untagged history gives `0.0.0-alpha.0.N`.
-- Every package has the same version, except that `RagDotNet.Keyword.Lucene` and `RagDotNet.DataIngestion` always add a preview label, because the libraries they are built on (Lucene.NET 4.8, Microsoft.Extensions.DataIngestion) are prereleases: `v1.2.0` gives them `1.2.0-preview`, and `v1.2.0-rc.1` gives them `1.2.0-preview.rc.1`.
+- Every package has the same version, except that `RagDotNet.Keyword.Lucene` and `RagDotNet.DataIngestion` always add a preview label, because the libraries they are built on (Lucene.NET 4.8, Microsoft.Extensions.DataIngestion) are prereleases: `v1.2.0` gives them `1.2.0-preview`, and `v1.2.0-rc.1` gives them `1.2.0-preview.rc.1`. A label that already starts with `preview` is kept: `v1.2.0-preview.1` gives every package `1.2.0-preview.1`.
 - A prerelease tag such as `v1.0.0-rc.1` publishes prerelease packages; people get them only when they ask for prereleases.
 
 ## What the package check catches
