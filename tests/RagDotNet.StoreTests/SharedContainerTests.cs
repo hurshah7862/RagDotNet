@@ -1,3 +1,4 @@
+using Microsoft.Data.SqlClient;
 using Npgsql;
 using Qdrant.Client;
 using StackExchange.Redis;
@@ -9,7 +10,7 @@ public sealed class SharedContainerTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    public static TheoryData<string> Stores => new("PgVector", "Qdrant", "Redis");
+    public static TheoryData<string> Stores => new("PgVector", "Qdrant", "Redis", "SqlServer");
 
     private static (Func<Task<(string? Endpoint, string? UnavailableReason)>> Get, Func<string, Task<(string? Endpoint, string? UnavailableReason)>> Start, Func<int> Starts) Container(string store) =>
         store switch
@@ -17,6 +18,7 @@ public sealed class SharedContainerTests
             "PgVector" => (Containers.Postgres.GetAsync, image => Containers.Postgres.StartAsync(image), () => Containers.Postgres.Starts),
             "Qdrant" => (Containers.Qdrant.GetAsync, image => Containers.Qdrant.StartAsync(image), () => Containers.Qdrant.Starts),
             "Redis" => (Containers.Redis.GetAsync, image => Containers.Redis.StartAsync(image), () => Containers.Redis.Starts),
+            "SqlServer" => (Containers.SqlServer.GetAsync, image => Containers.SqlServer.StartAsync(image), () => Containers.SqlServer.Starts),
             _ => throw new ArgumentOutOfRangeException(nameof(store)),
         };
 
@@ -63,6 +65,7 @@ public sealed class SharedContainerTests
         Assert.Equal(1, container.Starts());
         var version = await ServiceVersionAsync(store, first.Endpoint!);
         if (store == "Redis") Assert.StartsWith("7.4", version);
+        else if (store == "SqlServer") Assert.Equal("17 1", version); // SQL Server 2025, with Full-Text Search
         else Assert.Equal(store == "PgVector" ? "0.8.7" : "1.20.1", version);
     }
 
@@ -72,6 +75,17 @@ public sealed class SharedContainerTests
         {
             await using var redis = await ConnectionMultiplexer.ConnectAsync(endpoint);
             return redis.GetServer(redis.GetEndPoints()[0]).Version.ToString();
+        }
+
+        if (store == "SqlServer")
+        {
+            await using var sql = new SqlConnection(endpoint);
+            await sql.OpenAsync(Ct);
+            await using var query = new SqlCommand(
+                "SELECT CAST(SERVERPROPERTY('ProductMajorVersion') AS int), CAST(FULLTEXTSERVICEPROPERTY('IsFullTextInstalled') AS int)", sql);
+            await using var reader = await query.ExecuteReaderAsync(Ct);
+            await reader.ReadAsync(Ct);
+            return $"{reader.GetInt32(0)} {reader.GetInt32(1)}";
         }
 
         if (store == "Qdrant")

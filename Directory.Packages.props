@@ -40,6 +40,8 @@
     <PackageVersion Include="CommunityToolkit.VectorData.Qdrant" Version="1.0.1" />
     <PackageVersion Include="Testcontainers.Redis" Version="4.16.0" />
     <PackageVersion Include="CommunityToolkit.VectorData.Redis" Version="1.0.0" />
+    <PackageVersion Include="Testcontainers.MsSql" Version="4.16.0" />
+    <PackageVersion Include="CommunityToolkit.VectorData.SqlServer" Version="1.0.1" />
     <PackageVersion Include="OllamaSharp" Version="5.5.0" />
   </ItemGroup>
 </Project>

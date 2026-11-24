@@ -1,5 +1,8 @@
+using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
+using Microsoft.Data.SqlClient;
 using RagDotNet.StoreTests.Infrastructure;
+using Testcontainers.MsSql;
 using Testcontainers.PostgreSql;
 using Testcontainers.Qdrant;
 using Testcontainers.Redis;
@@ -17,7 +20,9 @@ namespace RagDotNet.StoreTests.Infrastructure;
 /// <param name="image">The pinned image.</param>
 /// <param name="build">Builds (does not start) a container from an image.</param>
 /// <param name="ready">Runs after start: prepares the service and returns the endpoint the store connects to.</param>
-internal sealed class SharedContainer<TContainer>(string store, string image, Func<string, TContainer> build, Func<TContainer, Task<string>> ready)
+/// <param name="prepare">Turns the requested image into the one to run, such as by building on it; by default, the image itself.</param>
+internal sealed class SharedContainer<TContainer>(
+    string store, string image, Func<string, TContainer> build, Func<TContainer, Task<string>> ready, Func<string, Task<string>>? prepare = null)
     : IAsyncDisposable
     where TContainer : IContainer
 {
@@ -50,7 +55,8 @@ internal sealed class SharedContainer<TContainer>(string store, string image, Fu
         TContainer? container = default;
         try
         {
-            container = build(fromImage);
+            var runImage = prepare is null ? fromImage : await prepare(fromImage).ConfigureAwait(false);
+            container = build(runImage);
             await container.StartAsync().ConfigureAwait(false);
             var endpoint = await ready(container).ConfigureAwait(false);
 
@@ -107,6 +113,34 @@ internal static class Containers
         "redis/redis-stack-server:7.4.0-v8",
         image => new RedisBuilder(image).Build(),
         container => Task.FromResult(container.GetConnectionString()));
+
+    public static readonly SharedContainer<MsSqlContainer> SqlServer = new(
+        "SqlServer",
+        "mcr.microsoft.com/mssql/server:2025-CU11-ubuntu-24.04",
+        image => new MsSqlBuilder(image).Build(),
+        async container =>
+        {
+            // The container's connection string points at master, where full-text indexes are not allowed.
+            var created = await container.ExecScriptAsync("CREATE DATABASE rag;").ConfigureAwait(false);
+            if (created.ExitCode != 0)
+                throw new InvalidOperationException($"CREATE DATABASE rag failed: {created.Stderr}");
+            return new SqlConnectionStringBuilder(container.GetConnectionString()) { InitialCatalog = "rag" }.ConnectionString;
+        },
+        WithFullTextSearchAsync);
+
+    /// <summary>Builds Infrastructure/SqlServer/Dockerfile on <paramref name="baseImage"/>: SQL Server with Full-Text Search.</summary>
+    private static async Task<string> WithFullTextSearchAsync(string baseImage)
+    {
+        var image = new ImageFromDockerfileBuilder()
+            .WithDockerfileDirectory(Path.Combine(AppContext.BaseDirectory, "Infrastructure", "SqlServer"))
+            .WithDockerfile("Dockerfile")
+            .WithBuildArgument("BASE_IMAGE", baseImage)
+            .WithName("ragdotnet-mssql-fts:2025-cu11")
+            .WithCleanUp(false) // keep the built image, so a later run reuses Docker's layer cache instead of rebuilding
+            .Build();
+        await image.CreateAsync().ConfigureAwait(false);
+        return image.FullName;
+    }
 }
 
 /// <summary>Stops every started container at the end of the run. (Testcontainers' reaper covers a crash.)</summary>
@@ -117,5 +151,6 @@ public sealed class ContainerLifetime : IAsyncDisposable
         await Containers.Postgres.DisposeAsync().ConfigureAwait(false);
         await Containers.Qdrant.DisposeAsync().ConfigureAwait(false);
         await Containers.Redis.DisposeAsync().ConfigureAwait(false);
+        await Containers.SqlServer.DisposeAsync().ConfigureAwait(false);
     }
 }
