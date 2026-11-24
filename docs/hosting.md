@@ -51,9 +51,13 @@ var jobId = await queue.EnqueueAsync(DocumentSource.FromFile("/data/handbook.pdf
 
 ### Retries
 
-A job gets up to `MaxAttempts` attempts (default 3) when its errors are transient. It waits `RetryDelay` before the first retry (default 1 second), and twice as long before each later one.
+A job gets up to `MaxAttempts` attempts (default 3) when its errors are transient. It waits `RetryDelay` before the first retry (default 1 second), and twice as long before each later one, up to one day.
 
-These errors are permanent, so the job fails after one attempt: `UnsupportedDocumentException`, `DocumentReadException`, `EmbeddingModelMismatchException`, `RagAccessDeniedException`, `ArgumentException`, `InvalidOperationException` (such as a store's settings being rejected), `FileNotFoundException`, `DirectoryNotFoundException` and `UnauthorizedAccessException`. Everything else is retried, so a provider's rate limit, a timeout or a store that is briefly down are retried without RagDotNet knowing each provider's exception types. Set `IsTransient` to decide yourself.
+These errors are permanent, so the job fails after one attempt: `UnsupportedDocumentException`, `DocumentReadException`, `EmbeddingModelMismatchException`, `RagAccessDeniedException`, `ArgumentException`, `InvalidOperationException` (such as a store's settings being rejected), `FileNotFoundException`, `DirectoryNotFoundException` and `UnauthorizedAccessException`. Everything else is retried, so a provider's rate limit, a timeout or a store that is briefly down are retried without RagDotNet knowing each provider's exception types. Set `IsTransient` to decide yourself; if it throws, the job fails with its original error.
+
+### The same document enqueued twice
+
+A job captures the document's content, title, metadata and scope when it is enqueued; changing them afterwards does not change what runs. Two jobs for the same document (the same id, in the same partition) never interleave, and the store ends with one document. A job that has to retry does not overwrite a newer upload: if a job for the same document, enqueued later, has already succeeded, the older job ends `Cancelled` with an `Error` naming the newer one. Two first attempts that start at the same moment (with `Concurrency` above 1) are not ordered, so the earlier upload can still finish last; set `Concurrency = 1` when strict per-document order matters.
 
 ## Pause and resume
 

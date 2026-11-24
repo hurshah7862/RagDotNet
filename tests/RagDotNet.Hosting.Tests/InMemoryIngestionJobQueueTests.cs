@@ -3,6 +3,9 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
+using System.Runtime.CompilerServices;
+using RagDotNet.Access;
+using RagDotNet.Filtering;
 using RagDotNet.Configuration;
 using RagDotNet.Core.Tests.Fakes;
 using RagDotNet.Documents;
@@ -58,13 +61,15 @@ public sealed class InMemoryIngestionJobQueueTests : IAsyncLifetime
 
     private sealed record Setup(InMemoryIngestionJobQueue Queue, IRagAdmin Admin);
 
-    private async Task<Setup> StartAsync(IEmbeddingGenerator<string, Embedding<float>>? embedder = null, Action<IngestionQueueOptions>? configure = null)
+    private async Task<Setup> StartAsync(
+        IEmbeddingGenerator<string, Embedding<float>>? embedder = null, Action<IngestionQueueOptions>? configure = null, Action<RagOptions>? rag = null)
     {
-        var admin = new RagPipelineBuilder()
+        var builder = new RagPipelineBuilder()
             .UseEmbeddingGenerator(embedder ?? new FakeEmbeddingGenerator(64))
             .UseChatClient(new FakeChatClient())
-            .UseVectorStore(new InMemoryVectorStore(), "test", 64)
-            .BuildAdmin();
+            .UseVectorStore(new InMemoryVectorStore(), "test", 64);
+        if (rag is not null) builder.Configure(rag);
+        var admin = builder.BuildAdmin();
         var options = new IngestionQueueOptions { TempDirectory = _dir };
         configure?.Invoke(options);
         var wrapped = Options.Create(options);
@@ -396,5 +401,96 @@ public sealed class InMemoryIngestionJobQueueTests : IAsyncLifetime
 
         await Assert.ThrowsAsync<ArgumentException>(() => queue.EnqueueAsync(Job("j1", "e"), Ct).AsTask());
         Assert.Single(TempFiles(queue));
+    }
+
+    [Fact]
+    public async Task Throwing_IsTransient_fails_the_job_and_keeps_the_worker()
+    {
+        var (queue, _) = await StartAsync(new FlakyEmbeddingGenerator(1), o =>
+        {
+            o.Concurrency = 1;
+            o.IsTransient = _ => throw new InvalidCastException("bad classifier");
+        });
+
+        await queue.EnqueueAsync(Job("j1", "d1"), Ct);
+        var failed = await WaitForStateAsync(queue, "j1", IngestionJobState.Failed);
+        Assert.Equal(1, failed.Attempts);
+        await queue.EnqueueAsync(Job("j2", "d2"), Ct);
+
+        await WaitForStateAsync(queue, "j2", IngestionJobState.Succeeded); // the only worker is still alive
+    }
+
+    [Fact]
+    public async Task Retry_delay_is_capped_at_one_day()
+    {
+        var (queue, _) = await StartAsync(new FlakyEmbeddingGenerator(1), o => o.RetryDelay = TimeSpan.FromDays(60));
+
+        await queue.EnqueueAsync(Job("j1", "d"), Ct);
+        await WaitForStateAsync(queue, "j1", IngestionJobState.Queued, s => s.Attempts == 1);
+        _time.Advance(TimeSpan.FromDays(1));
+
+        await WaitForStateAsync(queue, "j1", IngestionJobState.Succeeded);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static async Task<WeakReference> EnqueueUnreferencedStreamAsync(InMemoryIngestionJobQueue queue)
+    {
+        var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("# Doc\n\nalpha beta gamma"));
+        await queue.EnqueueAsync(new IngestionJob("j1", new DocumentSource("d", stream, "d.md"), null), Ct);
+        return new WeakReference(stream);
+    }
+
+    [Fact]
+    public async Task Queue_does_not_keep_the_callers_stream()
+    {
+        var (queue, _) = await StartAsync();
+
+        var stream = await EnqueueUnreferencedStreamAsync(queue);
+        await WaitForStateAsync(queue, "j1", IngestionJobState.Succeeded);
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+
+        Assert.False(stream.IsAlive);
+    }
+
+    [Fact]
+    public async Task Metadata_and_scope_are_captured_at_enqueue()
+    {
+        var (queue, admin) = await StartAsync(rag: o =>
+        {
+            o.Metadata.Add<string>("tenant");
+            o.Metadata.Add<string>("tag");
+            o.PartitionKeys.Add("tenant");
+        });
+        await queue.PauseAsync(Ct);
+        var partition = new Dictionary<string, string> { ["tenant"] = "a" };
+        var source = Md("d", "alpha beta gamma", new Dictionary<string, object?> { ["tag"] = "x" });
+
+        await queue.EnqueueAsync(new IngestionJob("j1", source, new AccessScope(partition)), Ct);
+        partition["tenant"] = "b";
+        source.Metadata["tag"] = "y";
+        await queue.ResumeAsync(Ct);
+
+        await WaitForStateAsync(queue, "j1", IngestionJobState.Succeeded);
+        var hits = await admin.ForScope(TestScopes.Tenant("a", RagFilter.Eq("tag", "x"))).RetrieveAsync("alpha", cancellationToken: Ct);
+        Assert.Equal("d", Assert.Single(hits).DocumentId);
+    }
+
+    [Fact]
+    public async Task Retry_does_not_overwrite_a_newer_upload()
+    {
+        var (queue, admin) = await StartAsync(new FlakyEmbeddingGenerator(1));
+
+        await queue.EnqueueAsync(Job("v1", "d", "alpha one"), Ct);
+        await WaitForStateAsync(queue, "v1", IngestionJobState.Queued, s => s.Attempts == 1); // failed once, waiting to retry
+        await queue.EnqueueAsync(Job("v2", "d", "bravo two"), Ct);
+        await WaitForStateAsync(queue, "v2", IngestionJobState.Succeeded);
+        _time.Advance(TimeSpan.FromSeconds(1));
+
+        var v1 = await WaitForStateAsync(queue, "v1", IngestionJobState.Cancelled);
+        Assert.Contains("v2", v1.Error);
+        var hit = Assert.Single(await admin.ForScope(null).RetrieveAsync("bravo", cancellationToken: Ct));
+        Assert.Contains("bravo", hit.Text);
     }
 }
