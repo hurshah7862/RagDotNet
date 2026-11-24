@@ -9,7 +9,7 @@ RagDotNet works with any [Microsoft.Extensions.VectorData](https://learn.microso
 | PostgreSQL (pgvector) | `CommunityToolkit.VectorData.PgVector` | String, Guid | Native (PostgreSQL full-text search) | Tested |
 | Qdrant | `CommunityToolkit.VectorData.Qdrant` | Guid only | Native (Qdrant full-text index) | Tested |
 | Redis (Redis Stack) | `CommunityToolkit.VectorData.Redis` | String, Guid | In-memory keyword index | Tested |
-| SQL Server 2025 | `CommunityToolkit.VectorData.SqlServer` | | | Coming in stage 8 |
+| SQL Server 2025 | `CommunityToolkit.VectorData.SqlServer` | Guid only | Native (SQL Server full-text search) | Tested |
 
 Other connectors (Weaviate, Azure AI Search, Cosmos DB and more) may work but are not tested.
 
@@ -20,8 +20,11 @@ Some stores need settings different from the defaults. Each store's settings are
 | Store | Setting |
 |---|---|
 | Qdrant | `RagOptions.KeyType = RagKeyType.Guid` (required) |
+| SQL Server | `RagOptions.KeyType = RagKeyType.Guid` and `RagOptions.DistanceFunction = DistanceFunction.CosineDistance` (both required) |
 
-The other tested stores work with the defaults. Set them when you pick the store. If a setting is wrong, RagDotNet fails at startup, or at the latest on the first call to the store, with an error that names the setting to change. It does not detect the store or change its defaults for you.
+The other tested stores work with the defaults. Set them when you pick the store. It does not detect the store or change its defaults for you.
+
+If a setting is wrong, RagDotNet fails when the pipeline is built, or at the latest on the first call to the store, before anything is written. The error is an `InvalidOperationException` that starts with "The vector store rejected RagDotNet's '<collection>' collection (key type ..., distance ..., ... dimensions)", carries the store's own error, and names `RagOptions.KeyType` and `RagOptions.DistanceFunction`. On that first call RagDotNet checks that both collections exist, creates the missing ones and runs a one-result search on the document list, which is where a store rejects an unsupported distance function. If the store rejects the settings, RagDotNet deletes the collections it created in that call, so nothing is left behind; collections that already existed are never touched. A store that cannot be reached fails with its own error, unchanged.
 
 `RagOptions.DistanceFunction` applies to both of RagDotNet's collections: the chunks and the document list.
 
@@ -114,6 +117,39 @@ Known differences:
 - Redis compares numbers as doubles, so `long` metadata beyond 2^53 (about 9 × 10^15) can compare inexactly in filters.
 - A filter on an empty string (`RagFilter.Eq("tenant", "")`) fails with Redis's own error, which mentions `INDEXEMPTY`: Redis cannot query empty strings in an indexed field.
 
+## SQL Server
+
+Use `CommunityToolkit.VectorData.SqlServer` with SQL Server 2025, or Azure SQL Database, which have the `vector` type.
+
+```csharp
+var rag = new RagPipelineBuilder()
+    // ...
+    .UseVectorStore(new SqlServerVectorStore(connectionString), "docs", dimensions: 768)
+    .Configure(o =>
+    {
+        o.KeyType = RagKeyType.Guid;                             // required on SQL Server
+        o.DistanceFunction = DistanceFunction.CosineDistance;    // required on SQL Server
+    })
+    .Build();
+```
+
+Prerequisites:
+
+- **Full-Text Search must be installed.** The connector creates a full-text index on the chunk text and runs native hybrid search with `FREETEXTTABLE`. The official Linux container images leave it out; on Linux, install the `mssql-server-fts` package at the server's exact version. Without it, the first call fails with the "rejected RagDotNet's collection" error carrying SQL Server's "Full-Text Search is not installed". External content mode (`ContentStorageMode.External`) stores no text, so it needs no full-text index.
+- **Use a user database, not `master`.** Full-text indexes are not allowed in `master`, so set `Initial Catalog` (or `Database`) in the connection string.
+
+Settings:
+
+- **`RagOptions.KeyType = RagKeyType.Guid` is required.** The connector stores string keys as `NVARCHAR(4000)`, and SQL Server cannot use a key that long for the full-text index (900 bytes at most). With string keys, the first call fails with the "rejected RagDotNet's 'docs' collection (key type String, ...)" error and leaves no table behind.
+- **`RagOptions.DistanceFunction = DistanceFunction.CosineDistance` is required.** SQL Server does not support RagDotNet's default, `CosineSimilarity`. With the default, the first call fails with the "rejected RagDotNet's 'docs_documents' collection (..., distance CosineSimilarity, ...)" error, before anything is written.
+- RagDotNet creates its two tables (the collection name and `<name>_documents`) and the full-text index on first use.
+
+Known differences:
+
+- Hybrid search is native: SQL Server runs the vector query and a `FREETEXTTABLE` keyword query and fuses the two result lists. Word splitting and stemming follow SQL Server's full-text rules, so the order of keyword matches can differ slightly from the in-memory keyword index.
+- SQL Server fills the full-text index in the background. For a few seconds after an ingest, the keyword half of hybrid search can miss a new chunk; the vector half still finds it.
+- There is no separate keyword index, so `IRagAdmin.RebuildKeywordIndexAsync` throws `InvalidOperationException` saying keyword search is native.
+
 ## Collections from earlier builds
 
 RagDotNet's stored layout changed during stage 8, and collections created by an earlier build are not upgraded in place:
@@ -144,4 +180,4 @@ Run it with:
 dotnet test --project tests/RagDotNet.StoreTests
 ```
 
-The in-memory and SQLite stores need nothing and always run. Stores that need Docker (PostgreSQL, Qdrant and Redis) run only when `RAGDOTNET_INTEGRATION=1` is set, and are skipped with the reason when their dependency is missing. Each starts one container per test run through Testcontainers, from a pinned image (`pgvector/pgvector:0.8.7-pg17`, `qdrant/qdrant:v1.20.1`, `redis/redis-stack-server:7.4.0-v8`). With the repository's Docker build image, `./docker/sdk/run.ps1` mounts the Docker socket so these containers can start. In CI, `RAGDOTNET_STORES_REQUIRED=1` turns a store that cannot start into a failure, and a minimum test count fails the run if tests go missing.
+The in-memory and SQLite stores need nothing and always run. Stores that need Docker (PostgreSQL, Qdrant, Redis and SQL Server) run only when `RAGDOTNET_INTEGRATION=1` is set, and are skipped with the reason when their dependency is missing. Each starts one container per test run through Testcontainers, from a pinned image (`pgvector/pgvector:0.8.7-pg17`, `qdrant/qdrant:v1.20.1`, `redis/redis-stack-server:7.4.0-v8`). SQL Server's image is built by the test run from the pinned `mcr.microsoft.com/mssql/server:2025-CU11-ubuntu-24.04` plus Full-Text Search (`tests/RagDotNet.StoreTests/Infrastructure/SqlServer/Dockerfile`); the first build takes a few minutes, and later local runs reuse Docker's cache. With the repository's Docker build image, `./docker/sdk/run.ps1` mounts the Docker socket so these containers can start. In CI, `RAGDOTNET_STORES_REQUIRED=1` turns a store that cannot start into a failure, and a minimum test count fails the run if tests go missing.
