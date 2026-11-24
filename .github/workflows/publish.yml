@@ -1,0 +1,96 @@
+# Publishes every package to nuget.org when a v* tag is pushed (git tag v1.2.3 && git push origin v1.2.3).
+# Before the first tag, set up nuget.org trusted publishing and the NUGET_USER repository variable: see docs/publishing.md.
+name: Publish
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Test, pack and publish to nuget.org
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Add required reviewers to this environment in the repository settings to approve each release by hand.
+    environment: nuget
+    permissions:
+      contents: read
+      id-token: write # trusted publishing: nuget.org exchanges this job's OIDC token for a short-lived API key
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+      RAGDOTNET_TESSDATA: /usr/share/tesseract-ocr/5/tessdata
+    steps:
+      # Full history: MinVer needs the tag and its history to version the packages.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # A published version can never be replaced, so only commits already on main are published.
+      - name: Check the tag is on main
+        run: |
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || {
+            echo "::error::Tag $GITHUB_REF_NAME is on a commit that is not on main; only commits on main are published."
+            exit 1
+          }
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+          dotnet-version: 8.0.x
+
+      - name: Install Tesseract
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      # The same unit tests as the CI workflow's build-and-test job.
+      - name: Test Core (net8.0)
+        run: dotnet test --project tests/RagDotNet.Core.Tests --no-build --configuration Release --framework net8.0
+
+      - name: Test readers (net8.0)
+        run: dotnet test --project tests/RagDotNet.Readers.Tests --no-build --configuration Release --framework net8.0
+
+      - name: Test OCR (net8.0)
+        run: dotnet test --project tests/RagDotNet.Ocr.Tests --no-build --configuration Release --framework net8.0
+
+      - name: Test Lucene keyword index (net8.0)
+        run: dotnet test --project tests/RagDotNet.Keyword.Lucene.Tests --no-build --configuration Release --framework net8.0
+
+      - name: Test hosting (net8.0)
+        run: dotnet test --project tests/RagDotNet.Hosting.Tests --no-build --configuration Release --framework net8.0
+
+      - name: Test DataIngestion adapters (net8.0)
+        run: dotnet test --project tests/RagDotNet.DataIngestion.Tests --no-build --configuration Release --framework net8.0
+
+      - name: Test SQLite connector (net8.0)
+        run: dotnet test --project tests/RagDotNet.VectorData.Sqlite.Tests --no-build --configuration Release --framework net8.0
+
+      - name: Pack
+        run: dotnet pack --no-build --configuration Release --output artifacts/packages
+
+      # Fails before anything is pushed if the packages are not versioned from this tag (v1.2.3 -> 1.2.3).
+      - name: Check packages
+        run: dotnet run eng/check-packages.cs -- artifacts/packages --version "${GITHUB_REF_NAME#v}"
+
+      - name: Log in to nuget.org
+        id: login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ vars.NUGET_USER }}
+
+      # The .snupkg symbol packages are pushed with their packages. --skip-duplicate makes a re-run after a partial
+      # push safe: versions already on nuget.org are skipped instead of failing the job.
+      - name: Push to nuget.org
+        run: >-
+          dotnet nuget push "artifacts/packages/*.nupkg"
+          --api-key "${{ steps.login.outputs.NUGET_API_KEY }}"
+          --source https://api.nuget.org/v3/index.json
+          --skip-duplicate

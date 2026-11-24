@@ -6,3 +6,4 @@ TestResults/
 .claude/worktrees/
 .superpowers/
 src/RagDotNet.VectorData.Sqlite/natives/
+artifacts/

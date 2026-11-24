@@ -19,7 +19,10 @@ jobs:
       # The OCR tests read English with the distribution's Tesseract; on CI they fail rather than skip without it.
       RAGDOTNET_TESSDATA: /usr/share/tesseract-ocr/5/tessdata
     steps:
+      # Full history, so MinVer versions the packages from the latest v* tag.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # The SDK comes from global.json; the 8.0 runtime is needed to run the net8.0 tests.
       - uses: actions/setup-dotnet@v4
@@ -57,6 +60,20 @@ jobs:
 
       - name: Test SQLite connector (net8.0)
         run: dotnet test --project tests/RagDotNet.VectorData.Sqlite.Tests --no-build --configuration Release --framework net8.0
+
+      # Every library under src/ packs; the check fails on anything a nuget.org user would trip over.
+      - name: Pack
+        run: dotnet pack --no-build --configuration Release --output artifacts/packages
+
+      - name: Check packages
+        run: dotnet run eng/check-packages.cs -- artifacts/packages
+
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages
+          path: artifacts/packages/*
+          retention-days: 7
 
   store-tests:
     name: Store integration tests (net8.0)
