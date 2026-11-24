@@ -14,6 +14,8 @@
   <PropertyGroup Condition="$(MSBuildProjectDirectory.Contains('src\')) Or $(MSBuildProjectDirectory.Contains('src/'))">
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <IsPackable>true</IsPackable>
+    <!-- Every package carries its project's README.md as its nuget.org page. -->
+    <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageTags>rag;retrieval-augmented-generation;ai;llm;embeddings;vector-search;semantic-search;Microsoft.Extensions.AI</PackageTags>
     <PackageProjectUrl>https://github.com/hurshah7862/RagDotNet</PackageProjectUrl>
     <RepositoryUrl>https://github.com/hurshah7862/RagDotNet</RepositoryUrl>
@@ -34,5 +36,6 @@
     <PackageReference Include="Microsoft.CodeAnalysis.PublicApiAnalyzers" PrivateAssets="all" />
     <AdditionalFiles Include="PublicAPI.Shipped.txt" />
     <AdditionalFiles Include="PublicAPI.Unshipped.txt" />
+    <None Include="README.md" Pack="true" PackagePath="/" />
   </ItemGroup>
 </Project>

@@ -2,7 +2,6 @@
   <PropertyGroup>
     <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
     <Description>Lucene.NET keyword index for RagDotNet hybrid search: a persisted BM25 index on disk, for large corpora or when the in-memory index's startup build is too slow. Built on Lucene.NET 4.8 (prerelease), so this package is a preview.</Description>
-    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Lucene.Net" />
@@ -11,7 +10,6 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="RagDotNet.Keyword.Lucene.Tests" />
-    <None Include="README.md" Pack="true" PackagePath="/" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\RagDotNet.Core\RagDotNet.Core.csproj" />

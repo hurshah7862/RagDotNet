@@ -60,6 +60,18 @@ foreach (var p in packages.Values.Where(p => expectedIds.Contains(p.Id)))
     foreach (var ext in new[] { "dll", "xml" })
         if (!p.Has($"lib/{tfm}/{p.Id}.{ext}")) Fail(p.Id, $"no lib/{tfm}/{p.Id}.{ext}");
 
+    // nuget.org shows the packed README as the package page, and cannot resolve relative links in it.
+    if (p.Meta("readme")?.Value != "README.md") Fail(p.Id, "nuspec names no README.md");
+    if (p.Read("README.md") is not { } readme) Fail(p.Id, "no README.md in the package");
+    else
+        foreach (Match link in MarkdownLink().Matches(readme))
+        {
+            var target = link.Groups[1].Value;
+            if (!target.StartsWith("http://", StringComparison.Ordinal) && !target.StartsWith("https://", StringComparison.Ordinal)
+                && !target.StartsWith('#'))
+                Fail(p.Id, $"README link '{target}' is relative; nuget.org cannot resolve it");
+        }
+
     var stable = !p.Version.Contains('-');
     foreach (var (dependency, minimum) in p.Dependencies())
     {
@@ -97,13 +109,22 @@ Console.WriteLine(problems.Count == 0
     : $"{problems.Count} problem(s) in {packages.Count} package(s).");
 return problems.Count == 0 ? 0 : 1;
 
+partial class Program
+{
+    /// <summary>The target of a Markdown link or image: <c>](target)</c> or <c>](target "title")</c>.</summary>
+    [GeneratedRegex(@"\]\(\s*<?([^)\s>]+)")]
+    private static partial Regex MarkdownLink();
+}
+
 sealed partial class Package
 {
+    private readonly string _path;
     private readonly XElement _metadata;
     private readonly HashSet<string> _entries;
 
-    private Package(string id, string version, XElement metadata, HashSet<string> entries)
+    private Package(string path, string id, string version, XElement metadata, HashSet<string> entries)
     {
+        _path = path;
         Id = id;
         Version = version;
         _metadata = metadata;
@@ -123,12 +144,22 @@ sealed partial class Package
         using var stream = nuspec.Open();
         var metadata = XDocument.Load(stream).Root!.Elements().Single(e => e.Name.LocalName == "metadata");
         string Value(string name) => metadata.Elements().Single(e => e.Name.LocalName == name).Value;
-        return new Package(Value("id"), Value("version").Split('+')[0], metadata, entries);
+        return new Package(path, Value("id"), Value("version").Split('+')[0], metadata, entries);
     }
 
     public XElement? Meta(string name) => _metadata.Elements().FirstOrDefault(e => e.Name.LocalName == name);
 
     public bool Has(string entry) => _entries.Contains(entry);
+
+    /// <summary>The text of an entry, or null when the package does not have it.</summary>
+    public string? Read(string entry)
+    {
+        using var zip = ZipFile.OpenRead(_path);
+        var found = zip.Entries.FirstOrDefault(e => e.FullName.Replace('\\', '/') == entry);
+        if (found is null) return null;
+        using var reader = new StreamReader(found.Open());
+        return reader.ReadToEnd();
+    }
 
     /// <summary>Each dependency with the minimum version of its range.</summary>
     public IEnumerable<(string Id, string Minimum)> Dependencies() =>
