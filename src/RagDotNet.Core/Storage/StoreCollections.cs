@@ -25,9 +25,9 @@ internal static class StoreCollections
 
     /// <summary>
     /// Creates whichever of the two collections is missing, then proves the settings with a one-result search on the
-    /// document list, before anything is written. A store that cannot be reached fails at the existence check, unchanged.
-    /// If creation or the search rejects the settings, the collections created here are removed again and the error
-    /// names the settings; collections that already existed are never touched.
+    /// document list, before anything is written. A store that cannot be reached, or a transient fault, keeps its own error.
+    /// If creation or the search rejects the settings, the collections created here are removed again while they are
+    /// still empty, and the error names the settings; collections that already existed are never touched.
     /// </summary>
     public static async Task EnsureExistsAsync(
         VectorStoreCollection<object, Dictionary<string, object?>> chunks,
@@ -60,17 +60,36 @@ internal static class StoreCollections
             {
             }
         }
-        catch (Exception e) when (e is NotSupportedException or ArgumentException or VectorStoreException)
+        catch (Exception e) when ((e is NotSupportedException or ArgumentException or VectorStoreException) && !IsTransient(e))
         {
-            foreach (var collection in created) await TryDeleteAsync(collection).ConfigureAwait(false);
+            foreach (var collection in created) await TryDeleteIfEmptyAsync(collection).ConfigureAwait(false);
             throw Rejected(failing.Name, options, e);
         }
     }
 
-    private static async Task TryDeleteAsync(VectorStoreCollection<object, Dictionary<string, object?>> collection)
+    /// <summary>
+    /// A fault on the way to the store (a timeout, a dropped connection, an HTTP or socket error) is not a verdict on the
+    /// settings, so it keeps its own error and nothing is deleted; startup is retried on the next call.
+    /// </summary>
+    private static bool IsTransient(Exception e)
+    {
+        for (var x = e.InnerException; x is not null; x = x.InnerException)
+            if (x is TimeoutException or IOException or HttpRequestException or System.ComponentModel.Win32Exception)
+                return true;
+        return false;
+    }
+
+    /// <summary>
+    /// Removes a collection this call created, unless it holds a record: another process may have created it between the
+    /// existence check and this call's creation, and its data is never ours to delete. A collection that cannot be read
+    /// is kept too.
+    /// </summary>
+    private static async Task TryDeleteIfEmptyAsync(VectorStoreCollection<object, Dictionary<string, object?>> collection)
     {
         try
         {
+            await foreach (var _ in collection.GetAsync(r => (string)r["DocumentId"]! != "~", 1, cancellationToken: CancellationToken.None).ConfigureAwait(false))
+                return;
             await collection.EnsureCollectionDeletedAsync(CancellationToken.None).ConfigureAwait(false);
         }
 #pragma warning disable CA1031 // Cleanup after a rejection: the rejection is the error worth reporting.

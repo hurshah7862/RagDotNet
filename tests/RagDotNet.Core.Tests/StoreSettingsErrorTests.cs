@@ -134,4 +134,36 @@ public sealed class StoreSettingsErrorTests
         store.RejectSearch = null;
         Assert.Contains(await rag.RetrieveAsync("alpha", cancellationToken: Ct), c => c.DocumentId == "d");
     }
+
+    [Fact]
+    public async Task Startup_that_loses_a_creation_race_keeps_the_other_process_data()
+    {
+        var inner = new InMemoryVectorStore();
+        await Build(new FailingVectorStore(inner)).IngestAsync(TestRag.Md("d", "alpha"), cancellationToken: Ct);
+        var store = new FailingVectorStore(inner)
+        {
+            ReportMissing = true,
+            FailEnsureExists = new VectorStoreException("Call to vector store failed.", new InvalidOperationException("There is already an object named 'docs'.")),
+        };
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => Build(store).IngestAsync(TestRag.Md("e", "beta"), cancellationToken: Ct));
+
+        Assert.True(await inner.CollectionExistsAsync("docs", Ct));
+        Assert.True(await inner.CollectionExistsAsync("docs_documents", Ct));
+        Assert.Contains(await Build(new FailingVectorStore(inner)).RetrieveAsync("alpha", cancellationToken: Ct), c => c.DocumentId == "d");
+    }
+
+    [Fact]
+    public async Task Transient_fault_during_startup_is_not_reworded()
+    {
+        foreach (var cause in new Exception[] { new TimeoutException("timed out"), new IOException("connection reset"), new HttpRequestException("503") })
+        {
+            var fault = new VectorStoreException("Call to vector store failed.", cause);
+            var store = new FailingVectorStore(new InMemoryVectorStore()) { RejectSearch = fault };
+
+            var e = await Assert.ThrowsAnyAsync<Exception>(() => Build(store).IngestAsync(TestRag.Md("d", "alpha"), cancellationToken: Ct));
+
+            Assert.Same(fault, e);
+        }
+    }
 }

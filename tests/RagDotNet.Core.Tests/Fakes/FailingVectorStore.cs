@@ -45,6 +45,9 @@ public sealed class FailingVectorStore(VectorStore inner) : VectorStore
     /// <summary>When set, asking whether a collection exists throws this, as a store that cannot be reached does.</summary>
     public Exception? FailCollectionExists { get; set; }
 
+    /// <summary>When set, collections report that they do not exist, as they did a moment before another process created them.</summary>
+    public bool ReportMissing { get; set; }
+
     /// <summary>When set, enumerating any vector search throws this, as a store that rejects the distance function does.</summary>
     public Exception? RejectSearch { get; set; }
 
@@ -75,7 +78,9 @@ public sealed class FailingVectorStore(VectorStore inner) : VectorStore
         public override string Name => c.Name;
 
         public override Task<bool> CollectionExistsAsync(CancellationToken cancellationToken = default) =>
-            owner.FailCollectionExists is { } failure ? Task.FromException<bool>(failure) : c.CollectionExistsAsync(cancellationToken);
+            owner.FailCollectionExists is { } failure ? Task.FromException<bool>(failure)
+            : owner.ReportMissing ? Task.FromResult(false)
+            : c.CollectionExistsAsync(cancellationToken);
 
         public override Task EnsureCollectionExistsAsync(CancellationToken cancellationToken = default) =>
             owner.FailEnsureExists is { } failure && (owner.FailEnsureExistsOnly is null || owner.FailEnsureExistsOnly == c.Name)
