@@ -4,7 +4,7 @@
 
 RagDotNet is a .NET library for retrieval-augmented generation (RAG). It ingests documents, chunks and embeds them into a vector store, and answers questions with cited sources, built on Microsoft.Extensions.AI and Microsoft.Extensions.VectorData.
 
-> **Under development.** RagDotNet is not released yet. The public API can still change between commits, stored data may need re-ingesting after an update, and no package is published to NuGet. Core ingestion, hybrid retrieval and reranking, cited answers, chat and query rewriting, three chunkers, PDF, DOCX and HTML readers, and OCR work today; more vector stores and the Microsoft.Extensions.DataIngestion adapters are still to come. Feedback and issues are welcome.
+> **Under development.** RagDotNet is not released yet. The public API can still change between commits, stored data may need re-ingesting after an update, and no package is published to NuGet. Core ingestion, hybrid retrieval and reranking, cited answers, chat and query rewriting, three chunkers, PDF, DOCX and HTML readers, and OCR work today; more vector stores are still to come. Feedback and issues are welcome.
 
 ## Why this exists
 
@@ -27,7 +27,7 @@ RagDotNet is for .NET developers who want an application to answer questions fro
 | Hybrid search and reranking | Works |
 | More vector stores | In progress ([vector stores](docs/vector-stores.md)) |
 | Background ingestion queue (`RagDotNet.Hosting`) | Works ([hosting](docs/hosting.md)) |
-| Microsoft.Extensions.DataIngestion adapters | Planned |
+| Microsoft.Extensions.DataIngestion adapters (`RagDotNet.DataIngestion`, preview) | Works ([dataingestion](docs/dataingestion.md)) |
 | NuGet packages | Planned |
 
 ## Install
@@ -241,6 +241,18 @@ var status = await queue.GetStatusAsync(jobId); // Queued, Running, Succeeded, F
 ```
 
 Jobs run under the caller's access scope, captured at enqueue, with retries on transient errors, cancel, and pause and resume. **The default queue keeps jobs in memory, so unfinished jobs are lost when the app stops**; a durable queue plugs in through `IIngestionJobQueue`. [docs/hosting.md](docs/hosting.md) has the details.
+
+## Microsoft.Extensions.DataIngestion
+
+`RagDotNet.DataIngestion` (a preview, like Microsoft's library) wraps Microsoft.Extensions.DataIngestion readers and chunkers as RagDotNet ones:
+
+```csharp
+services.AddRag(o => { /* ... */ })
+    .AddDataIngestionReader(_ => new MarkdownReader(), [".md"], ["text/markdown"])
+    .AddDataIngestionChunker("ms-header", "1", (_, o) => new HeaderChunker(DataIngestionChunker.CreateOptions(o)));
+```
+
+[docs/dataingestion.md](docs/dataingestion.md) covers how documents map, and what Microsoft's reader and chunkers leave out.
 
 ## Caching
 
