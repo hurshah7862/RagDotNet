@@ -1,6 +1,7 @@
 using RagDotNet.Chunking;
 using RagDotNet.Core.Tests.Fakes;
 using RagDotNet.Ingestion;
+using RagDotNet.Keyword;
 using RagDotNet.Pipeline;
 using RagDotNet.Retrieval;
 
@@ -91,7 +92,9 @@ public abstract partial class StoreSuite<TFixture>
     public async Task Listing_sees_every_document_across_pages()
     {
         // Core lists documents 100 at a time; 201 needs three pages.
+        var keywords = new InMemoryKeywordIndex();
         var builder = Builder();
+        if (!Fixture.NativeHybrid) builder.UseKeywordIndex(keywords);
         var rag = builder.Build();
         var admin = builder.BuildAdmin();
         var sources = Enumerable.Range(0, 201).Select(i => Md($"doc{i:000}", $"document number u{i:000}")).ToList();
@@ -105,16 +108,29 @@ public abstract partial class StoreSuite<TFixture>
         Assert.Equal(201, reindex.DocumentsReindexed + reindex.DocumentsSkipped);
         Assert.Equal(sources.Select(s => s.DocumentId).Order(), progress.Ids.Order());
 
-        // The keyword index is rebuilt from the listing too; with native hybrid search there is no index to rebuild.
+        // The keyword index is rebuilt from the listing too; with native hybrid search there is no index to rebuild. The
+        // index is emptied first, so everything in it afterwards came from the listing, and it is asked directly: hybrid
+        // retrieval would also depend on the vector search, which is approximate on some stores (Redis uses HNSW) and can
+        // miss the fake embedder's few exact neighbours.
         if (!Fixture.NativeHybrid)
         {
+            await keywords.RebuildAsync(NoChunks(), Ct);
             await admin.RebuildKeywordIndexAsync(Ct);
-            foreach (var i in new[] { 0, 100, 200 })
+
+            Assert.Equal(201, await keywords.CountAsync(Ct));
+            for (var i = 0; i < 201; i++)
             {
-                var hits = await rag.RetrieveAsync($"u{i:000}", new RetrievalOptions { Hybrid = HybridMode.On }, Ct);
-                Assert.Equal($"doc{i:000}", hits[0].DocumentId);
+                var hits = await keywords.SearchAsync($"u{i:000}", KeywordFilter.All, 1, Ct);
+                Assert.Equal($"doc{i:000}:0", Assert.Single(hits).ChunkKey);
             }
         }
+    }
+
+#pragma warning disable CS1998 // An empty async stream.
+    private static async IAsyncEnumerable<KeywordChunk> NoChunks()
+#pragma warning restore CS1998
+    {
+        yield break;
     }
 
     /// <summary>Collects reindex progress synchronously (Progress&lt;T&gt; would post to the thread pool).</summary>
