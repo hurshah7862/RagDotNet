@@ -8,3 +8,6 @@ tests/RagDotNet.Evaluation/Dataset/**/*.html text eol=lf
 *.pdf binary
 *.docx binary
 *.png binary
+
+# Dockerfiles run on Linux: keep LF so line continuations survive a Windows checkout.
+Dockerfile text eol=lf

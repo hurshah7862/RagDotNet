@@ -17,6 +17,12 @@
     <PackageReference Include="Testcontainers.Qdrant" />
     <PackageReference Include="CommunityToolkit.VectorData.Redis" />
     <PackageReference Include="Testcontainers.Redis" />
+    <PackageReference Include="CommunityToolkit.VectorData.SqlServer" />
+    <PackageReference Include="Testcontainers.MsSql" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- SQL Server with Full-Text Search, built by the test run (Containers.SqlServer). -->
+    <None Include="Infrastructure\SqlServer\Dockerfile" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />

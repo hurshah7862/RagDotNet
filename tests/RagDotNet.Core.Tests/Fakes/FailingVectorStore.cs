@@ -39,6 +39,18 @@ public sealed class FailingVectorStore(VectorStore inner) : VectorStore
     /// <summary>When set, creating a collection throws this.</summary>
     public Exception? FailEnsureExists { get; set; }
 
+    /// <summary>When set, <see cref="FailEnsureExists"/> applies only to the collection with this name.</summary>
+    public string? FailEnsureExistsOnly { get; set; }
+
+    /// <summary>When set, asking whether a collection exists throws this, as a store that cannot be reached does.</summary>
+    public Exception? FailCollectionExists { get; set; }
+
+    /// <summary>When set, collections report that they do not exist, as they did a moment before another process created them.</summary>
+    public bool ReportMissing { get; set; }
+
+    /// <summary>When set, enumerating any vector search throws this, as a store that rejects the distance function does.</summary>
+    public Exception? RejectSearch { get; set; }
+
     public override VectorStoreCollection<TKey, TRecord> GetCollection<TKey, TRecord>(string name, VectorStoreCollectionDefinition? definition = null) =>
         inner.GetCollection<TKey, TRecord>(name, definition);
 
@@ -53,7 +65,7 @@ public sealed class FailingVectorStore(VectorStore inner) : VectorStore
         inner.ListCollectionNamesAsync(cancellationToken);
 
     public override Task<bool> CollectionExistsAsync(string name, CancellationToken cancellationToken = default) =>
-        inner.CollectionExistsAsync(name, cancellationToken);
+        FailCollectionExists is { } failure ? Task.FromException<bool>(failure) : inner.CollectionExistsAsync(name, cancellationToken);
 
     public override Task EnsureCollectionDeletedAsync(string name, CancellationToken cancellationToken = default) =>
         inner.EnsureCollectionDeletedAsync(name, cancellationToken);
@@ -65,10 +77,15 @@ public sealed class FailingVectorStore(VectorStore inner) : VectorStore
     {
         public override string Name => c.Name;
 
-        public override Task<bool> CollectionExistsAsync(CancellationToken cancellationToken = default) => c.CollectionExistsAsync(cancellationToken);
+        public override Task<bool> CollectionExistsAsync(CancellationToken cancellationToken = default) =>
+            owner.FailCollectionExists is { } failure ? Task.FromException<bool>(failure)
+            : owner.ReportMissing ? Task.FromResult(false)
+            : c.CollectionExistsAsync(cancellationToken);
 
         public override Task EnsureCollectionExistsAsync(CancellationToken cancellationToken = default) =>
-            owner.FailEnsureExists is { } failure ? Task.FromException(failure) : c.EnsureCollectionExistsAsync(cancellationToken);
+            owner.FailEnsureExists is { } failure && (owner.FailEnsureExistsOnly is null || owner.FailEnsureExistsOnly == c.Name)
+                ? Task.FromException(failure)
+                : c.EnsureCollectionExistsAsync(cancellationToken);
 
         public override Task EnsureCollectionDeletedAsync(CancellationToken cancellationToken = default) => c.EnsureCollectionDeletedAsync(cancellationToken);
 
@@ -136,6 +153,7 @@ public sealed class FailingVectorStore(VectorStore inner) : VectorStore
 
         public override async IAsyncEnumerable<VectorSearchResult<Dictionary<string, object?>>> SearchAsync<TInput>(TInput searchValue, int top, VectorSearchOptions<Dictionary<string, object?>>? options = null, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
+            if (owner.RejectSearch is { } rejection) throw rejection;
             await foreach (var hit in c.SearchAsync(searchValue, top, options, cancellationToken).ConfigureAwait(false))
             {
                 var record = hit.Record;

@@ -74,12 +74,13 @@ jobs:
         run: dotnet build tests/RagDotNet.StoreTests --configuration Release
 
       # The floor fails the run if tests go missing; raise it whenever a slice adds a store, a binding or a test.
-      # The floor counts tests that run, not skipped ones. Today: 3 gate tests + 6 container tests (the 3 integration-off
-      # checks skip here) + 39 suite tests x 10 bindings (InMemory String/Guid, NativeHybridFake String, SQLite String/Guid,
-      # PgVector String/Guid, Qdrant Guid, Redis String/Guid) + 1 Qdrant settings test. PgVector, Qdrant and Redis each
-      # start one container through Testcontainers.
+      # The floor counts tests that run, not skipped ones. Today: 3 gate tests + 8 container tests (the 4 integration-off
+      # checks skip here) + 39 suite tests x 11 bindings (InMemory String/Guid, NativeHybridFake String, SQLite String/Guid,
+      # PgVector String/Guid, Qdrant Guid, Redis String/Guid, SqlServer Guid) + 1 Qdrant settings test + 2 SQL Server
+      # settings tests. PgVector, Qdrant, Redis and SQL Server each start one container through Testcontainers; the SQL
+      # Server image (the pinned 2025 image plus Full-Text Search) is built in the job, which takes a few minutes.
       - name: Test stores (net8.0)
-        run: dotnet test --project tests/RagDotNet.StoreTests --no-build --configuration Release --framework net8.0 --minimum-expected-tests 400
+        run: dotnet test --project tests/RagDotNet.StoreTests --no-build --configuration Release --framework net8.0 --minimum-expected-tests 443
 
   windows:
     name: Windows unit and OCR tests (net8.0)

@@ -12,7 +12,7 @@ internal sealed class ChunkStore(VectorStore store, RagOptions options)
     /// <summary>The collection's native hybrid search, when it offers one.</summary>
     public IKeywordHybridSearchable<Dictionary<string, object?>>? Hybrid => _collection as IKeywordHybridSearchable<Dictionary<string, object?>>;
 
-    public Task EnsureExistsAsync(CancellationToken ct) => StoreCollections.EnsureExistsAsync(_collection, options, ct);
+    internal VectorStoreCollection<object, Dictionary<string, object?>> Collection => _collection;
 
     public Task UpsertAsync(IReadOnlyList<Dictionary<string, object?>> records, CancellationToken ct) =>
         records.Count == 0 ? Task.CompletedTask : _collection.UpsertAsync(records, ct);

@@ -61,11 +61,109 @@ public sealed class StoreSettingsErrorTests
         {
             var store = new FailingVectorStore(new InMemoryVectorStore());
             var rag = Build(store);
-            store.FailEnsureExists = failure;
+            store.FailCollectionExists = failure;
 
             var e = await Assert.ThrowsAnyAsync<Exception>(() => rag.IngestAsync(TestRag.Md("d", "alpha"), cancellationToken: Ct));
 
             Assert.Same(failure, e);
+        }
+    }
+
+    [Fact]
+    public async Task Creation_failure_on_a_reachable_store_names_the_settings()
+    {
+        var failure = new VectorStoreException("Call to vector store failed.", new InvalidOperationException("full-text key"));
+        var store = new FailingVectorStore(new InMemoryVectorStore());
+        var rag = Build(store);
+        store.FailEnsureExists = failure;
+
+        var e = await Assert.ThrowsAsync<InvalidOperationException>(() => rag.IngestAsync(TestRag.Md("d", "alpha"), cancellationToken: Ct));
+
+        Assert.Same(failure, e.InnerException);
+        Assert.StartsWith("The vector store rejected RagDotNet's 'docs' collection (key type String, distance CosineSimilarity", e.Message);
+        Assert.Contains("RagOptions.KeyType", e.Message);
+        Assert.Contains("RagOptions.DistanceFunction", e.Message);
+        Assert.Contains("docs/vector-stores.md", e.Message);
+    }
+
+    [Fact]
+    public async Task Distance_rejected_by_search_fails_before_any_write()
+    {
+        var rejection = new NotSupportedException("Distance function CosineSimilarity is not supported.");
+        var inner = new InMemoryVectorStore();
+        var store = new FailingVectorStore(inner);
+        var rag = Build(store);
+        store.RejectSearch = rejection;
+
+        var e = await Assert.ThrowsAsync<InvalidOperationException>(() => rag.IngestAsync(TestRag.Md("d", "alpha"), cancellationToken: Ct));
+
+        Assert.Same(rejection, e.InnerException);
+        Assert.Contains("'docs_documents' collection", e.Message);
+        Assert.Contains("RagOptions.DistanceFunction", e.Message);
+        Assert.False(await inner.CollectionExistsAsync("docs", Ct));
+        Assert.False(await inner.CollectionExistsAsync("docs_documents", Ct));
+    }
+
+    [Fact]
+    public async Task Rejected_creation_removes_the_collections_it_created()
+    {
+        var inner = new InMemoryVectorStore();
+        var store = new FailingVectorStore(inner);
+        var rag = Build(store);
+        store.FailEnsureExists = new NotSupportedException("no");
+        store.FailEnsureExistsOnly = "docs_documents";
+
+        var e = await Assert.ThrowsAsync<InvalidOperationException>(() => rag.IngestAsync(TestRag.Md("d", "alpha"), cancellationToken: Ct));
+
+        Assert.Contains("'docs_documents' collection", e.Message);
+        Assert.False(await inner.CollectionExistsAsync("docs", Ct));
+    }
+
+    [Fact]
+    public async Task Existing_collections_are_kept_when_startup_is_rejected()
+    {
+        var inner = new InMemoryVectorStore();
+        await Build(new FailingVectorStore(inner)).IngestAsync(TestRag.Md("d", "alpha"), cancellationToken: Ct);
+        var store = new FailingVectorStore(inner) { RejectSearch = new NotSupportedException("Distance function CosineSimilarity is not supported.") };
+        var rag = Build(store);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => rag.IngestAsync(TestRag.Md("e", "beta"), cancellationToken: Ct));
+
+        Assert.True(await inner.CollectionExistsAsync("docs", Ct));
+        Assert.True(await inner.CollectionExistsAsync("docs_documents", Ct));
+        store.RejectSearch = null;
+        Assert.Contains(await rag.RetrieveAsync("alpha", cancellationToken: Ct), c => c.DocumentId == "d");
+    }
+
+    [Fact]
+    public async Task Startup_that_loses_a_creation_race_keeps_the_other_process_data()
+    {
+        var inner = new InMemoryVectorStore();
+        await Build(new FailingVectorStore(inner)).IngestAsync(TestRag.Md("d", "alpha"), cancellationToken: Ct);
+        var store = new FailingVectorStore(inner)
+        {
+            ReportMissing = true,
+            FailEnsureExists = new VectorStoreException("Call to vector store failed.", new InvalidOperationException("There is already an object named 'docs'.")),
+        };
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => Build(store).IngestAsync(TestRag.Md("e", "beta"), cancellationToken: Ct));
+
+        Assert.True(await inner.CollectionExistsAsync("docs", Ct));
+        Assert.True(await inner.CollectionExistsAsync("docs_documents", Ct));
+        Assert.Contains(await Build(new FailingVectorStore(inner)).RetrieveAsync("alpha", cancellationToken: Ct), c => c.DocumentId == "d");
+    }
+
+    [Fact]
+    public async Task Transient_fault_during_startup_is_not_reworded()
+    {
+        foreach (var cause in new Exception[] { new TimeoutException("timed out"), new IOException("connection reset"), new HttpRequestException("503") })
+        {
+            var fault = new VectorStoreException("Call to vector store failed.", cause);
+            var store = new FailingVectorStore(new InMemoryVectorStore()) { RejectSearch = fault };
+
+            var e = await Assert.ThrowsAnyAsync<Exception>(() => Build(store).IngestAsync(TestRag.Md("d", "alpha"), cancellationToken: Ct));
+
+            Assert.Same(fault, e);
         }
     }
 }

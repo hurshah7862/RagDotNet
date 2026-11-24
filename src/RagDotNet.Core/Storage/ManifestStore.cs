@@ -13,7 +13,7 @@ internal sealed class ManifestStore(VectorStore store, RagOptions options)
     private readonly VectorStoreCollection<object, Dictionary<string, object?>> _collection =
         StoreCollections.Open(store, options.CollectionName + "_documents", RecordDefinitions.Manifests(options), options);
 
-    public Task EnsureExistsAsync(CancellationToken ct) => StoreCollections.EnsureExistsAsync(_collection, options, ct);
+    internal VectorStoreCollection<object, Dictionary<string, object?>> Collection => _collection;
 
     public async Task<ManifestRecord?> GetAsync(string partitionKey, string documentId, CancellationToken ct)
     {
