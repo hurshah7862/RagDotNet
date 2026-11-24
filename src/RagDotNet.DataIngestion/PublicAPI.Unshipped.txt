@@ -1,5 +1,11 @@
 #nullable enable
+RagDotNet.DataIngestion.DataIngestionChunker
+RagDotNet.DataIngestion.DataIngestionChunker.ChunkAsync(RagDotNet.Documents.ParsedDocument! document, RagDotNet.Chunking.ChunkingOptions! options, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<RagDotNet.Chunking.Chunk!>!>!
+RagDotNet.DataIngestion.DataIngestionChunker.DataIngestionChunker(string! name, string! version, System.Func<RagDotNet.Chunking.ChunkingOptions!, Microsoft.Extensions.DataIngestion.IngestionChunker<string!>!>! createChunker) -> void
+RagDotNet.DataIngestion.DataIngestionChunker.Name.get -> string!
+RagDotNet.DataIngestion.DataIngestionChunker.Version.get -> string!
 RagDotNet.DataIngestion.DataIngestionReader
 RagDotNet.DataIngestion.DataIngestionReader.CanRead(string? contentType, string! fileName) -> bool
 RagDotNet.DataIngestion.DataIngestionReader.DataIngestionReader(Microsoft.Extensions.DataIngestion.IngestionDocumentReader! reader, System.Collections.Generic.IEnumerable<string!>! fileExtensions, System.Collections.Generic.IEnumerable<string!>? contentTypes = null) -> void
 RagDotNet.DataIngestion.DataIngestionReader.ReadAsync(System.IO.Stream! stream, RagDotNet.Documents.DocumentReadContext! context, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<RagDotNet.Documents.ParsedDocument!>!
+static RagDotNet.DataIngestion.DataIngestionChunker.CreateOptions(RagDotNet.Chunking.ChunkingOptions! options, Microsoft.ML.Tokenizers.Tokenizer? tokenizer = null) -> Microsoft.Extensions.DataIngestion.IngestionChunkerOptions!
