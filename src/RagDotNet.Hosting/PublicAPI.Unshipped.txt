@@ -5,6 +5,12 @@ RagDotNet.Hosting.IIngestionJobQueue.EnqueueAsync(RagDotNet.Hosting.IngestionJob
 RagDotNet.Hosting.IIngestionJobQueue.GetStatusAsync(string! jobId, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<RagDotNet.Hosting.IngestionJobStatus?>
 RagDotNet.Hosting.IIngestionJobQueue.PauseAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
 RagDotNet.Hosting.IIngestionJobQueue.ResumeAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+RagDotNet.Hosting.IIngestionQueue
+RagDotNet.Hosting.IIngestionQueue.CancelAsync(string! jobId, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<bool>
+RagDotNet.Hosting.IIngestionQueue.EnqueueAsync(RagDotNet.Documents.DocumentSource! source, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<string!>
+RagDotNet.Hosting.IIngestionQueue.GetStatusAsync(string! jobId, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<RagDotNet.Hosting.IngestionJobStatus?>
+RagDotNet.Hosting.IIngestionQueue.PauseAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+RagDotNet.Hosting.IIngestionQueue.ResumeAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
 RagDotNet.Hosting.IngestionJob
 RagDotNet.Hosting.IngestionJob.<Clone>$() -> RagDotNet.Hosting.IngestionJob!
 RagDotNet.Hosting.IngestionJob.Deconstruct(out string! JobId, out RagDotNet.Documents.DocumentSource! Source, out RagDotNet.Access.AccessScope? Scope) -> void
@@ -45,6 +51,7 @@ RagDotNet.Hosting.IngestionJobStatus.State.get -> RagDotNet.Hosting.IngestionJob
 RagDotNet.Hosting.IngestionJobStatus.State.init -> void
 RagDotNet.Hosting.IngestionJobStatus.UpdatedAt.get -> System.DateTimeOffset
 RagDotNet.Hosting.IngestionJobStatus.UpdatedAt.init -> void
+RagDotNet.Hosting.IngestionQueueBuilderExtensions
 RagDotNet.Hosting.IngestionQueueOptions
 RagDotNet.Hosting.IngestionQueueOptions.Capacity.get -> int
 RagDotNet.Hosting.IngestionQueueOptions.Capacity.set -> void
@@ -71,3 +78,4 @@ static RagDotNet.Hosting.IngestionJob.operator !=(RagDotNet.Hosting.IngestionJob
 static RagDotNet.Hosting.IngestionJob.operator ==(RagDotNet.Hosting.IngestionJob? left, RagDotNet.Hosting.IngestionJob? right) -> bool
 static RagDotNet.Hosting.IngestionJobStatus.operator !=(RagDotNet.Hosting.IngestionJobStatus? left, RagDotNet.Hosting.IngestionJobStatus? right) -> bool
 static RagDotNet.Hosting.IngestionJobStatus.operator ==(RagDotNet.Hosting.IngestionJobStatus? left, RagDotNet.Hosting.IngestionJobStatus? right) -> bool
+static RagDotNet.Hosting.IngestionQueueBuilderExtensions.AddIngestionQueue(this RagDotNet.Configuration.IRagBuilder! builder, System.Action<RagDotNet.Hosting.IngestionQueueOptions!>? configure = null) -> RagDotNet.Configuration.IRagBuilder!

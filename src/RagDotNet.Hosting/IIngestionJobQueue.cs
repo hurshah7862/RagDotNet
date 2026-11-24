@@ -1,7 +1,7 @@
 namespace RagDotNet.Hosting;
 
 /// <summary>
-/// The queue behind <c>IIngestionQueue</c>, which holds and runs ingestion jobs. The default keeps jobs in memory; register
+/// The queue behind <see cref="IIngestionQueue"/>, which holds and runs ingestion jobs. The default keeps jobs in memory; register
 /// your own implementation before <c>AddIngestionQueue</c> to keep jobs across restarts.
 /// </summary>
 /// <remarks>
