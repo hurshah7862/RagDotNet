@@ -1,0 +1,5 @@
+#nullable enable
+RagDotNet.DataIngestion.DataIngestionReader
+RagDotNet.DataIngestion.DataIngestionReader.CanRead(string? contentType, string! fileName) -> bool
+RagDotNet.DataIngestion.DataIngestionReader.DataIngestionReader(Microsoft.Extensions.DataIngestion.IngestionDocumentReader! reader, System.Collections.Generic.IEnumerable<string!>! fileExtensions, System.Collections.Generic.IEnumerable<string!>? contentTypes = null) -> void
+RagDotNet.DataIngestion.DataIngestionReader.ReadAsync(System.IO.Stream! stream, RagDotNet.Documents.DocumentReadContext! context, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<RagDotNet.Documents.ParsedDocument!>!
