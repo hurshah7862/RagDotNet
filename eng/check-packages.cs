@@ -73,15 +73,18 @@ foreach (var p in packages.Values.Where(p => expectedIds.Contains(p.Id)))
     if (p.Read("README.md") is not { } readme) Fail(p.Id, "no README.md in the package");
     else
     {
-        // Code is shown, not linked: drop fenced blocks, then replace inline code with a placeholder (not nothing, so a
-        // link label written as code, [`Foo`]: target, is still a label) before looking for links.
-        var prose = InlineCode().Replace(FencedCode().Replace(readme, ""), "code");
-        foreach (var link in MarkdownLink().Matches(prose).Concat(ReferenceLink().Matches(prose)).Concat(HtmlLink().Matches(prose)))
-        {
-            var target = link.Groups[1].Value;
+        // Code and comments are shown or hidden, not linked: drop fenced blocks, replace inline code with a placeholder (not
+        // nothing, so a link label written as code, [`Foo`]: target, is still a label), then drop closed HTML comments.
+        // Comments go last, so a "<!--" shown as code cannot hide what follows it.
+        var prose = HtmlComment().Replace(InlineCode().Replace(FencedCode().Replace(readme, ""), "code"), "");
+        var targets = MarkdownLink().Matches(prose).Concat(ReferenceLink().Matches(prose)).Concat(HtmlLink().Matches(prose))
+            .Select(m => m.Groups[1].Value)
+            // Every image candidate of a srcset ("a.png 1x, b.png 2x"), not only the first.
+            .Concat(HtmlSrcset().Matches(prose).SelectMany(m => m.Groups["v"].Value.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(c => c.Trim().Split(' ', 2)[0]).Where(c => c.Length > 0)));
+        foreach (var target in targets)
             if (!new[] { "http://", "https://", "mailto:", "#" }.Any(prefix => target.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
                 Fail(p.Id, $"README link '{target}' is relative; nuget.org cannot resolve it");
-        }
     }
 
     var stable = !p.Version.Contains('-');
@@ -139,9 +142,24 @@ partial class Program
     [GeneratedRegex(@"^ {0,3}(?:>[ \t]? {0,3})*\[(?!\^)[^\]]+\]:[ \t]*(?:\r?\n(?:[ \t]*>)*[ \t]*)?<?([^\s>]+)", RegexOptions.Multiline)]
     private static partial Regex ReferenceLink();
 
-    /// <summary>The (first) target of a <c>src</c>, <c>href</c> or <c>srcset</c> attribute inside an HTML tag, quoted or not.</summary>
-    [GeneratedRegex(@"(?<=<[a-zA-Z][^<>]*)\b(?:src|href|srcset)\s*=\s*[""']?([^""'\s>]+)", RegexOptions.IgnoreCase)]
+    /// <summary>
+    /// The target of a <c>src</c> or <c>href</c> attribute inside an HTML tag, quoted or not. The name must follow
+    /// whitespace, a slash or a closing quote (<c>&lt;img/src=</c>, <c>alt="x"src=</c>), so <c>data-src</c> and
+    /// <c>xlink:href</c> are other attributes.
+    /// </summary>
+    [GeneratedRegex(@"(?<=<[a-zA-Z][^<>]*[\s/""'])(?:src|href)\s*=\s*[""']?([^""'\s>]+)", RegexOptions.IgnoreCase)]
     private static partial Regex HtmlLink();
+
+    /// <summary>The whole value of a <c>srcset</c> attribute inside an HTML tag, quoted or not.</summary>
+    [GeneratedRegex(@"(?<=<[a-zA-Z][^<>]*[\s/""'])srcset\s*=\s*(?:""(?<v>[^""]*)""|'(?<v>[^']*)'|(?<v>[^\s>]+))", RegexOptions.IgnoreCase)]
+    private static partial Regex HtmlSrcset();
+
+    /// <summary>
+    /// A closed HTML comment. <c>&lt;!--&gt;</c> and <c>&lt;!---&gt;</c> are complete, empty comments; an unclosed one is
+    /// left in place (and checked), never allowed to hide the rest of the file.
+    /// </summary>
+    [GeneratedRegex(@"<!--(?:-?>|[\s\S]*?-->)")]
+    private static partial Regex HtmlComment();
 
     /// <summary>
     /// A fenced code block, up to a closing fence of the same character at least as long as the opening one, or the end of
