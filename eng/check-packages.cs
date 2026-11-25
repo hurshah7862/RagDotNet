@@ -68,23 +68,10 @@ foreach (var p in packages.Values.Where(p => expectedIds.Contains(p.Id)))
     foreach (var ext in new[] { "dll", "xml" })
         if (!p.Has($"lib/{tfm}/{p.Id}.{ext}")) Fail(p.Id, $"no lib/{tfm}/{p.Id}.{ext}");
 
-    // nuget.org shows the packed README as the package page, and cannot resolve relative links in it.
+    // nuget.org shows the packed README as the package page, with the rules of its MarkdownService (see Readme below).
     if (p.Meta("readme")?.Value != "README.md") Fail(p.Id, "nuspec names no README.md");
     if (p.Read("README.md") is not { } readme) Fail(p.Id, "no README.md in the package");
-    else
-    {
-        // Code and comments are shown or hidden, not linked: drop fenced blocks, replace inline code with a placeholder (not
-        // nothing, so a link label written as code, [`Foo`]: target, is still a label), then drop closed HTML comments.
-        // Comments go last, so a "<!--" shown as code cannot hide what follows it.
-        var prose = HtmlComment().Replace(InlineCode().Replace(FencedCode().Replace(readme, ""), "code"), "");
-        var targets = MarkdownLink().Matches(prose).Concat(ReferenceLink().Matches(prose)).Concat(HtmlLink().Matches(prose))
-            .Select(m => m.Groups[1].Value)
-            // Every image candidate of a srcset ("a.png 1x, b.png 2x"), not only the first.
-            .Concat(HtmlSrcset().Matches(prose).SelectMany(m => SrcsetUrls(m.Groups["v"].Value)));
-        foreach (var target in targets)
-            if (!new[] { "http://", "https://", "mailto:", "#" }.Any(prefix => target.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
-                Fail(p.Id, $"README link '{target}' is relative; nuget.org cannot resolve it");
-    }
+    else foreach (var problem in Readme.Problems(readme)) Fail(p.Id, problem);
 
     var stable = !p.Version.Contains('-');
     foreach (var (dependency, minimum) in p.Dependencies())
@@ -128,63 +115,107 @@ Console.WriteLine(problems.Count == 0
     : $"{problems.Count} problem(s) in {packages.Count} package(s).");
 return problems.Count == 0 ? 0 : 1;
 
-partial class Program
+/// <summary>
+/// What nuget.org does to a package README (NuGetGallery's MarkdownService, PackageHelper and ImageDomainValidator): it
+/// removes HTML comments before anything else, renders the Markdown with raw HTML disabled (a tag is shown as text), keeps
+/// only links to absolute http or https URLs and #anchors, and shows only images from its trusted domains.
+/// </summary>
+static partial class Readme
 {
+    /// <summary>
+    /// The image domains nuget.org trusts, as listed at https://learn.microsoft.com/nuget/nuget-org/package-readme-on-nuget-org
+    /// (read 2026-11-25; nuget.org's live list may change). A host matches one exactly, ignoring case; a two-part domain
+    /// also matches with "www.". GitHub workflow badges are allowed separately (<see cref="GitHubBadge"/>).
+    /// </summary>
+    private static readonly HashSet<string> TrustedImageHosts = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "api.codacy.com", "api.codeclimate.com", "api.dependabot.com", "api.reuse.software", "api.travis-ci.com",
+        "app.codacy.com", "app.deepsource.com", "avatars.githubusercontent.com", "badgen.net", "badges.gitter.im",
+        "camo.githubusercontent.com", "caniuse.bitsofco.de", "cdn.jsdelivr.net", "cdn.syncfusion.com", "ci.appveyor.com",
+        "circleci.com", "cloudback.it", "codecov.io", "codefactor.io", "coveralls.io", "dev.azure.com", "devpod.sh",
+        "flat.badgen.net", "gitlab.com", "i.imgur.com", "img.shields.io", "infragistics.com", "isitmaintained.com",
+        "media.githubusercontent.com", "opencollective.com", "raw.github.com", "raw.githubusercontent.com", "snyk.io",
+        "sonarcloud.io", "travis-ci.com", "travis-ci.org", "user-images.githubusercontent.com",
+    };
+
+    /// <summary>Each way the README would show differently on nuget.org than its author meant.</summary>
+    public static IEnumerable<string> Problems(string readme)
+    {
+        // nuget.org removes comments before it parses anything, so a comment hides what it covers, even inside code. Code
+        // is shown, not linked: drop fenced blocks, and replace inline code with a placeholder (not nothing, so a link
+        // label written as code, [`Foo`]: target, is still a label).
+        var prose = InlineCode().Replace(FencedCode().Replace(NuGetComment().Replace(readme, ""), ""), "code");
+
+        foreach (Match tag in HtmlTagWithUrl().Matches(prose))
+            yield return $"README has an HTML <{tag.Groups["tag"].Value}> tag; nuget.org shows raw HTML as text";
+
+        var images = InlineImage().Matches(prose).Select(m => m.Groups["url"]).ToList();
+        var imageTargets = images.Select(g => g.Value).ToList();
+        var imageStarts = images.Select(g => g.Index).ToHashSet();
+        var linkTargets = MarkdownLink().Matches(prose).Select(m => m.Groups[1])
+            .Where(g => !imageStarts.Contains(g.Index)).Select(g => g.Value).ToList();
+        // A reference definition is an image's when any image uses its label: ![alt][label], ![label][] or ![label].
+        var imageLabels = ReferenceImage().Matches(prose)
+            .Select(m => Label(m.Groups["ref"].Value is { Length: > 0 } label ? label : m.Groups["alt"].Value)).ToHashSet();
+        foreach (Match definition in ReferenceLink().Matches(prose))
+            (imageLabels.Contains(Label(definition.Groups["label"].Value)) ? imageTargets : linkTargets).Add(definition.Groups["url"].Value);
+        foreach (Match autolink in Autolink().Matches(prose))
+            linkTargets.Add(autolink.Groups["email"].Success ? $"mailto:{autolink.Groups["email"].Value}" : autolink.Groups["uri"].Value);
+
+        foreach (var target in linkTargets.Where(t => !t.StartsWith('#') && !IsWebUrl(t, out _)))
+            yield return $"README link '{target}' is not an http or https URL; nuget.org removes it";
+        foreach (var target in imageTargets.Where(t => !IsWebUrl(t, out var uri) || !(IsTrustedHost(uri.Host) || GitHubBadge().IsMatch(t))))
+            yield return $"README image '{target}' is not on a domain nuget.org shows images from";
+    }
+
+    private static bool IsWebUrl(string target, out Uri uri) =>
+        Uri.TryCreate(target, UriKind.Absolute, out uri!) && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
+
+    private static bool IsTrustedHost(string host) =>
+        TrustedImageHosts.Contains(host)
+        || (host.StartsWith("www.", StringComparison.OrdinalIgnoreCase) && host.Count(c => c == '.') == 2 && TrustedImageHosts.Contains(host[4..]));
+
+    /// <summary>A reference label as Markdown matches it: case and runs of whitespace do not count.</summary>
+    private static string Label(string label) =>
+        string.Join(' ', label.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)).ToUpperInvariant();
+
+    /// <summary>An HTML comment, exactly as nuget.org removes it: up to the next <c>--&gt;</c>, anywhere.</summary>
+    [GeneratedRegex(@"<!--.*?-->", RegexOptions.Singleline)]
+    private static partial Regex NuGetComment();
+
     /// <summary>The target of a Markdown link or image: <c>](target)</c> or <c>](target "title")</c>.</summary>
     [GeneratedRegex(@"\]\(\s*<?([^)\s>]+)")]
     private static partial Regex MarkdownLink();
 
+    /// <summary>An inline image, <c>![alt](target)</c>, whose alt text may hold one level of brackets.</summary>
+    [GeneratedRegex(@"!\[(?:[^\[\]]|\[[^\[\]]*\])*\]\(\s*<?(?<url>[^)\s>]+)")]
+    private static partial Regex InlineImage();
+
+    /// <summary>A reference image: <c>![alt][label]</c>, <c>![label][]</c> or <c>![label]</c>.</summary>
+    [GeneratedRegex(@"!\[(?<alt>[^\[\]]*)\](?:\[(?<ref>[^\[\]]*)\])?(?!\()")]
+    private static partial Regex ReferenceImage();
+
     /// <summary>
-    /// The target of a reference definition, <c>[name]: target</c> at the start of a line, also inside a blockquote. A
-    /// footnote (<c>[^1]: text</c>) is not a link.
+    /// A reference definition, <c>[label]: target</c> at the start of a line, also inside a blockquote. A footnote
+    /// (<c>[^1]: text</c>) is not a link.
     /// </summary>
-    [GeneratedRegex(@"^ {0,3}(?:>[ \t]? {0,3})*\[(?!\^)[^\]]+\]:[ \t]*(?:\r?\n(?:[ \t]*>)*[ \t]*)?<?([^\s>]+)", RegexOptions.Multiline)]
+    [GeneratedRegex(@"^ {0,3}(?:>[ \t]? {0,3})*\[(?!\^)(?<label>[^\]]+)\]:[ \t]*(?:\r?\n(?:[ \t]*>)*[ \t]*)?<?(?<url>[^\s>]+)", RegexOptions.Multiline)]
     private static partial Regex ReferenceLink();
 
-    /// <summary>
-    /// The target of a <c>src</c> or <c>href</c> attribute inside an HTML tag, quoted or not. The name must follow
-    /// whitespace, a slash or a closing quote (<c>&lt;img/src=</c>, <c>alt="x"src=</c>), so <c>data-src</c> and
-    /// <c>xlink:href</c> are other attributes.
-    /// </summary>
-    [GeneratedRegex(@"(?<=<[a-zA-Z][^<>]*[\s/""'])(?:src|href)\s*=\s*[""']?\s*([^""'\s>]+)", RegexOptions.IgnoreCase)]
-    private static partial Regex HtmlLink();
+    /// <summary>An autolink: <c>&lt;scheme:target&gt;</c>, or <c>&lt;name@example.com&gt;</c>, which is a mailto link.</summary>
+    [GeneratedRegex(@"<(?:(?<uri>[a-zA-Z][a-zA-Z0-9+.-]{1,31}:[^\s<>]*)|(?<email>[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*))>")]
+    private static partial Regex Autolink();
 
     /// <summary>
-    /// The image URLs of a <c>srcset</c> value, split as the HTML standard does: a URL is a run of non-whitespace (so it
-    /// may contain commas, as image CDNs' URLs do), trailing commas end it, and its descriptors run up to the next comma.
+    /// An HTML tag with a URL attribute (<c>src</c>, <c>href</c> or <c>srcset</c>), such as an image or a link written in
+    /// HTML. The attribute must follow whitespace, a slash or a closing quote, so <c>data-src</c> is another attribute.
     /// </summary>
-    private static IEnumerable<string> SrcsetUrls(string value)
-    {
-        var i = 0;
-        while (true)
-        {
-            while (i < value.Length && (char.IsWhiteSpace(value[i]) || value[i] == ',')) i++;
-            if (i >= value.Length) yield break;
-            var start = i;
-            while (i < value.Length && !char.IsWhiteSpace(value[i])) i++;
-            var url = value[start..i];
-            if (url.EndsWith(','))
-            {
-                yield return url.TrimEnd(',');
-                continue;
-            }
+    [GeneratedRegex(@"<(?<tag>[a-zA-Z][a-zA-Z0-9-]*)(?=[\s/>])[^<>]*?[\s/""'](?:src|href|srcset)\s*=", RegexOptions.IgnoreCase)]
+    private static partial Regex HtmlTagWithUrl();
 
-            yield return url;
-            while (i < value.Length && value[i] != ',') i++; // the descriptors
-        }
-    }
-
-    /// <summary>The whole value of a <c>srcset</c> attribute inside an HTML tag, quoted or not.</summary>
-    [GeneratedRegex(@"(?<=<[a-zA-Z][^<>]*[\s/""'])srcset\s*=\s*(?:""(?<v>[^""]*)""|'(?<v>[^']*)'|(?<v>[^\s>]+))", RegexOptions.IgnoreCase)]
-    private static partial Regex HtmlSrcset();
-
-    /// <summary>
-    /// A closed HTML comment. <c>&lt;!--&gt;</c> and <c>&lt;!---&gt;</c> are complete, empty comments; an unclosed one is
-    /// left in place (and checked), never allowed to hide the rest of the file. A comment that starts a line is an HTML
-    /// block and may span blank lines; one inside a paragraph cannot cross a blank line (there, "&lt;!--" is plain text).
-    /// </summary>
-    [GeneratedRegex(@"^ {0,3}<!--(?:-?>|[\s\S]*?-->)|<!--(?:-?>|(?:(?!\n[ \t]*\r?\n)[\s\S])*?-->)", RegexOptions.Multiline)]
-    private static partial Regex HtmlComment();
+    /// <summary>A GitHub Actions workflow badge, which nuget.org shows from github.com (its own pattern).</summary>
+    [GeneratedRegex(@"^(https|http):\/\/github\.com\/[^/]+\/[^/]+(\/actions)?\/workflows\/.*badge\.svg", RegexOptions.IgnoreCase)]
+    private static partial Regex GitHubBadge();
 
     /// <summary>
     /// A fenced code block, up to a closing fence of the same character at least as long as the opening one, or the end of
