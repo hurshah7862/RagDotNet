@@ -29,11 +29,11 @@ Tag a commit on `main` whose CI run passed. The publish job then:
 2. builds and runs the unit tests, as CI does;
 3. packs every library under `src/`;
 4. checks the packages, including that their version matches the tag (`v1.0.0` must give `1.0.0`). A tag that MinVer did not pick up fails here, before anything is pushed;
-5. pushes the packages and their symbol packages (`.snupkg`) to nuget.org.
+5. pushes the packages to nuget.org, then their symbol packages (`.snupkg`) in a second step.
 
 nuget.org validates and indexes new packages, which takes a few minutes before they can be installed.
 
-**A failed run is safe to re-run.** The push uses `--skip-duplicate`, so packages that already reached nuget.org are skipped and the rest are pushed. A version on nuget.org can never be replaced, only unlisted: to fix a released package, release a new version.
+**A failed run is safe to re-run.** Both pushes use `--skip-duplicate`, so packages and symbols that already reached nuget.org are skipped and the rest are pushed. Symbols are pushed separately so that a re-run still sends the symbols of a package that reached nuget.org in an earlier run. A version on nuget.org can never be replaced, only unlisted: to fix a released package, release a new version.
 
 ## Versions
 
@@ -46,10 +46,10 @@ nuget.org validates and indexes new packages, which takes a few minutes before t
 `dotnet run eng/check-packages.cs -- <folder> [--version <version>]` fails, naming the package, when:
 
 - a library is missing, or a package that is not one of the ten (a test project, the sample) is present;
-- a package has no symbol package, MIT license expression, authors, description, tags, project URL, or repository URL and commit;
-- a package has no README, or its README has a relative link (nuget.org cannot resolve them);
+- a package has no symbol package, or its symbol package lacks the .NET 8 or .NET 10 `.pdb`; or it has no MIT license expression, authors, description, tags, project URL, or repository URL and commit;
+- a package has no README, or its README has a relative link, written as a Markdown link or image, a reference definition (`[name]: target`) or an HTML `src` or `href` (nuget.org cannot resolve them);
 - the .NET 8 or .NET 10 assembly or its XML documentation is missing;
 - `RagDotNet.VectorData.Sqlite` lacks its sqlite-vec natives for linux-x64, osx-arm64 or win-x64, or its third-party notices;
 - the versions break the rules above, or a stable package (or Core at any version) depends on a prerelease.
 
-Run it locally after `dotnet pack --configuration Release --output artifacts/packages`.
+Run it locally after `dotnet pack --configuration Release --output artifacts/packages`, into an empty folder: packages left from an earlier commit have another version, and the check fails on two versions of one package.

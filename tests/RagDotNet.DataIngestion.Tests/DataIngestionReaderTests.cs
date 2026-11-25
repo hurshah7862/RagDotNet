@@ -48,13 +48,23 @@ public sealed class DataIngestionReaderTests
         return new FakeReader(_ => document);
     }
 
+    // As RagDotNet's own readers do: the content type decides when one is given, the extension otherwise.
     [Theory]
     [InlineData("text/markdown; charset=utf-8", "a.txt", true)]
+    [InlineData("TEXT/MARKDOWN", "notes.md", true)]
+    [InlineData("text/plain", "notes.md", false)]
     [InlineData(null, "notes.MD", true)]
     [InlineData(null, "notes.txt", false)]
     [InlineData("text/plain", "notes.txt", false)]
-    public void CanRead_matches_extension_or_content_type(string? contentType, string fileName, bool expected) =>
+    public void CanRead_uses_the_content_type_when_one_is_given(string? contentType, string fileName, bool expected) =>
         Assert.Equal(expected, new DataIngestionReader(new MarkdownReader(), [".md"], ["text/markdown"]).CanRead(contentType, fileName));
+
+    [Theory]
+    [InlineData("text/plain", "notes.md", true)]
+    [InlineData(null, "notes.md", true)]
+    [InlineData("text/markdown", "notes.txt", false)]
+    public void CanRead_without_content_types_matches_by_extension(string? contentType, string fileName, bool expected) =>
+        Assert.Equal(expected, new DataIngestionReader(new MarkdownReader(), [".md"]).CanRead(contentType, fileName));
 
     [Fact]
     public void Constructor_requires_an_extension_or_content_type() =>

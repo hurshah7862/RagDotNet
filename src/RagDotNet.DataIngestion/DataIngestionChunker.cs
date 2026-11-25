@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.Extensions.DataIngestion;
 using Microsoft.ML.Tokenizers;
 using RagDotNet.Chunking;
@@ -65,6 +66,7 @@ public sealed class DataIngestionChunker : IChunker
         var (ingestion, paths) = ToIngestionDocument(document);
         var chunker = _createChunker(options);
         var chunks = new List<Chunk>();
+        var cursor = 0;
         await foreach (var chunk in chunker.ProcessAsync(ingestion, cancellationToken).ConfigureAwait(false))
         {
             var context = chunk.Context ?? string.Empty;
@@ -76,7 +78,7 @@ public sealed class DataIngestionChunker : IChunker
                 if (rest.StartsWith("\r\n", StringComparison.Ordinal)) text = text[(context.Length + 2)..];
                 else if (rest.StartsWith("\n", StringComparison.Ordinal)) text = text[(context.Length + 1)..];
             }
-            var path = paths.TryGetValue(context, out var p) ? p : [];
+            var path = FindPath(paths, context, text, ref cursor);
             chunks.Add(new Chunk(chunks.Count, text.Trim(), path, PageStart: null, PageEnd: null, TokenCount: 0));
         }
 
@@ -84,13 +86,78 @@ public sealed class DataIngestionChunker : IChunker
     }
 
     /// <summary>
-    /// The document as Microsoft's, plus a lookup from each heading's context string (the markdown of the headings on its
-    /// path, joined by spaces, as <c>HeaderChunker</c> builds it) to its heading path, so the path is found, never parsed.
+    /// The heading path for a chunk's context. Two headings can read the same (a heading named "A ## B" and the chain
+    /// "A" then "B"), so among the headings with that context at or after the previous match (chunkers emit chunks in
+    /// document order, and a long section gives several chunks) the first whose section holds the chunk's first line
+    /// wins, else the first of them. Only such ambiguous contexts compare text; any other takes the first match at or after
+    /// the previous one, so a long section is not searched once per chunk. A context found only earlier, from a chunker
+    /// that emits out of order, takes the first one in the document. No match gives an empty path.
     /// </summary>
-    private static (IngestionDocument Document, Dictionary<string, IReadOnlyList<string>> Paths) ToIngestionDocument(ParsedDocument document)
+    private static IReadOnlyList<string> FindPath(List<HeadingEntry> paths, string context, string text, ref int cursor)
+    {
+        string? firstLine = null;
+        var first = -1;
+        for (var i = cursor; i < paths.Count; i++)
+        {
+            var entry = paths[i];
+            if (entry.Key != context) continue;
+            if (first < 0) first = i;
+            if (!entry.Ambiguous) break;
+            firstLine ??= text.TrimStart().Split('\n', 2)[0].Trim();
+            if (firstLine.Length > 0 && entry.Text.Contains(firstLine, StringComparison.Ordinal))
+            {
+                first = i;
+                break;
+            }
+        }
+
+        if (first >= 0)
+        {
+            cursor = first;
+            return paths[first].Path;
+        }
+
+        for (var i = 0; i < cursor; i++)
+            if (paths[i].Key == context) return paths[i].Path;
+        return [];
+    }
+
+    /// <summary>
+    /// A heading's context string and path, the text of the blocks under it (up to the next heading), and whether another
+    /// heading with a different path has the same context.
+    /// </summary>
+    private sealed class HeadingEntry(string key, IReadOnlyList<string> path)
+    {
+        private StringBuilder? _body = new();
+
+        public string Key { get; } = key;
+
+        public IReadOnlyList<string> Path { get; } = path;
+
+        public string Text { get; private set; } = string.Empty;
+
+        public bool Ambiguous { get; private set; }
+
+        public void Append(string blockText) => _body!.Append(blockText).Append('\n');
+
+        /// <summary>Called once the document is read: keeps the text as one string.</summary>
+        public void Complete(bool ambiguous)
+        {
+            Text = _body!.ToString();
+            _body = null;
+            Ambiguous = ambiguous;
+        }
+    }
+
+    /// <summary>
+    /// The document as Microsoft's, plus each heading's context string (the markdown of the headings on its path, joined
+    /// by spaces, as <c>HeaderChunker</c> builds it) with its heading path, in document order, so the path is found,
+    /// never parsed.
+    /// </summary>
+    private static (IngestionDocument Document, List<HeadingEntry> Paths) ToIngestionDocument(ParsedDocument document)
     {
         var section = new IngestionDocumentSection();
-        var paths = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+        var paths = new List<HeadingEntry>();
         var stack = new List<(int Level, string Markdown)>();
         foreach (var block in document.Blocks)
         {
@@ -99,7 +166,7 @@ public sealed class DataIngestionChunker : IChunker
                 var level = block.HeadingPath.Count;
                 stack.RemoveAll(h => h.Level >= level);
                 stack.Add((level, block.Text));
-                paths.TryAdd(string.Join(" ", stack.Select(h => h.Markdown)), block.HeadingPath);
+                paths.Add(new HeadingEntry(string.Join(" ", stack.Select(h => h.Markdown)), block.HeadingPath));
                 section.Elements.Add(new IngestionDocumentHeader(block.Text)
                 {
                     Level = level,
@@ -109,9 +176,18 @@ public sealed class DataIngestionChunker : IChunker
             }
             else
             {
+                if (paths.Count > 0) paths[^1].Append(block.Text);
                 section.Elements.Add(new IngestionDocumentParagraph(block.Text) { Text = block.Text, PageNumber = block.PageNumber });
             }
         }
+
+        // A context is ambiguous when headings with different paths share it; only those need the chunk text to choose.
+        var ambiguous = paths
+            .GroupBy(e => e.Key, StringComparer.Ordinal)
+            .Where(g => g.Select(e => string.Join('\u001f', e.Path)).Distinct(StringComparer.Ordinal).Skip(1).Any())
+            .Select(g => g.Key)
+            .ToHashSet(StringComparer.Ordinal);
+        foreach (var entry in paths) entry.Complete(ambiguous.Contains(entry.Key));
 
         var ingestion = new IngestionDocument(document.Title ?? "document");
         ingestion.Sections.Add(section);

@@ -39,6 +39,58 @@ public sealed class DataIngestionChunkerTests
     }
 
     [Fact]
+    public async Task Heading_named_like_a_chain_gets_its_own_path()
+    {
+        // "# A ## B" is one heading whose text is "A ## B"; its context reads the same as the chain "# A" then "## B".
+        var parsed = await ParseAsync("# A ## B\n\nFirst body.\n\n# A\n\n## B\n\nSecond body.\n");
+
+        var chunks = await Header.ChunkAsync(parsed, new ChunkingOptions(), Ct);
+
+        Assert.Equal(["A ## B"], Assert.Single(chunks, c => c.Text.Contains("First body")).HeadingPath);
+        Assert.Equal(["A", "B"], Assert.Single(chunks, c => c.Text.Contains("Second body")).HeadingPath);
+    }
+
+    [Fact]
+    public async Task Large_single_section_chunks_in_linear_time()
+    {
+        // A converted book under one heading: finding each chunk's heading path must not copy the whole section per chunk.
+        var markdown = new StringBuilder("# Book\n\n");
+        for (var i = 0; i < 50_000; i++)
+            markdown.Append("Paragraph ").Append(i).Append(" says something about chapter ").Append(i % 40).Append(" of the long book.\n\n");
+        var parsed = await ParseAsync(markdown.ToString());
+        var options = new ChunkingOptions();
+        var raw = new HeaderChunker(DataIngestionChunker.CreateOptions(options));
+        var ingestion = await new MarkdownReader().ReadAsync(new MemoryStream(Encoding.UTF8.GetBytes(markdown.ToString())), "book", "text/markdown", Ct);
+
+        // Warm up both, then time them on the same text: the adapter may add a little, not a multiple of Microsoft's own time.
+        await Header.ChunkAsync(parsed, options, Ct);
+        await foreach (var _ in raw.ProcessAsync(ingestion, Ct)) { }
+        var rawTime = System.Diagnostics.Stopwatch.StartNew();
+        await foreach (var _ in raw.ProcessAsync(ingestion, Ct)) { }
+        rawTime.Stop();
+        var adapterTime = System.Diagnostics.Stopwatch.StartNew();
+        var chunks = await Header.ChunkAsync(parsed, options, Ct);
+        adapterTime.Stop();
+
+        Assert.True(chunks.Count > 100, $"{chunks.Count} chunks");
+        Assert.All(chunks, c => Assert.Equal(["Book"], c.HeadingPath));
+        Assert.True(adapterTime.Elapsed < rawTime.Elapsed * 3 + TimeSpan.FromMilliseconds(200),
+            $"adapter {adapterTime.ElapsedMilliseconds} ms, HeaderChunker alone {rawTime.ElapsedMilliseconds} ms");
+    }
+
+    [Fact]
+    public async Task SectionChunker_labels_every_chunk_with_the_first_heading()
+    {
+        // Documented behaviour, not a goal: SectionChunker's context is the document's first heading.
+        var sections = new DataIngestionChunker("ms-section", "1", o => new SectionChunker(DataIngestionChunker.CreateOptions(o)));
+
+        var chunks = await sections.ChunkAsync(await ParseAsync(DataIngestionReaderTests.Handbook), new ChunkingOptions(), Ct);
+
+        Assert.NotEmpty(chunks);
+        Assert.All(chunks, c => Assert.Equal(["Handbook"], c.HeadingPath));
+    }
+
+    [Fact]
     public async Task Context_prefix_is_removed_with_either_line_ending()
     {
         // HeaderChunker ends its context line with Environment.NewLine, which is \r\n on Windows.
