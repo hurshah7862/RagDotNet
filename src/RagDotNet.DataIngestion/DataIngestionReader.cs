@@ -38,11 +38,13 @@ public sealed partial class DataIngestionReader : IDocumentReader
     /// <inheritdoc />
     public bool CanRead(string? contentType, string fileName)
     {
-        if (contentType is not null)
+        // As RagDotNet's own readers do: a given content type decides, so notes.md sent as text/plain goes to the plain-text
+        // reader. A reader given no content types matches by extension only.
+        if (contentType is not null && _contentTypes.Count > 0)
         {
             var semicolon = contentType.IndexOf(';', StringComparison.Ordinal);
             var bare = (semicolon < 0 ? contentType : contentType[..semicolon]).Trim();
-            if (_contentTypes.Contains(bare)) return true;
+            return _contentTypes.Contains(bare);
         }
 
         var extension = Path.GetExtension(fileName);

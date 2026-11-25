@@ -75,6 +75,30 @@ public sealed class EndToEndTests
     }
 
     [Fact]
+    public async Task Mismatched_upload_goes_to_the_builtin_reader()
+    {
+        // notes.md sent as text/plain: the content type decides, so RagDotNet's plain-text reader reads it.
+        var fake = new DataIngestionReaderTests.FakeReader(_ =>
+        {
+            var section = new IngestionDocumentSection();
+            section.Elements.Add(new IngestionDocumentParagraph("from the fake"));
+            var document = new IngestionDocument("d");
+            document.Sections.Add(section);
+            return document;
+        });
+        await using var services = Build(rag => rag.AddDataIngestionReader(_ => fake, [".md"], ["text/markdown"]));
+        await using var scope = services.CreateAsyncScope();
+        var rag = scope.ServiceProvider.GetRequiredService<IRagPipeline>();
+
+        await rag.IngestAsync(
+            new DocumentSource("notes", new MemoryStream(Encoding.UTF8.GetBytes("from plain text")), "notes.md", "text/plain"),
+            cancellationToken: Ct);
+
+        var hit = Assert.Single(await rag.RetrieveAsync("from plain text", cancellationToken: Ct));
+        Assert.Equal("from plain text", hit.Text);
+    }
+
+    [Fact]
     public void Registration_validates_arguments()
     {
         var rag = new ServiceCollection().AddRag(o => o.EmbeddingDimensions = 64);

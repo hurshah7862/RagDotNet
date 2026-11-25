@@ -10,8 +10,9 @@ namespace RagDotNet.DataIngestion;
 public static class DataIngestionBuilderExtensions
 {
     /// <summary>
-    /// Adds a Microsoft.Extensions.DataIngestion reader for the given extensions and content types. App readers are tried before
-    /// RagDotNet's built-in ones, so this one takes over its extensions from them.
+    /// Adds a Microsoft.Extensions.DataIngestion reader for the given extensions and content types. A document's content type
+    /// decides when it has one and the reader lists content types; otherwise its file extension does, as for RagDotNet's own
+    /// readers. App readers are tried before RagDotNet's built-in ones, so this one takes over its extensions from them.
     /// </summary>
     /// <param name="builder">The RagDotNet builder.</param>
     /// <param name="createReader">Creates the reader, once.</param>
