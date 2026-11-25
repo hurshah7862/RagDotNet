@@ -144,7 +144,13 @@ static partial class Readme
         // nuget.org removes comments before it parses anything, so a comment hides what it covers, even inside code. Code
         // is shown, not linked: drop fenced blocks, and replace inline code with a placeholder (not nothing, so a link
         // label written as code, [`Foo`]: target, is still a label).
-        var prose = InlineCode().Replace(FencedCode().Replace(NuGetComment().Replace(readme, ""), ""), "code");
+        // A "<!--" the author wrote as code is still a comment to nuget.org, which hides everything up to the next "-->".
+        var code = FencedCode().Matches(readme).Concat(InlineCode().Matches(readme)).ToList();
+        foreach (Match comment in NuGetComment().Matches(readme))
+            if (code.Any(c => c.Index < comment.Index && comment.Index < c.Index + c.Length))
+                yield return $"README line {readme[..comment.Index].Count(c => c == '\n') + 1} shows '<!--' as code, but nuget.org hides everything from there to the next '-->'";
+
+        var prose = InlineCode().Replace(WithoutIndentedCode(FencedCode().Replace(NuGetComment().Replace(readme, ""), "")), "code");
 
         // A one-letter name in capitals is a type parameter (IChunker<T>, Func<A, B>), shown as text everywhere.
         var tags = HtmlTag().Matches(prose).Select(m => m.Groups["tag"].Value)
@@ -160,13 +166,20 @@ static partial class Readme
         // A reference definition is an image's when any image uses its label: ![alt][label], ![label][] or ![label].
         var imageLabels = ReferenceImage().Matches(prose)
             .Select(m => Label(m.Groups["ref"].Value is { Length: > 0 } label ? label : m.Groups["alt"].Value)).ToHashSet();
+        // A definition no link or image uses renders nothing. Any bracketed text counts as a use ([label] is a shortcut).
+        var usedLabels = ReferenceUse().Matches(prose)
+            .Select(m => Label(m.Groups["ref"].Value is { Length: > 0 } label ? label : m.Groups["text"].Value)).ToHashSet();
         foreach (Match definition in ReferenceLink().Matches(prose))
-            (imageLabels.Contains(Label(definition.Groups["label"].Value)) ? imageTargets : linkTargets).Add(definition.Groups["url"].Value);
+        {
+            var label = Label(definition.Groups["label"].Value);
+            if (usedLabels.Contains(label)) (imageLabels.Contains(label) ? imageTargets : linkTargets).Add(definition.Groups["url"].Value);
+        }
         foreach (Match autolink in Autolink().Matches(prose))
             linkTargets.Add(autolink.Groups["email"].Success ? $"mailto:{autolink.Groups["email"].Value}" : autolink.Groups["uri"].Value);
+        linkTargets.AddRange(BareAutolink().Matches(prose).Select(m => m.Groups["url"].Value));
 
         foreach (var target in linkTargets.Where(t => !t.StartsWith('#') && !IsWebUrl(t, out _)))
-            yield return $"README link '{target}' is not an http or https URL; nuget.org removes it";
+            yield return $"README link '{target}' is not an http or https URL; nuget.org does not link it";
         foreach (var target in imageTargets.Where(t => !IsWebUrl(t, out var uri) || !(IsTrustedHost(uri.Host) || GitHubBadge().IsMatch(t))))
             yield return $"README image '{target}' is not on a domain nuget.org shows images from";
     }
@@ -190,9 +203,70 @@ static partial class Readme
     [GeneratedRegex(@"\]\(\s*<?([^)\s>]+)")]
     private static partial Regex MarkdownLink();
 
-    /// <summary>An inline image, <c>![alt](target)</c>, whose alt text may hold one level of brackets.</summary>
-    [GeneratedRegex(@"!\[(?:[^\[\]]|\[[^\[\]]*\])*\]\(\s*<?(?<url>[^)\s>]+)")]
+    /// <summary>An inline image, <c>![alt](target)</c>, whose alt text may hold balanced brackets to any depth.</summary>
+    [GeneratedRegex(@"!\[(?>[^\[\]]+|\[(?<d>)|\](?<-d>))*(?(d)(?!))\]\(\s*<?(?<url>[^)\s>]+)")]
     private static partial Regex InlineImage();
+
+    /// <summary>
+    /// Bracketed text that may use a reference definition: <c>[text][label]</c>, <c>[label][]</c> or the shortcut
+    /// <c>[label]</c>, but not an inline link's <c>[text](</c> or a definition's own <c>[label]:</c>.
+    /// </summary>
+    [GeneratedRegex(@"\[(?<text>[^\[\]]*)\](?:\[(?<ref>[^\[\]]*)\])?(?![(:])")]
+    private static partial Regex ReferenceUse();
+
+    /// <summary>
+    /// A bare URL Markdig's autolink extension turns into a link without angle brackets, for the schemes other than http
+    /// and https that it knows (<c>ftp://</c>, <c>mailto:</c>, <c>tel:</c>). It starts a line or follows whitespace or
+    /// emphasis, not a link's <c>](</c> or a definition's <c>]:</c>; trailing punctuation is not part of it.
+    /// </summary>
+    [GeneratedRegex(@"(?<=^|[\s*_~(])(?<!\]\()(?<!\]:[ \t]*)(?<url>(?:ftp://|mailto:|tel:)[^\s<>]*[^\s<>.,:;!?""')*_~])", RegexOptions.Multiline | RegexOptions.IgnoreCase)]
+    private static partial Regex BareAutolink();
+
+    /// <summary>A list item's first line: a bullet or a number with <c>.</c> or <c>)</c>, then a space or the line end.</summary>
+    [GeneratedRegex(@"^ {0,3}(?:[-*+]|\d{1,9}[.)])(?:[ \t]|$)")]
+    private static partial Regex ListItem();
+
+    /// <summary>
+    /// The text with indented code blocks blanked out: lines indented four or more columns that start after a blank line
+    /// or a heading. Inside a list such lines may be a paragraph of an item, so there they are kept and checked; a list
+    /// ends at a line at the margin after a blank line, or at a heading.
+    /// </summary>
+    private static string WithoutIndentedCode(string text)
+    {
+        var lines = text.Split('\n');
+        var (inList, inCode, canStartCode) = (false, false, true);
+        for (var i = 0; i < lines.Length; i++)
+        {
+            var line = lines[i].TrimEnd('\r');
+            var blank = line.Trim().Length == 0;
+            var indent = 0;
+            foreach (var c in line)
+            {
+                if (c == ' ') indent++;
+                else if (c == '\t') indent += 4 - indent % 4;
+                else break;
+            }
+
+            if ((inCode && (blank || indent >= 4)) || (!blank && indent >= 4 && canStartCode && !inList))
+            {
+                inCode = true;
+                canStartCode = blank;
+                lines[i] = "";
+                continue;
+            }
+
+            inCode = false;
+            var heading = !blank && indent <= 3 && line.TrimStart().StartsWith('#');
+            if (!blank && indent <= 3)
+            {
+                if (ListItem().IsMatch(line)) inList = true;
+                else if (heading || (indent == 0 && canStartCode)) inList = false;
+            }
+            canStartCode = blank || heading;
+        }
+
+        return string.Join('\n', lines);
+    }
 
     /// <summary>A reference image: <c>![alt][label]</c>, <c>![label][]</c> or <c>![label]</c>.</summary>
     [GeneratedRegex(@"!\[(?<alt>[^\[\]]*)\](?:\[(?<ref>[^\[\]]*)\])?(?!\()")]
