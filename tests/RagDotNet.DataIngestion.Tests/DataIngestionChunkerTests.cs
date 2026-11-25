@@ -51,6 +51,34 @@ public sealed class DataIngestionChunkerTests
     }
 
     [Fact]
+    public async Task Large_single_section_chunks_in_linear_time()
+    {
+        // A converted book under one heading: finding each chunk's heading path must not copy the whole section per chunk.
+        var markdown = new StringBuilder("# Book\n\n");
+        for (var i = 0; i < 50_000; i++)
+            markdown.Append("Paragraph ").Append(i).Append(" says something about chapter ").Append(i % 40).Append(" of the long book.\n\n");
+        var parsed = await ParseAsync(markdown.ToString());
+        var options = new ChunkingOptions();
+        var raw = new HeaderChunker(DataIngestionChunker.CreateOptions(options));
+        var ingestion = await new MarkdownReader().ReadAsync(new MemoryStream(Encoding.UTF8.GetBytes(markdown.ToString())), "book", "text/markdown", Ct);
+
+        // Warm up both, then time them on the same text: the adapter may add a little, not a multiple of Microsoft's own time.
+        await Header.ChunkAsync(parsed, options, Ct);
+        await foreach (var _ in raw.ProcessAsync(ingestion, Ct)) { }
+        var rawTime = System.Diagnostics.Stopwatch.StartNew();
+        await foreach (var _ in raw.ProcessAsync(ingestion, Ct)) { }
+        rawTime.Stop();
+        var adapterTime = System.Diagnostics.Stopwatch.StartNew();
+        var chunks = await Header.ChunkAsync(parsed, options, Ct);
+        adapterTime.Stop();
+
+        Assert.True(chunks.Count > 100, $"{chunks.Count} chunks");
+        Assert.All(chunks, c => Assert.Equal(["Book"], c.HeadingPath));
+        Assert.True(adapterTime.Elapsed < rawTime.Elapsed * 3 + TimeSpan.FromMilliseconds(200),
+            $"adapter {adapterTime.ElapsedMilliseconds} ms, HeaderChunker alone {rawTime.ElapsedMilliseconds} ms");
+    }
+
+    [Fact]
     public async Task SectionChunker_labels_every_chunk_with_the_first_heading()
     {
         // Documented behaviour, not a goal: SectionChunker's context is the document's first heading.
