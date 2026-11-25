@@ -73,9 +73,10 @@ foreach (var p in packages.Values.Where(p => expectedIds.Contains(p.Id)))
     if (p.Read("README.md") is not { } readme) Fail(p.Id, "no README.md in the package");
     else
     {
-        // Code and comments are shown or hidden, not linked: drop HTML comments and fenced blocks, then replace inline code
-        // with a placeholder (not nothing, so a link label written as code, [`Foo`]: target, is still a label).
-        var prose = InlineCode().Replace(FencedCode().Replace(HtmlComment().Replace(readme, ""), ""), "code");
+        // Code and comments are shown or hidden, not linked: drop fenced blocks, replace inline code with a placeholder (not
+        // nothing, so a link label written as code, [`Foo`]: target, is still a label), then drop closed HTML comments.
+        // Comments go last, so a "<!--" shown as code cannot hide what follows it.
+        var prose = HtmlComment().Replace(InlineCode().Replace(FencedCode().Replace(readme, ""), "code"), "");
         var targets = MarkdownLink().Matches(prose).Concat(ReferenceLink().Matches(prose)).Concat(HtmlLink().Matches(prose))
             .Select(m => m.Groups[1].Value)
             // Every image candidate of a srcset ("a.png 1x, b.png 2x"), not only the first.
@@ -143,17 +144,21 @@ partial class Program
 
     /// <summary>
     /// The target of a <c>src</c> or <c>href</c> attribute inside an HTML tag, quoted or not. The name must follow
-    /// whitespace, so <c>data-src</c> and <c>xlink:href</c> are other attributes.
+    /// whitespace, a slash or a closing quote (<c>&lt;img/src=</c>, <c>alt="x"src=</c>), so <c>data-src</c> and
+    /// <c>xlink:href</c> are other attributes.
     /// </summary>
-    [GeneratedRegex(@"(?<=<[a-zA-Z][^<>]*\s)(?:src|href)\s*=\s*[""']?([^""'\s>]+)", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"(?<=<[a-zA-Z][^<>]*[\s/""'])(?:src|href)\s*=\s*[""']?([^""'\s>]+)", RegexOptions.IgnoreCase)]
     private static partial Regex HtmlLink();
 
     /// <summary>The whole value of a <c>srcset</c> attribute inside an HTML tag, quoted or not.</summary>
-    [GeneratedRegex(@"(?<=<[a-zA-Z][^<>]*\s)srcset\s*=\s*(?:""(?<v>[^""]*)""|'(?<v>[^']*)'|(?<v>[^\s>]+))", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"(?<=<[a-zA-Z][^<>]*[\s/""'])srcset\s*=\s*(?:""(?<v>[^""]*)""|'(?<v>[^']*)'|(?<v>[^\s>]+))", RegexOptions.IgnoreCase)]
     private static partial Regex HtmlSrcset();
 
-    /// <summary>An HTML comment, up to its end or the end of the file.</summary>
-    [GeneratedRegex(@"<!--[\s\S]*?(?:-->|\z)")]
+    /// <summary>
+    /// A closed HTML comment. <c>&lt;!--&gt;</c> and <c>&lt;!---&gt;</c> are complete, empty comments; an unclosed one is
+    /// left in place (and checked), never allowed to hide the rest of the file.
+    /// </summary>
+    [GeneratedRegex(@"<!--(?:-?>|[\s\S]*?-->)")]
     private static partial Regex HtmlComment();
 
     /// <summary>

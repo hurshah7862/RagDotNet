@@ -47,7 +47,7 @@ nuget.org validates and indexes new packages, which takes a few minutes before t
 
 - a library is missing, or a package that is not one of the ten (a test project, the sample) is present;
 - a package has no symbol package, or its symbol package lacks the .NET 8 or .NET 10 `.pdb`; or it has no MIT license expression, authors, description, tags, project URL, or repository URL and commit;
-- a package has no README, or its README has a relative link, written as a Markdown link or image, a reference definition (`[name]: target`, also in a blockquote) or an HTML `src`, `href` or `srcset` (every image it lists) (nuget.org cannot resolve them). Links must start with `http://`, `https://`, `mailto:` or `#`. Code blocks, inline code and HTML comments are not checked, and a footnote definition (`[^1]: text`) is not a link, though links inside its text are checked;
+- a package has no README, or its README has a relative link, written as a Markdown link or image, a reference definition (`[name]: target`, also in a blockquote) or an HTML `src`, `href` or any image in a `srcset` (nuget.org cannot resolve them). Links must start with `http://`, `https://`, `mailto:` or `#`. Fenced code blocks, inline code and closed HTML comments are not checked (links in indented code blocks still are), and a footnote definition (`[^1]: text`) is not a link, though links inside its text are checked;
 - the .NET 8 or .NET 10 assembly or its XML documentation is missing;
 - `RagDotNet.VectorData.Sqlite` lacks its sqlite-vec natives for linux-x64, osx-arm64 or win-x64, or its third-party notices;
 - the versions break the rules above, or a stable package (or Core at any version) depends on a prerelease.
