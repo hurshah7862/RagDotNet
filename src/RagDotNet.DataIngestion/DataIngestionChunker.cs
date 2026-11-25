@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.Extensions.DataIngestion;
 using Microsoft.ML.Tokenizers;
 using RagDotNet.Chunking;
@@ -65,6 +66,7 @@ public sealed class DataIngestionChunker : IChunker
         var (ingestion, paths) = ToIngestionDocument(document);
         var chunker = _createChunker(options);
         var chunks = new List<Chunk>();
+        var cursor = 0;
         await foreach (var chunk in chunker.ProcessAsync(ingestion, cancellationToken).ConfigureAwait(false))
         {
             var context = chunk.Context ?? string.Empty;
@@ -76,7 +78,7 @@ public sealed class DataIngestionChunker : IChunker
                 if (rest.StartsWith("\r\n", StringComparison.Ordinal)) text = text[(context.Length + 2)..];
                 else if (rest.StartsWith("\n", StringComparison.Ordinal)) text = text[(context.Length + 1)..];
             }
-            var path = paths.TryGetValue(context, out var p) ? p : [];
+            var path = FindPath(paths, context, text, ref cursor);
             chunks.Add(new Chunk(chunks.Count, text.Trim(), path, PageStart: null, PageEnd: null, TokenCount: 0));
         }
 
@@ -84,13 +86,50 @@ public sealed class DataIngestionChunker : IChunker
     }
 
     /// <summary>
-    /// The document as Microsoft's, plus a lookup from each heading's context string (the markdown of the headings on its
-    /// path, joined by spaces, as <c>HeaderChunker</c> builds it) to its heading path, so the path is found, never parsed.
+    /// The heading path for a chunk's context. Two headings can read the same (a heading named "A ## B" and the chain
+    /// "A" then "B"), so among the headings with that context at or after the previous match (chunkers emit chunks in
+    /// document order, and a long section gives several chunks) the first whose section holds the chunk's first line
+    /// wins, else the first of them. A context found only earlier, from a chunker that emits out of order, takes the
+    /// first one in the document. No match gives an empty path.
     /// </summary>
-    private static (IngestionDocument Document, Dictionary<string, IReadOnlyList<string>> Paths) ToIngestionDocument(ParsedDocument document)
+    private static IReadOnlyList<string> FindPath(List<HeadingEntry> paths, string context, string text, ref int cursor)
+    {
+        var firstLine = text.TrimStart().Split('\n', 2)[0].Trim();
+        var first = -1;
+        for (var i = cursor; i < paths.Count; i++)
+        {
+            if (paths[i].Key != context) continue;
+            if (first < 0) first = i;
+            if (firstLine.Length > 0 && paths[i].Body.ToString().Contains(firstLine, StringComparison.Ordinal))
+            {
+                first = i;
+                break;
+            }
+        }
+
+        if (first >= 0)
+        {
+            cursor = first;
+            return paths[first].Path;
+        }
+
+        for (var i = 0; i < cursor; i++)
+            if (paths[i].Key == context) return paths[i].Path;
+        return [];
+    }
+
+    /// <summary>A heading's context string, its path, and the text of the blocks under it (up to the next heading).</summary>
+    private sealed record HeadingEntry(string Key, IReadOnlyList<string> Path, StringBuilder Body);
+
+    /// <summary>
+    /// The document as Microsoft's, plus each heading's context string (the markdown of the headings on its path, joined
+    /// by spaces, as <c>HeaderChunker</c> builds it) with its heading path, in document order, so the path is found,
+    /// never parsed.
+    /// </summary>
+    private static (IngestionDocument Document, List<HeadingEntry> Paths) ToIngestionDocument(ParsedDocument document)
     {
         var section = new IngestionDocumentSection();
-        var paths = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+        var paths = new List<HeadingEntry>();
         var stack = new List<(int Level, string Markdown)>();
         foreach (var block in document.Blocks)
         {
@@ -99,7 +138,7 @@ public sealed class DataIngestionChunker : IChunker
                 var level = block.HeadingPath.Count;
                 stack.RemoveAll(h => h.Level >= level);
                 stack.Add((level, block.Text));
-                paths.TryAdd(string.Join(" ", stack.Select(h => h.Markdown)), block.HeadingPath);
+                paths.Add(new HeadingEntry(string.Join(" ", stack.Select(h => h.Markdown)), block.HeadingPath, new StringBuilder()));
                 section.Elements.Add(new IngestionDocumentHeader(block.Text)
                 {
                     Level = level,
@@ -109,6 +148,7 @@ public sealed class DataIngestionChunker : IChunker
             }
             else
             {
+                if (paths.Count > 0) paths[^1].Body.Append(block.Text).Append('\n');
                 section.Elements.Add(new IngestionDocumentParagraph(block.Text) { Text = block.Text, PageNumber = block.PageNumber });
             }
         }
