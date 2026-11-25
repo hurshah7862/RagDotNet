@@ -158,6 +158,10 @@ static partial class Readme
         if (tags.Count > 0)
             yield return $"README has HTML ({string.Join(", ", tags.Select(t => $"<{t}>"))}); nuget.org shows raw HTML as text";
 
+        var footnotes = FootnoteDefinition().Matches(prose).Select(m => $"[^{m.Groups["label"].Value}]").Distinct().ToList();
+        if (footnotes.Count > 0)
+            yield return $"README has footnotes ({string.Join(", ", footnotes)}); nuget.org does not render them";
+
         var images = InlineImage().Matches(prose).Select(m => m.Groups["url"]).ToList();
         var imageTargets = images.Select(g => g.Value).ToList();
         var imageStarts = images.Select(g => g.Index).ToHashSet();
@@ -203,8 +207,12 @@ static partial class Readme
     [GeneratedRegex(@"\]\(\s*<?([^)\s>]+)")]
     private static partial Regex MarkdownLink();
 
-    /// <summary>An inline image, <c>![alt](target)</c>, whose alt text may hold balanced brackets to any depth.</summary>
-    [GeneratedRegex(@"!\[(?>[^\[\]]+|\[(?<d>)|\](?<-d>))*(?(d)(?!))\]\(\s*<?(?<url>[^)\s>]+)")]
+    /// <summary>
+    /// An inline image, <c>![alt](target)</c>, whose alt text may hold balanced brackets to any depth. The alt text stays
+    /// within its paragraph (no blank line) and is at most 200 runs long, so an unclosed <c>![</c> cannot make the scan
+    /// quadratic in the size of the file.
+    /// </summary>
+    [GeneratedRegex(@"!\[(?>[^\[\]\n]+|\n(?![ \t]*\r?\n)|\[(?<d>)|\](?<-d>)){0,200}(?(d)(?!))\]\(\s*<?(?<url>[^)\s>]+)")]
     private static partial Regex InlineImage();
 
     /// <summary>
@@ -221,6 +229,14 @@ static partial class Readme
     /// </summary>
     [GeneratedRegex(@"(?<=^|[\s*_~(])(?<!\]\()(?<!\]:[ \t]*)(?<url>(?:ftp://|mailto:|tel:)[^\s<>]*[^\s<>.,:;!?""')*_~])", RegexOptions.Multiline | RegexOptions.IgnoreCase)]
     private static partial Regex BareAutolink();
+
+    /// <summary>An ATX heading: one to six <c>#</c> then a space, a tab or the line end (<c>#tag</c> is a paragraph).</summary>
+    [GeneratedRegex(@"^ {0,3}#{1,6}(?:[ \t]|\r?$)")]
+    private static partial Regex AtxHeading();
+
+    /// <summary>A footnote definition, <c>[^label]: text</c>; nuget.org renders no footnotes.</summary>
+    [GeneratedRegex(@"^ {0,3}(?:>[ \t]? {0,3})*\[\^(?<label>[^\]]+)\]:", RegexOptions.Multiline)]
+    private static partial Regex FootnoteDefinition();
 
     /// <summary>A list item's first line: a bullet or a number with <c>.</c> or <c>)</c>, then a space or the line end.</summary>
     [GeneratedRegex(@"^ {0,3}(?:[-*+]|\d{1,9}[.)])(?:[ \t]|$)")]
@@ -256,11 +272,12 @@ static partial class Readme
             }
 
             inCode = false;
-            var heading = !blank && indent <= 3 && line.TrimStart().StartsWith('#');
+            var heading = AtxHeading().IsMatch(line);
             if (!blank && indent <= 3)
             {
                 if (ListItem().IsMatch(line)) inList = true;
-                else if (heading || (indent == 0 && canStartCode)) inList = false;
+                // A heading inside an item (indented) does not end the list; one at the margin does.
+                else if (indent == 0 && (heading || canStartCode)) inList = false;
             }
             canStartCode = blank || heading;
         }
