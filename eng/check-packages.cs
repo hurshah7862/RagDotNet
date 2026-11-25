@@ -80,8 +80,7 @@ foreach (var p in packages.Values.Where(p => expectedIds.Contains(p.Id)))
         var targets = MarkdownLink().Matches(prose).Concat(ReferenceLink().Matches(prose)).Concat(HtmlLink().Matches(prose))
             .Select(m => m.Groups[1].Value)
             // Every image candidate of a srcset ("a.png 1x, b.png 2x"), not only the first.
-            .Concat(HtmlSrcset().Matches(prose).SelectMany(m => m.Groups["v"].Value.Split(',', StringSplitOptions.RemoveEmptyEntries)
-                .Select(c => c.Trim().Split(' ', 2)[0]).Where(c => c.Length > 0)));
+            .Concat(HtmlSrcset().Matches(prose).SelectMany(m => SrcsetUrls(m.Groups["v"].Value)));
         foreach (var target in targets)
             if (!new[] { "http://", "https://", "mailto:", "#" }.Any(prefix => target.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
                 Fail(p.Id, $"README link '{target}' is relative; nuget.org cannot resolve it");
@@ -147,8 +146,33 @@ partial class Program
     /// whitespace, a slash or a closing quote (<c>&lt;img/src=</c>, <c>alt="x"src=</c>), so <c>data-src</c> and
     /// <c>xlink:href</c> are other attributes.
     /// </summary>
-    [GeneratedRegex(@"(?<=<[a-zA-Z][^<>]*[\s/""'])(?:src|href)\s*=\s*[""']?([^""'\s>]+)", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"(?<=<[a-zA-Z][^<>]*[\s/""'])(?:src|href)\s*=\s*[""']?\s*([^""'\s>]+)", RegexOptions.IgnoreCase)]
     private static partial Regex HtmlLink();
+
+    /// <summary>
+    /// The image URLs of a <c>srcset</c> value, split as the HTML standard does: a URL is a run of non-whitespace (so it
+    /// may contain commas, as image CDNs' URLs do), trailing commas end it, and its descriptors run up to the next comma.
+    /// </summary>
+    private static IEnumerable<string> SrcsetUrls(string value)
+    {
+        var i = 0;
+        while (true)
+        {
+            while (i < value.Length && (char.IsWhiteSpace(value[i]) || value[i] == ',')) i++;
+            if (i >= value.Length) yield break;
+            var start = i;
+            while (i < value.Length && !char.IsWhiteSpace(value[i])) i++;
+            var url = value[start..i];
+            if (url.EndsWith(','))
+            {
+                yield return url.TrimEnd(',');
+                continue;
+            }
+
+            yield return url;
+            while (i < value.Length && value[i] != ',') i++; // the descriptors
+        }
+    }
 
     /// <summary>The whole value of a <c>srcset</c> attribute inside an HTML tag, quoted or not.</summary>
     [GeneratedRegex(@"(?<=<[a-zA-Z][^<>]*[\s/""'])srcset\s*=\s*(?:""(?<v>[^""]*)""|'(?<v>[^']*)'|(?<v>[^\s>]+))", RegexOptions.IgnoreCase)]
@@ -156,9 +180,10 @@ partial class Program
 
     /// <summary>
     /// A closed HTML comment. <c>&lt;!--&gt;</c> and <c>&lt;!---&gt;</c> are complete, empty comments; an unclosed one is
-    /// left in place (and checked), never allowed to hide the rest of the file.
+    /// left in place (and checked), never allowed to hide the rest of the file. A comment that starts a line is an HTML
+    /// block and may span blank lines; one inside a paragraph cannot cross a blank line (there, "&lt;!--" is plain text).
     /// </summary>
-    [GeneratedRegex(@"<!--(?:-?>|[\s\S]*?-->)")]
+    [GeneratedRegex(@"^ {0,3}<!--(?:-?>|[\s\S]*?-->)|<!--(?:-?>|(?:(?!\n[ \t]*\r?\n)[\s\S])*?-->)", RegexOptions.Multiline)]
     private static partial Regex HtmlComment();
 
     /// <summary>
