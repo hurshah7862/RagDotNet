@@ -8,6 +8,7 @@ using Microsoft.Extensions.VectorData;
 using RagDotNet.Configuration;
 using RagDotNet.Core.Tests.Fakes;
 using RagDotNet.Documents;
+using RagDotNet.Ocr;
 using RagDotNet.Pipeline;
 
 namespace RagDotNet.DataIngestion.Tests;
@@ -96,6 +97,44 @@ public sealed class EndToEndTests
 
         var hit = Assert.Single(await rag.RetrieveAsync("from plain text", cancellationToken: Ct));
         Assert.Equal("from plain text", hit.Text);
+    }
+
+    [Fact]
+    public async Task Image_text_is_read_by_ocr_and_retrievable()
+    {
+        var fake = new DataIngestionReaderTests.FakeReader(_ =>
+        {
+            var section = new IngestionDocumentSection();
+            section.Elements.Add(new IngestionDocumentParagraph("Quarterly report"));
+            section.Elements.Add(new IngestionDocumentImage("![chart](x)")
+            {
+                Content = new byte[] { 1, 2, 3 },
+                MediaType = "image/png",
+                AlternativeText = "chart",
+            });
+            var document = new IngestionDocument("d");
+            document.Sections.Add(section);
+            return document;
+        });
+        await using var services = Build(rag => rag
+            .AddDataIngestionReader(_ => fake, [".md"], ["text/markdown"])
+            .AddOcrProvider<ChartOcr>());
+        await using var scope = services.CreateAsyncScope();
+        var rag = scope.ServiceProvider.GetRequiredService<IRagPipeline>();
+
+        var result = await rag.IngestAsync(Markdown("report", "ignored"), cancellationToken: Ct);
+
+        Assert.Empty(result.Warnings);
+        var hits = await rag.RetrieveAsync("Revenue grew", cancellationToken: Ct);
+        Assert.Contains(hits, h => h.Text.Contains("Revenue grew 12 percent", StringComparison.Ordinal));
+    }
+
+    private sealed class ChartOcr : IOcrProvider
+    {
+        public string Id => "fake-ocr/1";
+
+        public Task<OcrResult> RecognizeAsync(ImageInput image, CancellationToken cancellationToken) =>
+            Task.FromResult(new OcrResult("Revenue grew 12 percent", 0.95));
     }
 
     [Fact]
