@@ -146,8 +146,11 @@ static partial class Readme
         // label written as code, [`Foo`]: target, is still a label).
         var prose = InlineCode().Replace(FencedCode().Replace(NuGetComment().Replace(readme, ""), ""), "code");
 
-        foreach (Match tag in HtmlTagWithUrl().Matches(prose))
-            yield return $"README has an HTML <{tag.Groups["tag"].Value}> tag; nuget.org shows raw HTML as text";
+        // A one-letter name in capitals is a type parameter (IChunker<T>, Func<A, B>), shown as text everywhere.
+        var tags = HtmlTag().Matches(prose).Select(m => m.Groups["tag"].Value)
+            .Where(t => !(t.Length == 1 && char.IsUpper(t[0]))).Select(t => t.ToLowerInvariant()).Distinct().ToList();
+        if (tags.Count > 0)
+            yield return $"README has HTML ({string.Join(", ", tags.Select(t => $"<{t}>"))}); nuget.org shows raw HTML as text";
 
         var images = InlineImage().Matches(prose).Select(m => m.Groups["url"]).ToList();
         var imageTargets = images.Select(g => g.Value).ToList();
@@ -207,11 +210,11 @@ static partial class Readme
     private static partial Regex Autolink();
 
     /// <summary>
-    /// An HTML tag with a URL attribute (<c>src</c>, <c>href</c> or <c>srcset</c>), such as an image or a link written in
-    /// HTML. The attribute must follow whitespace, a slash or a closing quote, so <c>data-src</c> is another attribute.
+    /// An opening or closing tag of an HTML element READMEs use, not escaped with a backslash. Only known element names
+    /// count, so a generic type written in prose (<c>Dictionary&lt;string, List&lt;int&gt;&gt;</c>) is not HTML.
     /// </summary>
-    [GeneratedRegex(@"<(?<tag>[a-zA-Z][a-zA-Z0-9-]*)(?=[\s/>])[^<>]*?[\s/""'](?:src|href|srcset)\s*=", RegexOptions.IgnoreCase)]
-    private static partial Regex HtmlTagWithUrl();
+    [GeneratedRegex(@"(?<!\\)</?(?<tag>a|abbr|b|bdi|bdo|blockquote|br|button|caption|center|cite|code|col|colgroup|dd|del|details|dfn|div|dl|dt|em|embed|figcaption|figure|font|footer|h[1-6]|header|hr|i|iframe|img|input|ins|kbd|li|main|mark|meta|nav|object|ol|p|picture|pre|q|s|samp|section|small|source|span|strike|strong|style|sub|summary|sup|svg|table|tbody|td|tfoot|th|thead|tr|tt|u|ul|var|video|wbr)(?=[\s/>])", RegexOptions.IgnoreCase)]
+    private static partial Regex HtmlTag();
 
     /// <summary>A GitHub Actions workflow badge, which nuget.org shows from github.com (its own pattern).</summary>
     [GeneratedRegex(@"^(https|http):\/\/github\.com\/[^/]+\/[^/]+(\/actions)?\/workflows\/.*badge\.svg", RegexOptions.IgnoreCase)]
