@@ -32,7 +32,7 @@ var rag = new RagPipelineBuilder()
     .Build();
 ```
 
-The reader is chosen by the document's content type when one is given, and otherwise by its file extension, ignoring case. `report.PDF` and a file named `download` with content type `application/pdf` both go to the PDF reader. A document no registered reader accepts raises `UnsupportedDocumentException`. A generic or empty content type, such as the `application/octet-stream` browsers often send for an unknown file type (and `IFormFile.ContentType` then reports), still counts as given and matches no reader: pass `null` as the content type when you don't know the real one, so the file extension decides.
+The reader is chosen by the document's content type when one is given, and otherwise by its file extension, ignoring case. `report.PDF` and a file named `download` with content type `application/pdf` both go to the PDF reader. A document no registered reader accepts raises `UnsupportedDocumentException`. A generic or empty content type, such as the `application/octet-stream` browsers often send for an unknown file type (and `IFormFile.ContentType` then reports), still counts as given and matches none of these readers: pass `null` as the content type when you don't know the real one, so the file extension decides.
 
 ## What each reader keeps
 

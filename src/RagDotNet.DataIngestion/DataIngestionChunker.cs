@@ -146,7 +146,8 @@ public sealed class DataIngestionChunker : IChunker
 
         public bool Ambiguous { get; private set; }
 
-        public void Append(string blockText) => _body!.Append(blockText).Append('\n');
+        // Blocks keep the source's line endings (\r\n in Windows-authored files); chunk text is compared with \n.
+        public void Append(string blockText) => _body!.Append(blockText.Replace("\r\n", "\n", StringComparison.Ordinal)).Append('\n');
 
         /// <summary>Called once the document is read: keeps the text as one string.</summary>
         public void Complete(bool ambiguous)

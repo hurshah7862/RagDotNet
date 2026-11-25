@@ -73,8 +73,9 @@ foreach (var p in packages.Values.Where(p => expectedIds.Contains(p.Id)))
     if (p.Read("README.md") is not { } readme) Fail(p.Id, "no README.md in the package");
     else
     {
-        // Code is shown, not linked: drop fenced blocks, then inline code, before looking for links.
-        var prose = InlineCode().Replace(FencedCode().Replace(readme, ""), "");
+        // Code is shown, not linked: drop fenced blocks, then replace inline code with a placeholder (not nothing, so a
+        // link label written as code, [`Foo`]: target, is still a label) before looking for links.
+        var prose = InlineCode().Replace(FencedCode().Replace(readme, ""), "code");
         foreach (var link in MarkdownLink().Matches(prose).Concat(ReferenceLink().Matches(prose)).Concat(HtmlLink().Matches(prose)))
         {
             var target = link.Groups[1].Value;
@@ -135,19 +136,25 @@ partial class Program
     /// The target of a reference definition, <c>[name]: target</c> at the start of a line, also inside a blockquote. A
     /// footnote (<c>[^1]: text</c>) is not a link.
     /// </summary>
-    [GeneratedRegex(@"^ {0,3}(?:>[ \t]?)*[ \t]*\[(?!\^)[^\]]+\]:[ \t]*<?([^\s>]+)", RegexOptions.Multiline)]
+    [GeneratedRegex(@"^ {0,3}(?:>[ \t]? {0,3})*\[(?!\^)[^\]]+\]:[ \t]*(?:\r?\n(?:[ \t]*>)*[ \t]*)?<?([^\s>]+)", RegexOptions.Multiline)]
     private static partial Regex ReferenceLink();
 
     /// <summary>The (first) target of a <c>src</c>, <c>href</c> or <c>srcset</c> attribute inside an HTML tag, quoted or not.</summary>
     [GeneratedRegex(@"(?<=<[a-zA-Z][^<>]*)\b(?:src|href|srcset)\s*=\s*[""']?([^""'\s>]+)", RegexOptions.IgnoreCase)]
     private static partial Regex HtmlLink();
 
-    /// <summary>A fenced code block (``` or ~~~), up to its closing fence or the end of the file.</summary>
-    [GeneratedRegex(@"^ {0,3}(`{3,}|~{3,})[^\n]*\n[\s\S]*?(?:^ {0,3}\1[ \t]*\r?$|\z)", RegexOptions.Multiline)]
+    /// <summary>
+    /// A fenced code block, up to a closing fence of the same character at least as long as the opening one, or the end of
+    /// the file. A backtick fence's info string cannot contain a backtick, so <c>```js``` text</c> is not a fence.
+    /// </summary>
+    [GeneratedRegex(@"^ {0,3}(?:(`{3,})[^`\n]*|(~{3,})[^\n]*)\n[\s\S]*?(?:^ {0,3}(?:\1`*|\2~*)[ \t]*\r?$|\z)", RegexOptions.Multiline)]
     private static partial Regex FencedCode();
 
-    /// <summary>An inline code span: a run of backticks, up to the next run of the same length.</summary>
-    [GeneratedRegex(@"(`+)[\s\S]*?(?<!`)\1(?!`)")]
+    /// <summary>
+    /// An inline code span: a run of backticks, up to the next run of the same length within the paragraph. A span never
+    /// crosses a blank line, so a stray backtick cannot hide the rest of the file.
+    /// </summary>
+    [GeneratedRegex(@"(`+)(?:(?!\r?\n[ \t]*\r?\n)[\s\S])*?(?<!`)\1(?!`)")]
     private static partial Regex InlineCode();
 }
 
