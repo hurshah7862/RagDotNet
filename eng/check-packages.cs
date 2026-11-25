@@ -44,7 +44,15 @@ foreach (var id in packages.Keys.Where(id => !expectedIds.Contains(id))) Fail(id
 
 foreach (var p in packages.Values.Where(p => expectedIds.Contains(p.Id)))
 {
-    if (!File.Exists(Path.Combine(dir, $"{p.Id}.{p.Version}.snupkg"))) Fail(p.Id, $"no symbol package {p.Id}.{p.Version}.snupkg");
+    var symbols = Path.Combine(dir, $"{p.Id}.{p.Version}.snupkg");
+    if (!File.Exists(symbols)) Fail(p.Id, $"no symbol package {p.Id}.{p.Version}.snupkg");
+    else
+    {
+        using var zip = ZipFile.OpenRead(symbols);
+        var entries = zip.Entries.Select(e => e.FullName.Replace('\\', '/')).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var tfm in frameworks)
+            if (!entries.Contains($"lib/{tfm}/{p.Id}.pdb")) Fail(p.Id, $"symbol package has no lib/{tfm}/{p.Id}.pdb");
+    }
 
     var license = p.Meta("license");
     if (license?.Attribute("type")?.Value != "expression" || license.Value != "MIT") Fail(p.Id, "license is not the MIT expression");
@@ -64,7 +72,7 @@ foreach (var p in packages.Values.Where(p => expectedIds.Contains(p.Id)))
     if (p.Meta("readme")?.Value != "README.md") Fail(p.Id, "nuspec names no README.md");
     if (p.Read("README.md") is not { } readme) Fail(p.Id, "no README.md in the package");
     else
-        foreach (Match link in MarkdownLink().Matches(readme))
+        foreach (var link in MarkdownLink().Matches(readme).Concat(ReferenceLink().Matches(readme)).Concat(HtmlLink().Matches(readme)))
         {
             var target = link.Groups[1].Value;
             if (!target.StartsWith("http://", StringComparison.Ordinal) && !target.StartsWith("https://", StringComparison.Ordinal)
@@ -119,6 +127,14 @@ partial class Program
     /// <summary>The target of a Markdown link or image: <c>](target)</c> or <c>](target "title")</c>.</summary>
     [GeneratedRegex(@"\]\(\s*<?([^)\s>]+)")]
     private static partial Regex MarkdownLink();
+
+    /// <summary>The target of a reference definition: <c>[name]: target</c> at the start of a line.</summary>
+    [GeneratedRegex(@"^ {0,3}\[[^\]]+\]:\s*<?([^\s>]+)", RegexOptions.Multiline)]
+    private static partial Regex ReferenceLink();
+
+    /// <summary>The target of an HTML <c>src</c> or <c>href</c> attribute.</summary>
+    [GeneratedRegex(@"\b(?:src|href)\s*=\s*[""']([^""']+)[""']", RegexOptions.IgnoreCase)]
+    private static partial Regex HtmlLink();
 }
 
 sealed partial class Package

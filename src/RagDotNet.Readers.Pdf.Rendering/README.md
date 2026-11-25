@@ -1,6 +1,6 @@
 # RagDotNet.Readers.Pdf.Rendering
 
-PDF page rendering for [RagDotNet](https://github.com/hurshah7862/RagDotNet) OCR: turns scanned PDF pages into images, at 300 DPI, so a per-image OCR provider can read them. Uses PDFium through [PDFtoImage](https://github.com/sungaila/PDFtoImage), with native libraries for Windows, Linux and macOS.
+PDF page rendering for [RagDotNet](https://github.com/hurshah7862/RagDotNet) OCR: turns scanned PDF pages into images, at 300 DPI by default (`RagOptions.Ocr.PageDpi`, 72 to 1200), so a per-image OCR provider can read them. Uses PDFium through [PDFtoImage](https://github.com/sungaila/PDFtoImage), with native libraries for Windows, Linux and macOS.
 
 ```
 dotnet add package RagDotNet.Readers.Pdf.Rendering

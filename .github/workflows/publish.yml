@@ -86,11 +86,20 @@ jobs:
         with:
           user: ${{ vars.NUGET_USER }}
 
-      # The .snupkg symbol packages are pushed with their packages. --skip-duplicate makes a re-run after a partial
-      # push safe: versions already on nuget.org are skipped instead of failing the job.
-      - name: Push to nuget.org
+      # --skip-duplicate makes a re-run after a partial push safe: versions already on nuget.org are skipped instead of
+      # failing the job. Symbols go in their own step, because the client pushes a package's .snupkg only when it pushed
+      # the .nupkg itself, so a re-run would otherwise never send the symbols of a package it skipped.
+      - name: Push packages to nuget.org
         run: >-
           dotnet nuget push "artifacts/packages/*.nupkg"
+          --api-key "${{ steps.login.outputs.NUGET_API_KEY }}"
+          --source https://api.nuget.org/v3/index.json
+          --no-symbols
+          --skip-duplicate
+
+      - name: Push symbols to nuget.org
+        run: >-
+          dotnet nuget push "artifacts/packages/*.snupkg"
           --api-key "${{ steps.login.outputs.NUGET_API_KEY }}"
           --source https://api.nuget.org/v3/index.json
           --skip-duplicate
