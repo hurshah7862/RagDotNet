@@ -72,13 +72,17 @@ foreach (var p in packages.Values.Where(p => expectedIds.Contains(p.Id)))
     if (p.Meta("readme")?.Value != "README.md") Fail(p.Id, "nuspec names no README.md");
     if (p.Read("README.md") is not { } readme) Fail(p.Id, "no README.md in the package");
     else
-        foreach (var link in MarkdownLink().Matches(readme).Concat(ReferenceLink().Matches(readme)).Concat(HtmlLink().Matches(readme)))
+    {
+        // Code is shown, not linked: drop fenced blocks, then replace inline code with a placeholder (not nothing, so a
+        // link label written as code, [`Foo`]: target, is still a label) before looking for links.
+        var prose = InlineCode().Replace(FencedCode().Replace(readme, ""), "code");
+        foreach (var link in MarkdownLink().Matches(prose).Concat(ReferenceLink().Matches(prose)).Concat(HtmlLink().Matches(prose)))
         {
             var target = link.Groups[1].Value;
-            if (!target.StartsWith("http://", StringComparison.Ordinal) && !target.StartsWith("https://", StringComparison.Ordinal)
-                && !target.StartsWith('#'))
+            if (!new[] { "http://", "https://", "mailto:", "#" }.Any(prefix => target.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
                 Fail(p.Id, $"README link '{target}' is relative; nuget.org cannot resolve it");
         }
+    }
 
     var stable = !p.Version.Contains('-');
     foreach (var (dependency, minimum) in p.Dependencies())
@@ -128,13 +132,30 @@ partial class Program
     [GeneratedRegex(@"\]\(\s*<?([^)\s>]+)")]
     private static partial Regex MarkdownLink();
 
-    /// <summary>The target of a reference definition: <c>[name]: target</c> at the start of a line.</summary>
-    [GeneratedRegex(@"^ {0,3}\[[^\]]+\]:\s*<?([^\s>]+)", RegexOptions.Multiline)]
+    /// <summary>
+    /// The target of a reference definition, <c>[name]: target</c> at the start of a line, also inside a blockquote. A
+    /// footnote (<c>[^1]: text</c>) is not a link.
+    /// </summary>
+    [GeneratedRegex(@"^ {0,3}(?:>[ \t]? {0,3})*\[(?!\^)[^\]]+\]:[ \t]*(?:\r?\n(?:[ \t]*>)*[ \t]*)?<?([^\s>]+)", RegexOptions.Multiline)]
     private static partial Regex ReferenceLink();
 
-    /// <summary>The target of an HTML <c>src</c> or <c>href</c> attribute.</summary>
-    [GeneratedRegex(@"\b(?:src|href)\s*=\s*[""']([^""']+)[""']", RegexOptions.IgnoreCase)]
+    /// <summary>The (first) target of a <c>src</c>, <c>href</c> or <c>srcset</c> attribute inside an HTML tag, quoted or not.</summary>
+    [GeneratedRegex(@"(?<=<[a-zA-Z][^<>]*)\b(?:src|href|srcset)\s*=\s*[""']?([^""'\s>]+)", RegexOptions.IgnoreCase)]
     private static partial Regex HtmlLink();
+
+    /// <summary>
+    /// A fenced code block, up to a closing fence of the same character at least as long as the opening one, or the end of
+    /// the file. A backtick fence's info string cannot contain a backtick, so <c>```js``` text</c> is not a fence.
+    /// </summary>
+    [GeneratedRegex(@"^ {0,3}(?:(`{3,})[^`\n]*|(~{3,})[^\n]*)\n[\s\S]*?(?:^ {0,3}(?:\1`*|\2~*)[ \t]*\r?$|\z)", RegexOptions.Multiline)]
+    private static partial Regex FencedCode();
+
+    /// <summary>
+    /// An inline code span: a run of backticks, up to the next run of the same length within the paragraph. A span never
+    /// crosses a blank line, so a stray backtick cannot hide the rest of the file.
+    /// </summary>
+    [GeneratedRegex(@"(`+)(?:(?!\r?\n[ \t]*\r?\n)[\s\S])*?(?<!`)\1(?!`)")]
+    private static partial Regex InlineCode();
 }
 
 sealed partial class Package

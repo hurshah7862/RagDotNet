@@ -86,40 +86,48 @@ public sealed class DataIngestionChunker : IChunker
     }
 
     /// <summary>
-    /// The heading path for a chunk's context. Two headings can read the same (a heading named "A ## B" and the chain
-    /// "A" then "B"), so among the headings with that context at or after the previous match (chunkers emit chunks in
-    /// document order, and a long section gives several chunks) the first whose section holds the chunk's first line
-    /// wins, else the first of them. Only such ambiguous contexts compare text; any other takes the first match at or after
-    /// the previous one, so a long section is not searched once per chunk. A context found only earlier, from a chunker
-    /// that emits out of order, takes the first one in the document. No match gives an empty path.
+    /// The heading path for a chunk's context. Chunkers emit chunks in document order and a long section gives several
+    /// chunks, so the first heading with that context at or after the previous match is taken; one found only earlier
+    /// (a chunker that emits out of order) is taken next. Two headings with different paths can read the same (a heading
+    /// named "A ## B" and the chain "A" then "B"): for such an ambiguous context the section holding the chunk's whole
+    /// text wins, then the one holding its first line, searching from the previous match onwards and then before it.
+    /// Only ambiguous contexts compare text, so a long section is not searched once per chunk. No match gives an empty path.
     /// </summary>
     private static IReadOnlyList<string> FindPath(List<HeadingEntry> paths, string context, string text, ref int cursor)
     {
-        string? firstLine = null;
-        var first = -1;
-        for (var i = cursor; i < paths.Count; i++)
+        var after = -1;
+        for (var i = cursor; i < paths.Count && after < 0; i++)
+            if (paths[i].Key == context) after = i;
+        var before = -1;
+        if (after < 0)
+            for (var i = 0; i < cursor && before < 0; i++)
+                if (paths[i].Key == context) before = i;
+
+        var found = after >= 0 ? after : before;
+        if (found < 0) return [];
+        if (!paths[found].Ambiguous)
         {
-            var entry = paths[i];
-            if (entry.Key != context) continue;
-            if (first < 0) first = i;
-            if (!entry.Ambiguous) break;
-            firstLine ??= text.TrimStart().Split('\n', 2)[0].Trim();
-            if (firstLine.Length > 0 && entry.Text.Contains(firstLine, StringComparison.Ordinal))
+            if (after >= 0) cursor = after;
+            return paths[found].Path;
+        }
+
+        // Ambiguous: let the text decide. HeaderChunker may join blocks with \r\n; the section text uses \n.
+        var body = text.Replace("\r\n", "\n", StringComparison.Ordinal).Trim();
+        var firstLine = body.Split('\n', 2)[0].Trim();
+        foreach (var needle in new[] { body, firstLine })
+        {
+            if (needle.Length == 0) continue;
+            for (var n = 0; n < paths.Count; n++)
             {
-                first = i;
-                break;
+                var i = (cursor + n) % paths.Count; // from the previous match onwards, then the ones before it
+                if (paths[i].Key != context || !paths[i].Text.Contains(needle, StringComparison.Ordinal)) continue;
+                cursor = i;
+                return paths[i].Path;
             }
         }
 
-        if (first >= 0)
-        {
-            cursor = first;
-            return paths[first].Path;
-        }
-
-        for (var i = 0; i < cursor; i++)
-            if (paths[i].Key == context) return paths[i].Path;
-        return [];
+        if (after >= 0) cursor = after;
+        return paths[found].Path;
     }
 
     /// <summary>
@@ -138,7 +146,8 @@ public sealed class DataIngestionChunker : IChunker
 
         public bool Ambiguous { get; private set; }
 
-        public void Append(string blockText) => _body!.Append(blockText).Append('\n');
+        // Blocks keep the source's line endings (\r\n in Windows-authored files); chunk text is compared with \n.
+        public void Append(string blockText) => _body!.Append(blockText.Replace("\r\n", "\n", StringComparison.Ordinal)).Append('\n');
 
         /// <summary>Called once the document is read: keeps the text as one string.</summary>
         public void Complete(bool ambiguous)
