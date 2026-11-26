@@ -102,8 +102,7 @@ internal sealed class Ingestor(RagEngine engine)
         IReadOnlyList<Chunk> chunks;
         using (RagTelemetry.ActivitySource.StartActivity("rag.chunk"))
         using (ChunkingProgress.Use(p is null ? null : (done, totalUnits) => p.Report(new IngestProgress(s.DocumentId, IngestStage.Chunking, done, totalUnits))))
-            chunks = ChunkOutputGuard.Normalize(
-                chunker, await chunker.ChunkAsync(parsed, chunking, ct).ConfigureAwait(false), chunking, engine.Tokens);
+            chunks = await OcrAwareChunking.ChunkAsync(chunker, parsed, chunking, options.Ocr.ChunkMaxTokens, engine.Tokens, ct).ConfigureAwait(false);
         var total = chunks.Count;
 
         var warnings = new List<IngestWarning>(parsed.Warnings);
