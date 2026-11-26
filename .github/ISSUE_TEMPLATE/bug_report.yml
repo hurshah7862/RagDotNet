@@ -1,0 +1,33 @@
+name: Bug report
+description: Something in RagDotNet does not work as documented.
+labels: [bug]
+body:
+  - type: input
+    id: packages
+    attributes:
+      label: Packages and versions
+      description: The RagDotNet packages you use, with versions.
+      placeholder: RagDotNet.Core 1.0.0-preview.1, RagDotNet.Readers.Pdf 1.0.0-preview.1
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: .NET version, operating system, vector store, and chat and embedding models.
+      placeholder: .NET 10, Ubuntu 24.04, SQLite store, Ollama llama3.2:3b and nomic-embed-text
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead. Include the exception and stack trace if there is one.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: A small program or the steps that show the problem. Leave out private documents and keys.
+      render: csharp
