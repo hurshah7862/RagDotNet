@@ -1,0 +1,19 @@
+<!-- Imported by every sample: the model provider choice (providers.json), the question loop, and the packages they need. -->
+<Project>
+  <ItemGroup>
+    <Compile Include="$(MSBuildThisFileDirectory)ProviderFactory.cs" Link="Shared/ProviderFactory.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)QuestionLoop.cs" Link="Shared/QuestionLoop.cs" />
+    <None Include="$(MSBuildThisFileDirectory)providers.json" Link="providers.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="OllamaSharp" />
+    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" />
+    <ProjectReference Include="$(MSBuildThisFileDirectory)..\..\src\RagDotNet.Core\RagDotNet.Core.csproj" />
+  </ItemGroup>
+  <!-- ASP.NET Core already includes configuration. -->
+  <ItemGroup Condition="'$(UsingMicrosoftNETSdkWeb)' != 'true'">
+    <PackageReference Include="Microsoft.Extensions.Configuration" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" />
+  </ItemGroup>
+</Project>

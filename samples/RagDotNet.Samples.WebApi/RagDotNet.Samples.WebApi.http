@@ -1,0 +1,22 @@
+# Requests for the WebApi sample (Visual Studio, Rider and VS Code's REST Client run this file).
+@host = http://localhost:5080
+
+### Upload a document; the response has the job id
+POST {{host}}/documents
+Content-Type: multipart/form-data; boundary=sample
+
+--sample
+Content-Disposition: form-data; name="file"; filename="install-guide.pdf"
+Content-Type: application/pdf
+
+< ../../tests/RagDotNet.Evaluation/Dataset/base/formats/pdf/install-guide.pdf
+--sample--
+
+### Check the job (replace the id with the one returned above)
+GET {{host}}/jobs/REPLACE-WITH-JOB-ID
+
+### Ask a question
+POST {{host}}/ask
+Content-Type: application/json
+
+{ "text": "What command installs Quill with winget?" }

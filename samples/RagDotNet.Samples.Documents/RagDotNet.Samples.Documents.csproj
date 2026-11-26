@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <Import Project="..\Shared\Shared.props" />
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\RagDotNet.Readers.Pdf\RagDotNet.Readers.Pdf.csproj" />
+    <ProjectReference Include="..\..\src\RagDotNet.Readers.Docx\RagDotNet.Readers.Docx.csproj" />
+    <ProjectReference Include="..\..\src\RagDotNet.Readers.Html\RagDotNet.Readers.Html.csproj" />
+    <ProjectReference Include="..\..\src\RagDotNet.VectorData.Sqlite\RagDotNet.VectorData.Sqlite.csproj" />
+    <ProjectReference Include="..\..\src\RagDotNet.Keyword.Lucene\RagDotNet.Keyword.Lucene.csproj" />
+  </ItemGroup>
+</Project>
