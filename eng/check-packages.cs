@@ -69,6 +69,10 @@ foreach (var p in packages.Values.Where(p => expectedIds.Contains(p.Id)))
         if (!p.Has($"lib/{tfm}/{p.Id}.{ext}")) Fail(p.Id, $"no lib/{tfm}/{p.Id}.{ext}");
 
     // nuget.org shows the packed README as the package page, with the rules of its MarkdownService (see Readme below).
+    // nuget.org shows this icon in search results and on the package page; without one it shows a generic placeholder.
+    if (p.Meta("icon")?.Value != "icon.png") Fail(p.Id, "nuspec names no icon.png");
+    else if (!p.Has("icon.png")) Fail(p.Id, "no icon.png in the package");
+
     if (p.Meta("readme")?.Value != "README.md") Fail(p.Id, "nuspec names no README.md");
     if (p.Read("README.md") is not { } readme) Fail(p.Id, "no README.md in the package");
     else foreach (var problem in Readme.Problems(readme)) Fail(p.Id, problem);

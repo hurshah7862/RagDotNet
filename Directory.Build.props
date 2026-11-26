@@ -16,6 +16,8 @@
     <IsPackable>true</IsPackable>
     <!-- Every package carries its project's README.md as its nuget.org page. -->
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <!-- One icon for every package, shown in nuget.org search results and on each package page. -->
+    <PackageIcon>icon.png</PackageIcon>
     <PackageTags>rag;retrieval-augmented-generation;ai;llm;embeddings;vector-search;semantic-search;Microsoft.Extensions.AI</PackageTags>
     <PackageProjectUrl>https://github.com/hurshah7862/RagDotNet</PackageProjectUrl>
     <RepositoryUrl>https://github.com/hurshah7862/RagDotNet</RepositoryUrl>
@@ -37,5 +39,6 @@
     <AdditionalFiles Include="PublicAPI.Shipped.txt" />
     <AdditionalFiles Include="PublicAPI.Unshipped.txt" />
     <None Include="README.md" Pack="true" PackagePath="/" />
+    <None Include="$(MSBuildThisFileDirectory)eng/icon.png" Pack="true" PackagePath="/" Visible="false" />
   </ItemGroup>
 </Project>
