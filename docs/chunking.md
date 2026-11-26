@@ -30,7 +30,7 @@ Whatever a chunker returns, the library drops blank chunks, splits chunks longer
 
 **Semantic thresholds.** A higher `BreakpointPercentile` makes fewer breaks and larger chunks; a lower one makes more, smaller chunks. Because the threshold is a percentile of each document's own distances, it adapts to how varied a document is: a document that stays on one topic still gets a few breaks at its relatively biggest shifts. Distances are only compared within a section, and the size limit still applies.
 
-**OCR text.** Text that came from OCR can have its own chunk size, `RagOptions.Ocr.ChunkMaxTokens`, because a scanned page arrives as one block of text without headings; see [docs/ocr.md](ocr.md#chunk-size-for-ocr-text).
+**OCR text.** Text that came from OCR can have its own chunk size, `RagOptions.Ocr.ChunkMaxTokens`, because Tesseract returns a scanned page as one block of text without headings; see [docs/ocr.md](ocr.md#chunk-size-for-ocr-text). When it is set and a document holds OCR text, the chunker runs once for each stretch of OCR text and each stretch of other text, each starting with the headings above it. Semantic's breakpoint percentile is then computed per stretch rather than per document, and a custom chunker sees one stretch at a time.
 
 **Changing settings re-chunks.** The chunker's name and version, `MaxTokens` and the tokenizer are part of each document's chunking hash. So is each chunker's own setting: `OverlapRatio` for structure-aware and fixed-size documents, and `BreakpointPercentile` for semantic ones. Changing any of them re-chunks a document the next time it is ingested.
 

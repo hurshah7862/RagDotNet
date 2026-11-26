@@ -29,22 +29,41 @@ internal static class OcrAwareChunking
         return result;
     }
 
+    /// <summary>
+    /// Splits the blocks where OCR text starts or stops. A run that starts inside a section begins with the document's own
+    /// heading blocks above it, so a chunker that reads headings from heading blocks (rather than from each block's
+    /// <see cref="DocumentBlock.HeadingPath"/>) still sees them; heading blocks produce no chunk text of their own.
+    /// </summary>
     private static IEnumerable<(bool IsOcr, List<DocumentBlock> Blocks)> Runs(IReadOnlyList<DocumentBlock> blocks)
     {
         var run = new List<DocumentBlock>();
         var isOcr = false;
+        var headings = new List<DocumentBlock>(); // the heading blocks on the path at the current position
         foreach (var block in blocks)
         {
             if (run.Count > 0 && block.IsOcrText != isOcr)
             {
                 yield return (isOcr, run);
-                run = [];
+                run = [.. headings.Where(h => IsAbove(h, block))];
             }
 
             isOcr = block.IsOcrText;
             run.Add(block);
+            if (block.Kind == BlockKind.Heading && block.HeadingPath.Count > 0)
+            {
+                headings.RemoveAll(h => h.HeadingPath.Count >= block.HeadingPath.Count);
+                headings.Add(block);
+            }
         }
 
         if (run.Count > 0) yield return (isOcr, run);
+    }
+
+    /// <summary>Whether <paramref name="heading"/> is on the path of <paramref name="block"/>, above it.</summary>
+    private static bool IsAbove(DocumentBlock heading, DocumentBlock block)
+    {
+        var limit = block.Kind == BlockKind.Heading ? block.HeadingPath.Count - 1 : block.HeadingPath.Count;
+        return heading.HeadingPath.Count <= limit
+            && heading.HeadingPath.SequenceEqual(block.HeadingPath.Take(heading.HeadingPath.Count), StringComparer.Ordinal);
     }
 }
