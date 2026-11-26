@@ -44,8 +44,16 @@ app.MapPost("/documents", async (IFormFile file, IIngestionQueue queue, Cancella
             return Results.BadRequest($"Upload a file named with one of: {string.Join(", ", allowedExtensions)}.");
         }
 
+        // Clients send application/octet-stream when they don't know a file's type (curl does for .md, for example).
+        // A content type, when given, decides which reader reads the file, so pass null for a generic one and let
+        // the file extension decide.
+        string? contentType = string.IsNullOrWhiteSpace(file.ContentType)
+            || file.ContentType.StartsWith("application/octet-stream", StringComparison.OrdinalIgnoreCase)
+            ? null
+            : file.ContentType;
+
         await using var stream = file.OpenReadStream();
-        string jobId = await queue.EnqueueAsync(new DocumentSource(fileName, stream, fileName, file.ContentType), ct);
+        string jobId = await queue.EnqueueAsync(new DocumentSource(fileName, stream, fileName, contentType), ct);
         return Results.Accepted($"/jobs/{jobId}", new { jobId });
     })
     .DisableAntiforgery(); // a sample API without browser forms; keep antiforgery on for apps that serve forms
