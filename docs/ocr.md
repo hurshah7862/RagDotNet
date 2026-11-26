@@ -33,7 +33,7 @@ using var ocr = new TesseractOcrProvider(new TesseractOcrOptions { DataPath = "/
 var rag = builder.UseOcrProvider(ocr).AddPdfPageRendering().Build();
 ```
 
-Disposing waits for a recognition already running; calls after that throw `ObjectDisposedException`.
+Disposing waits for a recognition already running; calls after that throw `ObjectDisposedException`. If the process exits without disposing the engine, Tesseract prints `ObjectCache ... WARNING! LEAK!` lines as it shuts down; they are harmless, and disposing the provider as above stops them.
 
 **Language data** is not included in the package. Download the `.traineddata` files for your languages from [tessdata_fast](https://github.com/tesseract-ocr/tessdata_fast) (or `tessdata_best` for better accuracy at lower speed) and set `DataPath` to their folder. The default is `./tessdata`.
 

@@ -1,10 +1,13 @@
 # RagDotNet
 
 [![CI](https://github.com/hurshah7862/RagDotNet/actions/workflows/ci.yml/badge.svg)](https://github.com/hurshah7862/RagDotNet/actions/workflows/ci.yml)
+[![NuGet](https://img.shields.io/nuget/vpre/RagDotNet.Core?label=nuget)](https://www.nuget.org/packages/RagDotNet.Core)
+[![Downloads](https://img.shields.io/nuget/dt/RagDotNet.Core)](https://www.nuget.org/packages/RagDotNet.Core)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 RagDotNet is a .NET library for retrieval-augmented generation (RAG). It ingests documents, chunks and embeds them into a vector store, and answers questions with cited sources, built on Microsoft.Extensions.AI and Microsoft.Extensions.VectorData.
 
-> **Under development.** RagDotNet is not released yet. The public API can still change between commits, stored data may need re-ingesting after an update, and no package is published to NuGet. Core ingestion, hybrid retrieval and reranking, cited answers, chat and query rewriting, three chunkers, PDF, DOCX and HTML readers, and OCR work today; more vector stores are still to come. Feedback and issues are welcome.
+> **Preview.** The first preview, 1.0.0-preview.1, is on NuGet. The public API can still change before 1.0.0, and stored data may need re-ingesting after an update. Core ingestion, hybrid retrieval and reranking, cited answers, chat and query rewriting, three chunkers, PDF, DOCX and HTML readers, and OCR work today; more vector stores are still to come. Feedback and issues are welcome.
 
 ## Why this exists
 
@@ -28,30 +31,28 @@ RagDotNet is for .NET developers who want an application to answer questions fro
 | More vector stores | In progress ([vector stores](docs/vector-stores.md)) |
 | Background ingestion queue (`RagDotNet.Hosting`) | Works ([hosting](docs/hosting.md)) |
 | Microsoft.Extensions.DataIngestion adapters (`RagDotNet.DataIngestion`, preview) | Works ([dataingestion](docs/dataingestion.md)) |
-| NuGet packages | Packed and checked in CI; not published yet ([publishing](docs/publishing.md)) |
+| NuGet packages | 1.0.0-preview.1 published; released from tags ([publishing](docs/publishing.md)) |
 
 ## Install
 
-No package is on NuGet yet. Until then, clone the repository and reference the project directly:
-
 ```
-dotnet add reference path/to/RagDotNet/src/RagDotNet.Core/RagDotNet.Core.csproj
+dotnet add package RagDotNet.Core --prerelease
 ```
 
-Once published, it will be `dotnet add package RagDotNet.Core`, plus any of the optional packages:
+plus any of the optional packages:
 
-| Package | What it adds |
-|---|---|
-| `RagDotNet.Core` | The pipeline, text and Markdown readers, chunkers, hybrid retrieval, cited answers, dependency injection |
-| `RagDotNet.Readers.Pdf` | PDF reader with page numbers |
-| `RagDotNet.Readers.Docx` | DOCX reader with heading paths |
-| `RagDotNet.Readers.Html` | HTML reader that leaves out page boilerplate |
-| `RagDotNet.Readers.Pdf.Rendering` | Renders scanned PDF pages for your own OCR provider |
-| `RagDotNet.Ocr.Tesseract` | Tesseract OCR for scanned pages and embedded images |
-| `RagDotNet.VectorData.Sqlite` | SQLite vector store with sqlite-vec |
-| `RagDotNet.Keyword.Lucene` (preview) | Lucene.NET keyword index persisted on disk |
-| `RagDotNet.Hosting` | Background ingestion queue |
-| `RagDotNet.DataIngestion` (preview) | Microsoft.Extensions.DataIngestion readers and chunkers |
+| Package | Version | What it adds |
+|---|---|---|
+| [`RagDotNet.Core`](https://www.nuget.org/packages/RagDotNet.Core) | [![RagDotNet.Core](https://img.shields.io/nuget/vpre/RagDotNet.Core?label=)](https://www.nuget.org/packages/RagDotNet.Core) | The pipeline, text and Markdown readers, chunkers, hybrid retrieval, cited answers, dependency injection |
+| [`RagDotNet.Readers.Pdf`](https://www.nuget.org/packages/RagDotNet.Readers.Pdf) | [![RagDotNet.Readers.Pdf](https://img.shields.io/nuget/vpre/RagDotNet.Readers.Pdf?label=)](https://www.nuget.org/packages/RagDotNet.Readers.Pdf) | PDF reader with page numbers |
+| [`RagDotNet.Readers.Docx`](https://www.nuget.org/packages/RagDotNet.Readers.Docx) | [![RagDotNet.Readers.Docx](https://img.shields.io/nuget/vpre/RagDotNet.Readers.Docx?label=)](https://www.nuget.org/packages/RagDotNet.Readers.Docx) | DOCX reader with heading paths |
+| [`RagDotNet.Readers.Html`](https://www.nuget.org/packages/RagDotNet.Readers.Html) | [![RagDotNet.Readers.Html](https://img.shields.io/nuget/vpre/RagDotNet.Readers.Html?label=)](https://www.nuget.org/packages/RagDotNet.Readers.Html) | HTML reader that leaves out page boilerplate |
+| [`RagDotNet.Readers.Pdf.Rendering`](https://www.nuget.org/packages/RagDotNet.Readers.Pdf.Rendering) | [![RagDotNet.Readers.Pdf.Rendering](https://img.shields.io/nuget/vpre/RagDotNet.Readers.Pdf.Rendering?label=)](https://www.nuget.org/packages/RagDotNet.Readers.Pdf.Rendering) | Renders scanned PDF pages for your own OCR provider |
+| [`RagDotNet.Ocr.Tesseract`](https://www.nuget.org/packages/RagDotNet.Ocr.Tesseract) | [![RagDotNet.Ocr.Tesseract](https://img.shields.io/nuget/vpre/RagDotNet.Ocr.Tesseract?label=)](https://www.nuget.org/packages/RagDotNet.Ocr.Tesseract) | Tesseract OCR for scanned pages and embedded images |
+| [`RagDotNet.VectorData.Sqlite`](https://www.nuget.org/packages/RagDotNet.VectorData.Sqlite) | [![RagDotNet.VectorData.Sqlite](https://img.shields.io/nuget/vpre/RagDotNet.VectorData.Sqlite?label=)](https://www.nuget.org/packages/RagDotNet.VectorData.Sqlite) | SQLite vector store with sqlite-vec |
+| [`RagDotNet.Keyword.Lucene`](https://www.nuget.org/packages/RagDotNet.Keyword.Lucene) (preview) | [![RagDotNet.Keyword.Lucene](https://img.shields.io/nuget/vpre/RagDotNet.Keyword.Lucene?label=)](https://www.nuget.org/packages/RagDotNet.Keyword.Lucene) | Lucene.NET keyword index persisted on disk |
+| [`RagDotNet.Hosting`](https://www.nuget.org/packages/RagDotNet.Hosting) | [![RagDotNet.Hosting](https://img.shields.io/nuget/vpre/RagDotNet.Hosting?label=)](https://www.nuget.org/packages/RagDotNet.Hosting) | Background ingestion queue |
+| [`RagDotNet.DataIngestion`](https://www.nuget.org/packages/RagDotNet.DataIngestion) (preview) | [![RagDotNet.DataIngestion](https://img.shields.io/nuget/vpre/RagDotNet.DataIngestion?label=)](https://www.nuget.org/packages/RagDotNet.DataIngestion) | Microsoft.Extensions.DataIngestion readers and chunkers |
 
 RagDotNet.Core targets net8.0 and net10.0. You bring your own `IChatClient`, `IEmbeddingGenerator<string, Embedding<float>>` (Microsoft.Extensions.AI) and `VectorStore` (any Microsoft.Extensions.VectorData connector). The samples and tests use the in-memory store from `CommunityToolkit.VectorData.InMemory`, which is not meant for production. For a store in a single file, `RagDotNet.VectorData.Sqlite` runs on SQLite with sqlite-vec. [docs/vector-stores.md](docs/vector-stores.md) lists the stores RagDotNet tests and any settings each one needs.
 
