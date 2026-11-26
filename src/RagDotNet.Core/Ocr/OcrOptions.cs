@@ -19,4 +19,12 @@ public sealed class OcrOptions
 
     /// <summary>How a whole-document provider is used. Default <see cref="DocumentOcrMode.FillMissingPages"/>.</summary>
     public DocumentOcrMode DocumentProviderMode { get; set; } = DocumentOcrMode.FillMissingPages;
+
+    /// <summary>
+    /// Largest chunk, in tokens, for text that came from OCR: scanned pages, images in documents, and a whole-document
+    /// provider's output. Other text keeps <see cref="Chunking.ChunkingOptions.MaxTokens"/>. OCR returns a scanned page as
+    /// one block of text, so with the document's size a page often becomes a single chunk; a smaller size, such as 128,
+    /// lets a small chat model find the right sentence. At least 16 when set. Default null: OCR text is chunked like other text.
+    /// </summary>
+    public int? ChunkMaxTokens { get; set; }
 }

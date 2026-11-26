@@ -17,7 +17,7 @@ public sealed class EndToEndTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private static ServiceProvider Build(Action<IRagBuilder> configure, string? chunker = null)
+    private static ServiceProvider Build(Action<IRagBuilder> configure, string? chunker = null, Action<RagOptions>? options = null)
     {
         var services = new ServiceCollection();
         services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(new FakeEmbeddingGenerator(64));
@@ -27,6 +27,7 @@ public sealed class EndToEndTests
             o.EmbeddingDimensions = 64;
             o.ModelCheckInterval = TimeSpan.Zero;
             if (chunker is not null) o.Chunking = o.Chunking with { Chunker = chunker };
+            options?.Invoke(o);
         });
         configure(builder);
         return services.BuildServiceProvider();
@@ -135,6 +136,54 @@ public sealed class EndToEndTests
 
         public Task<OcrResult> RecognizeAsync(ImageInput image, CancellationToken cancellationToken) =>
             Task.FromResult(new OcrResult("Revenue grew 12 percent", 0.95));
+    }
+
+    [Fact]
+    public async Task Ocr_chunk_size_keeps_heading_paths_for_a_heading_driven_chunker()
+    {
+        // Ocr.ChunkMaxTokens chunks OCR text apart from the text around it; HeaderChunker builds paths from heading
+        // blocks only, so every part must still see the headings above it.
+        await using var services = Build(
+            rag => rag
+                .AddReader<SectionWithImageReader>()
+                .AddOcrProvider<LongOcr>()
+                .AddDataIngestionChunker("ms-header", "1", (_, o) => new HeaderChunker(DataIngestionChunker.CreateOptions(o))),
+            chunker: "ms-header",
+            options: o => o.Ocr.ChunkMaxTokens = 32);
+        await using var scope = services.CreateAsyncScope();
+        var rag = scope.ServiceProvider.GetRequiredService<IRagPipeline>();
+
+        await rag.IngestAsync(new DocumentSource("guide", new MemoryStream([1]), "guide.bin"), cancellationToken: Ct);
+
+        var hits = await rag.RetrieveAsync("restart", new RagDotNet.Retrieval.RetrievalOptions { TopK = 50 }, Ct);
+        Assert.True(hits.Count(h => h.Text.Contains("Scanned", StringComparison.Ordinal)) > 1);
+        Assert.Contains(hits, h => h.Text.Contains("Then restart.", StringComparison.Ordinal));
+        Assert.All(hits, h => Assert.Equal(["Install", "Linux"], h.HeadingPath));
+    }
+
+    private sealed class SectionWithImageReader : IDocumentReader
+    {
+        public bool CanRead(string? contentType, string fileName) => true;
+
+        public Task<ParsedDocument> ReadAsync(Stream stream, DocumentReadContext context, CancellationToken cancellationToken) =>
+            Task.FromResult(new ParsedDocument(
+            [
+                new DocumentBlock(BlockKind.Heading, "# Install", ["Install"]),
+                new DocumentBlock(BlockKind.Heading, "## Linux", ["Install", "Linux"]),
+                new DocumentBlock(BlockKind.Paragraph, "Run apt install quill.", ["Install", "Linux"]),
+                new DocumentBlock(BlockKind.Paragraph, "Then restart.", ["Install", "Linux"]),
+            ])
+            {
+                OcrCandidates = [new OcrCandidate(OcrCandidateKind.Image, 3, null, new ImageInput(new byte[] { 1 }, "image/png", 500, 500))],
+            });
+    }
+
+    private sealed class LongOcr : IOcrProvider
+    {
+        public string Id => "long-ocr/1";
+
+        public Task<OcrResult> RecognizeAsync(ImageInput image, CancellationToken cancellationToken) =>
+            Task.FromResult(new OcrResult(string.Join(" ", Enumerable.Range(1, 30).Select(i => $"Scanned sentence {i} is here.")), 0.95));
     }
 
     [Fact]

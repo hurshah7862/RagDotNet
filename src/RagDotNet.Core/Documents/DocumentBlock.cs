@@ -5,4 +5,8 @@ namespace RagDotNet.Documents;
 /// <param name="Text">Block text.</param>
 /// <param name="HeadingPath">Enclosing headings; for a heading block this includes the heading itself.</param>
 /// <param name="PageNumber">Page number when known.</param>
-public sealed record DocumentBlock(BlockKind Kind, string Text, IReadOnlyList<string> HeadingPath, int? PageNumber = null);
+public sealed record DocumentBlock(BlockKind Kind, string Text, IReadOnlyList<string> HeadingPath, int? PageNumber = null)
+{
+    /// <summary>Whether the text came from OCR, so it is chunked at <see cref="Ocr.OcrOptions.ChunkMaxTokens"/>. Set by the OCR stage only.</summary>
+    internal bool IsOcrText { get; init; }
+}

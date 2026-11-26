@@ -10,17 +10,16 @@ RAGDOTNET_TESSDATA=/usr/share/tesseract-ocr/5/tessdata dotnet run --project samp
 
 ```
 Reading troubleshooting.pdf (OCR takes a few seconds a page)...
-troubleshooting.pdf: Created, 3 chunks
+troubleshooting.pdf: Created, 9 chunks
 ```
 
 If Tesseract or the language data is missing, the app says what to install and exits. OCR reads scanned pages and images inside documents; an image file on its own (`.png`, `.jpg`) is not a format RagDotNet reads, and is reported as not read.
 
-Two things the code shows:
+Three things the code shows:
 
 - The app creates the OCR engine and disposes it when it ends, which frees the language data. `.AddTesseractOcr(...)` on the builder is shorter, but keeps the engine for the life of the process, and Tesseract then prints harmless `WARNING! LEAK!` lines at exit.
 - `.AddPdfPageRendering()` turns scanned PDF pages into images for the OCR provider. Without it they stay `PageWithoutText` warnings.
-
-Each scanned page becomes one long passage of text. With a small model such as `llama3.2:3b`, the answer sometimes comes from the wrong part of the right page; the citation still names the page. A larger model does better.
+- `Ocr.ChunkMaxTokens = 128` chunks the recognised text in pieces of up to 128 tokens. OCR returns a scanned page as one block of text, so at the default 512 tokens a page becomes one chunk, and a small model such as `llama3.2:3b` can answer from the wrong part of it. Text from a page's text layer keeps the normal size. See [docs/ocr.md](../../docs/ocr.md#chunk-size-for-ocr-text).
 
 In your own app:
 

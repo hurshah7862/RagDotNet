@@ -25,7 +25,9 @@ internal sealed class OcrStage(IOcrProvider? images, IDocumentOcrProvider? docum
             string.Join(",", renderers.Select(r => r.GetType().FullName).Order(StringComparer.Ordinal)),
             options.OcrEmbeddedImages ? "images" : "no-images",
             options.MinImageSize.ToString(CultureInfo.InvariantCulture),
-            options.PageDpi.ToString(CultureInfo.InvariantCulture));
+            options.PageDpi.ToString(CultureInfo.InvariantCulture))
+        // Added only when set, so documents read before the option existed are not read again.
+        + (options.ChunkMaxTokens is { } chunk ? "|chunk:" + chunk.ToString(CultureInfo.InvariantCulture) : "");
 
     public async Task<ParsedDocument> ReadAsync(IDocumentReader reader, byte[] bytes, DocumentReadContext context, CancellationToken ct)
     {
@@ -50,7 +52,7 @@ internal sealed class OcrStage(IOcrProvider? images, IDocumentOcrProvider? docum
             try
             {
                 var replaced = await documents.ProcessAsync(bytes, context, ct).ConfigureAwait(false);
-                return new ParsedDocument(replaced.Blocks) { Warnings = replaced.Warnings };
+                return new ParsedDocument(replaced.Blocks.Select(b => b with { IsOcrText = true }).ToList()) { Warnings = replaced.Warnings };
             }
             catch (Exception ex) when (IsItemFailure(ex, ct))
             {
@@ -77,7 +79,7 @@ internal sealed class OcrStage(IOcrProvider? images, IDocumentOcrProvider? docum
                 {
                     var path = PathAt(parsed.Blocks, page.InsertAt);
                     var blocks = filled.Blocks.Where(b => b.PageNumber == page.PageNumber && !string.IsNullOrWhiteSpace(b.Text))
-                        .Select(b => b with { HeadingPath = path }).ToList();
+                        .Select(b => b with { HeadingPath = path, IsOcrText = true }).ToList();
                     inserts.Add((page.InsertAt, Order(parsed, page), blocks));
                 }
 
@@ -219,7 +221,7 @@ internal sealed class OcrStage(IOcrProvider? images, IDocumentOcrProvider? docum
         insertAt > 0 && insertAt <= blocks.Count ? blocks[insertAt - 1].HeadingPath : [];
 
     private static DocumentBlock Block(IReadOnlyList<DocumentBlock> blocks, OcrCandidate candidate, string text) =>
-        new(BlockKind.Paragraph, text, PathAt(blocks, candidate.InsertAt), candidate.PageNumber);
+        new(BlockKind.Paragraph, text, PathAt(blocks, candidate.InsertAt), candidate.PageNumber) { IsOcrText = true };
 
     /// <summary>The stage 5 warnings for candidates left unread: one per scanned page, and image counts per page or per document.</summary>
     private static IEnumerable<IngestWarning> Unread(IEnumerable<OcrCandidate> candidates, string advice)

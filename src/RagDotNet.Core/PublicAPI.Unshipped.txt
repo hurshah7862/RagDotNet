@@ -778,6 +778,8 @@ RagDotNet.Ocr.IPageRenderer.CanRender(string? contentType, string! fileName) -> 
 RagDotNet.Ocr.IPageRenderer.RenderPageAsync(System.ReadOnlyMemory<byte> document, int pageNumber, int dpi, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<RagDotNet.Ocr.ImageInput!>!
 RagDotNet.Ocr.OcrOptions
 RagDotNet.Ocr.OcrOptions.DocumentProviderMode.get -> RagDotNet.Ocr.DocumentOcrMode
+RagDotNet.Ocr.OcrOptions.ChunkMaxTokens.get -> int?
+RagDotNet.Ocr.OcrOptions.ChunkMaxTokens.set -> void
 RagDotNet.Ocr.OcrOptions.DocumentProviderMode.set -> void
 RagDotNet.Ocr.OcrOptions.MinConfidence.get -> double
 RagDotNet.Ocr.OcrOptions.MinConfidence.set -> void

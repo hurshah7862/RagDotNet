@@ -44,6 +44,7 @@ internal sealed class RagOptionsValidator(
             if (options.Ocr.MinImageSize < 0) failures.Add("Ocr.MinImageSize must not be negative.");
             if (options.Ocr.MinConfidence is < 0 or > 1 || double.IsNaN(options.Ocr.MinConfidence)) failures.Add("Ocr.MinConfidence must be between 0 and 1.");
             if (options.Ocr.PageDpi is < 72 or > 1200) failures.Add("Ocr.PageDpi must be between 72 and 1200.");
+            if (options.Ocr.ChunkMaxTokens is < 16) failures.Add("Ocr.ChunkMaxTokens must be at least 16 when set.");
         }
 
         foreach (var key in options.PartitionKeys)

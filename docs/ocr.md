@@ -105,6 +105,7 @@ A provider that cannot work at all, for example because its engine is not instal
 | `MinConfidence` | `0.6` | Text recognised below this confidence (0 to 1) is kept, with an `OcrLowConfidence` warning. Changing it does not make documents be read again. |
 | `PageDpi` | `300` | Resolution scanned pages are rendered at, from 72 to 1200. |
 | `DocumentProviderMode` | `FillMissingPages` | How a whole-document provider is used (above). |
+| `ChunkMaxTokens` | not set | Largest chunk, in tokens, for text that came from OCR; at least 16. Other text keeps `Chunking.MaxTokens`. See [Chunk size for OCR text](#chunk-size-for-ocr-text). |
 
 Other rules:
 
@@ -113,6 +114,25 @@ Other rules:
 - Recognised text that is empty adds nothing.
 - Vector images (SVG, EMF, WMF), which OCR engines cannot decode, are not sent to the provider; one `ImageNotRead` warning counts them.
 - With OCR on, readers extract image bytes only when a per-image provider will read them, so ingest without OCR (or with `OcrEmbeddedImages` off) does not decode images.
+
+## Chunk size for OCR text
+
+Tesseract, and any per-image provider, returns a scanned page as one block of text, without the headings and paragraphs a text layer has. With the default chunk size of 512 tokens, a whole page usually becomes one chunk. Retrieval still finds the right page, but a small chat model given that page can answer from the wrong part of it.
+
+`ChunkMaxTokens` gives text that came from OCR its own, smaller chunk size: scanned pages, text read from images in documents, and a whole-document provider's output. Text from a page's text layer, and every document without OCR text, keeps `Chunking.MaxTokens`. The chunker and its overlap stay the same, and no chunk mixes OCR text with other text. That last point has a side effect: text read from an image in the middle of a section splits the section in two, so the paragraphs before and after the image are chunked separately and no longer merge or overlap with each other. OCR done inside a DataIngestion reader (see [dataingestion.md](dataingestion.md)) is not marked as OCR text, so this option does not apply to it.
+
+```csharp
+services.AddRag(o =>
+{
+    o.Ocr.ChunkMaxTokens = 128;
+});
+```
+
+or `"Ocr": { "ChunkMaxTokens": 128 }` in configuration. It also applies when `IngestOptions.Chunking` sets the chunking for one call.
+
+In one small check, the scanned copy of the troubleshooting guide from the [scanned check](evaluation.md#scanned-check) was read with Tesseract and asked its 5 questions with `llama3.2:3b` and `nomic-embed-text`, once at 512 tokens and once at 128 (set as the document's chunk size, which for a fully scanned PDF is the same as this option). At 128 the 3 page-sized chunks became 9, and the answers that stated the expected fact went from 3 of 5 to 5 of 5; retrieval found the right passage at both sizes. It was a single run of 5 questions with a small model whose answers vary from run to run, so measure on your own documents before relying on it.
+
+Changing it reads documents with scanned pages or images again on their next ingest, as for the other OCR options. Documents a whole-document provider read in `ReplaceReader` mode are not detected; delete and ingest them again (see below).
 
 ## Warnings
 
@@ -125,7 +145,7 @@ Other rules:
 
 ## Documents ingested before OCR was turned on
 
-Re-ingesting an unchanged document normally returns `Unchanged`. A document that had scanned pages or images is read again automatically when the OCR setup changes: a provider is added, removed or replaced (its `Id` changes), or `OcrEmbeddedImages`, `MinImageSize`, `PageDpi` or `DocumentProviderMode` change. Documents without scanned pages or images stay `Unchanged`, so turning OCR on does not re-embed a whole library.
+Re-ingesting an unchanged document normally returns `Unchanged`. A document that had scanned pages or images is read again automatically when the OCR setup changes: a provider is added, removed or replaced (its `Id` changes), or `OcrEmbeddedImages`, `MinImageSize`, `PageDpi`, `DocumentProviderMode` or `ChunkMaxTokens` change. Documents without scanned pages or images stay `Unchanged`, so turning OCR on does not re-embed a whole library.
 
 A document where OCR failed on a page or image (an `OcrFailed` warning, for example a cloud service's rate limit or timeout) is read again on its next ingest, until it goes through without failures. A file whose image fails every time is therefore re-read on every ingest; the warning names the page. For Tesseract, `Id` includes a fingerprint of the language files, so switching between `tessdata_fast` and `tessdata_best` also reads affected documents again.
 

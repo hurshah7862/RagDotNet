@@ -45,6 +45,9 @@ try
         .UseOcrProvider(ocr)
         // Turns scanned PDF pages into images for the OCR provider; without it they stay PageWithoutText warnings.
         .AddPdfPageRendering()
+        // OCR returns a scanned page as one block of text, so with the default 512 tokens a page becomes one chunk.
+        // Smaller chunks for OCR text help a small model answer from the right sentence; other text keeps 512.
+        .Configure(o => o.Ocr.ChunkMaxTokens = 128)
         .Build();
 
     foreach (string file in args)
