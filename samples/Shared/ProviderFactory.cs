@@ -4,9 +4,15 @@ using Microsoft.Extensions.Configuration;
 using OllamaSharp;
 using OpenAI;
 
-/// <summary>Creates the chat client and embedding generator for the provider chosen in configuration.</summary>
+/// <summary>Creates the chat client and embedding generator for the provider chosen in providers.json.</summary>
 internal static class ProviderFactory
 {
+    /// <summary>Reads providers.json from the app's output folder.</summary>
+    public static IConfiguration LoadSettings() => new ConfigurationBuilder()
+        .SetBasePath(AppContext.BaseDirectory)
+        .AddJsonFile("providers.json", optional: true)
+        .Build();
+
     public static (IChatClient Chat, IEmbeddingGenerator<string, Embedding<float>> Embedder, int Dimensions) Create(IConfiguration config)
     {
         string provider = config["Provider"] ?? "Ollama";

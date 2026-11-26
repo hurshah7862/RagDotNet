@@ -54,7 +54,7 @@ plus any of the optional packages:
 | [`RagDotNet.Hosting`](https://www.nuget.org/packages/RagDotNet.Hosting) | [![RagDotNet.Hosting](https://img.shields.io/nuget/vpre/RagDotNet.Hosting?label=)](https://www.nuget.org/packages/RagDotNet.Hosting) | Background ingestion queue |
 | [`RagDotNet.DataIngestion`](https://www.nuget.org/packages/RagDotNet.DataIngestion) (preview) | [![RagDotNet.DataIngestion](https://img.shields.io/nuget/vpre/RagDotNet.DataIngestion?label=)](https://www.nuget.org/packages/RagDotNet.DataIngestion) | Microsoft.Extensions.DataIngestion readers and chunkers |
 
-RagDotNet.Core targets net8.0 and net10.0. You bring your own `IChatClient`, `IEmbeddingGenerator<string, Embedding<float>>` (Microsoft.Extensions.AI) and `VectorStore` (any Microsoft.Extensions.VectorData connector). The samples and tests use the in-memory store from `CommunityToolkit.VectorData.InMemory`, which is not meant for production. For a store in a single file, `RagDotNet.VectorData.Sqlite` runs on SQLite with sqlite-vec. [docs/vector-stores.md](docs/vector-stores.md) lists the stores RagDotNet tests and any settings each one needs.
+RagDotNet.Core targets net8.0 and net10.0. You bring your own `IChatClient`, `IEmbeddingGenerator<string, Embedding<float>>` (Microsoft.Extensions.AI) and `VectorStore` (any Microsoft.Extensions.VectorData connector). The quick-start sample and the tests use the in-memory store from `CommunityToolkit.VectorData.InMemory`, which is not meant for production. For a store in a single file, `RagDotNet.VectorData.Sqlite` runs on SQLite with sqlite-vec. [docs/vector-stores.md](docs/vector-stores.md) lists the stores RagDotNet tests and any settings each one needs.
 
 ## Quick start with dependency injection
 
@@ -276,13 +276,20 @@ Wrap the app's `IChatClient` and `IEmbeddingGenerator` with the Microsoft.Extens
 
 By default chunk text is stored in the vector record. To keep it in your own database, implement `IChunkContentStore` and call `.UseExternalContent<MyStore>()` (DI) or `.UseContentStore(store)` (builder). The vector store then holds only vectors, keys and metadata.
 
-## Sample app
+## Samples
+
+[samples/](samples) has small apps, one task each, that run against a local Ollama by default:
+
+- **Console**: the quick start, Markdown and text files in an in-memory store.
+- **Documents**: PDF, Word and HTML files in a SQLite file, with hybrid (vector and keyword) search.
+- **Ocr**: scanned PDFs read with Tesseract.
+- **WebApi**: an ASP.NET Core API that ingests uploads in the background and answers questions.
 
 ```
 dotnet run --project samples/RagDotNet.Samples.Console -- tests/TestAssets/markdown
 ```
 
-Ingests every `.md`/`.txt` in the folder, then answers questions with streamed text and a numbered citation list; an empty line exits. The provider is set in `appsettings.json`: `Ollama` (default; `llama3.2:3b` and `nomic-embed-text` at `http://127.0.0.1:11434`), `GitHubModels` (needs `GITHUB_TOKEN`) or `OpenAI` (needs `OPENAI_API_KEY`).
+[samples/README.md](samples/README.md) says what each one needs and how to switch the provider to GitHub Models or OpenAI.
 
 ## Running the tests
 

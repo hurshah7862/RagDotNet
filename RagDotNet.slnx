@@ -1,6 +1,9 @@
 <Solution>
   <Folder Name="/samples/">
     <Project Path="samples/RagDotNet.Samples.Console/RagDotNet.Samples.Console.csproj" />
+    <Project Path="samples/RagDotNet.Samples.Documents/RagDotNet.Samples.Documents.csproj" />
+    <Project Path="samples/RagDotNet.Samples.Ocr/RagDotNet.Samples.Ocr.csproj" />
+    <Project Path="samples/RagDotNet.Samples.WebApi/RagDotNet.Samples.WebApi.csproj" />
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/RagDotNet.Core/RagDotNet.Core.csproj" />
