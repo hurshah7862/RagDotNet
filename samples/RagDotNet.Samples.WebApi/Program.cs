@@ -33,10 +33,19 @@ var app = builder.Build();
 
 // Upload a file: returns 202 Accepted with the job id, and a Location header to check on it.
 // The queue copies the upload to a temporary file before returning, so the request stream can close.
+string[] allowedExtensions = [".pdf", ".docx", ".html", ".htm", ".md", ".txt"];
 app.MapPost("/documents", async (IFormFile file, IIngestionQueue queue, CancellationToken ct) =>
     {
+        // The file name comes from the client: keep only its last part, and reject what the readers cannot read,
+        // so a bad upload gets a 400 now instead of a failed job later.
+        string fileName = Path.GetFileName(file.FileName.Replace('\\', '/')).Trim();
+        if (fileName.Length == 0 || !allowedExtensions.Contains(Path.GetExtension(fileName), StringComparer.OrdinalIgnoreCase))
+        {
+            return Results.BadRequest($"Upload a file named with one of: {string.Join(", ", allowedExtensions)}.");
+        }
+
         await using var stream = file.OpenReadStream();
-        string jobId = await queue.EnqueueAsync(new DocumentSource(file.FileName, stream, file.FileName, file.ContentType), ct);
+        string jobId = await queue.EnqueueAsync(new DocumentSource(fileName, stream, fileName, file.ContentType), ct);
         return Results.Accepted($"/jobs/{jobId}", new { jobId });
     })
     .DisableAntiforgery(); // a sample API without browser forms; keep antiforgery on for apps that serve forms

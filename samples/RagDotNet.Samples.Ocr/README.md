@@ -10,10 +10,10 @@ RAGDOTNET_TESSDATA=/usr/share/tesseract-ocr/5/tessdata dotnet run --project samp
 
 ```
 Reading troubleshooting.pdf (OCR takes a few seconds a page)...
-tests/RagDotNet.Evaluation/Dataset/base/formats/scanned/troubleshooting.pdf: Created, 3 chunks
+troubleshooting.pdf: Created, 3 chunks
 ```
 
-If Tesseract or the language data is missing, the app says what to install and exits.
+If Tesseract or the language data is missing, the app says what to install and exits. OCR reads scanned pages and images inside documents; an image file on its own (`.png`, `.jpg`) is not a format RagDotNet reads, and is reported as not read.
 
 Two things the code shows:
 
@@ -27,6 +27,10 @@ In your own app:
 ```
 dotnet add package RagDotNet.Ocr.Tesseract --prerelease
 dotnet add package RagDotNet.Readers.Pdf --prerelease
+dotnet add package RagDotNet.Readers.Docx --prerelease
+dotnet add package RagDotNet.Readers.Html --prerelease
+dotnet add package OllamaSharp
+dotnet add package CommunityToolkit.VectorData.InMemory
 ```
 
-`RagDotNet.Ocr.Tesseract` brings `RagDotNet.Readers.Pdf.Rendering` with it. Add `RagDotNet.Readers.Docx` and `RagDotNet.Readers.Html` to read images in those formats. See [docs/ocr.md](../../docs/ocr.md).
+`RagDotNet.Ocr.Tesseract` brings `RagDotNet.Readers.Pdf.Rendering` with it. The Word and HTML readers are there for images inside those formats; if you only read PDFs, leave them out along with their `Add...Reader()` calls. See [docs/ocr.md](../../docs/ocr.md).

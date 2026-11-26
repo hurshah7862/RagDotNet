@@ -281,7 +281,7 @@ By default chunk text is stored in the vector record. To keep it in your own dat
 [samples/](samples) has small apps, one task each, that run against a local Ollama by default:
 
 - **Console**: the quick start, Markdown and text files in an in-memory store.
-- **Documents**: PDF, Word and HTML files in a SQLite file, with a Lucene keyword index for hybrid search.
+- **Documents**: PDF, Word and HTML files in a SQLite file, with hybrid (vector and keyword) search.
 - **Ocr**: scanned PDFs read with Tesseract.
 - **WebApi**: an ASP.NET Core API that ingests uploads in the background and answers questions.
 

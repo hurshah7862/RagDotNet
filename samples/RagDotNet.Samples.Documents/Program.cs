@@ -1,5 +1,5 @@
-// PDF, Word and HTML documents in a SQLite file, with a Lucene keyword index next to it for hybrid search.
-// Both are saved to disk, so a second run skips documents that have not changed.
+// PDF, Word and HTML documents in a SQLite file, searched by meaning and by keyword (hybrid search).
+// The file is saved to disk, so a second run skips documents that have not changed.
 using RagDotNet.Configuration;
 using RagDotNet.Documents;
 using RagDotNet.Ingestion;
@@ -38,9 +38,10 @@ var pipeline = new RagPipelineBuilder()
     .AddPdfReader()
     .AddDocxReader()
     .AddHtmlReader()
-    // With a keyword index, retrieval combines vector and keyword search (hybrid), which finds exact terms
-    // such as command names and version numbers that embeddings alone can miss.
-    .AddLuceneKeywordIndex(o => o.Directory = Path.Combine(indexFolder, $"keywords_{dimensions}"))
+    // Retrieval is hybrid by default: vector search plus keyword search, which finds exact terms such as command
+    // names and version numbers that embeddings alone can miss. The SQLite store does the keyword part itself,
+    // with SQLite's full-text search, so no keyword index needs registering. (A store without its own keyword
+    // search uses an in-memory index, or RagDotNet.Keyword.Lucene for one kept on disk; see docs/retrieval.md.)
     .Build();
 
 string[] extensions = [".pdf", ".docx", ".html", ".htm", ".md", ".txt"];
@@ -58,8 +59,8 @@ try
     {
         try
         {
-            // The document id is the full path, so two files with the same name in different folders stay separate.
-            IngestResult result = await pipeline.IngestAsync(DocumentSource.FromFile(file, documentId: file));
+            // The document id defaults to the full path, so two files with the same name in different folders stay separate.
+            IngestResult result = await pipeline.IngestAsync(DocumentSource.FromFile(file));
             Console.WriteLine($"{Path.GetFileName(file)}: {result.Status}, {result.ChunkCount} chunks");
 
             // Nothing is skipped silently: a scanned page or an image the reader could not read is a warning.

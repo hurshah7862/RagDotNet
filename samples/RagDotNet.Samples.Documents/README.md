@@ -2,9 +2,9 @@
 
 Reads PDF, Word (`.docx`), HTML, Markdown and text files, then answers questions about them. Citations say where each passage is: the page for a PDF, the heading path for the other formats.
 
-- The vectors are stored in a SQLite file, with `RagDotNet.VectorData.Sqlite`.
-- A Lucene keyword index sits next to it, so retrieval combines vector and keyword search (hybrid). This finds exact terms, such as command names and version numbers, that embeddings alone can miss.
-- Both are saved in an `index` folder next to the app. Run it again and unchanged files are skipped (`Unchanged`), so only new or edited files are embedded.
+- The chunks and their vectors are stored in a SQLite file, with `RagDotNet.VectorData.Sqlite`.
+- Retrieval combines vector and keyword search (hybrid), which finds exact terms, such as command names and version numbers, that embeddings alone can miss. The SQLite store does the keyword search itself, with SQLite's full-text search, so nothing else is needed. With a store that has no keyword search of its own, RagDotNet keeps an in-memory keyword index, or a Lucene index on disk with `RagDotNet.Keyword.Lucene`; see [docs/retrieval.md](../../docs/retrieval.md).
+- The file is saved in an `index` folder next to the app. Run it again and unchanged files are skipped (`Unchanged`), so only new or edited files are embedded.
 - A scanned page or an image the reader cannot read is printed as a warning; the [Ocr sample](../RagDotNet.Samples.Ocr) reads them. A corrupt or password-protected file is reported and skipped.
 
 Pass files, folders, or both:
@@ -34,7 +34,6 @@ dotnet add package RagDotNet.Readers.Pdf --prerelease
 dotnet add package RagDotNet.Readers.Docx --prerelease
 dotnet add package RagDotNet.Readers.Html --prerelease
 dotnet add package RagDotNet.VectorData.Sqlite --prerelease
-dotnet add package RagDotNet.Keyword.Lucene --prerelease
 dotnet add package OllamaSharp
 ```
 

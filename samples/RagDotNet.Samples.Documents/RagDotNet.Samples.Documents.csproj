@@ -10,6 +10,5 @@
     <ProjectReference Include="..\..\src\RagDotNet.Readers.Docx\RagDotNet.Readers.Docx.csproj" />
     <ProjectReference Include="..\..\src\RagDotNet.Readers.Html\RagDotNet.Readers.Html.csproj" />
     <ProjectReference Include="..\..\src\RagDotNet.VectorData.Sqlite\RagDotNet.VectorData.Sqlite.csproj" />
-    <ProjectReference Include="..\..\src\RagDotNet.Keyword.Lucene\RagDotNet.Keyword.Lucene.csproj" />
   </ItemGroup>
 </Project>

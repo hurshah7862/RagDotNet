@@ -4,7 +4,7 @@ An ASP.NET Core minimal API on RagDotNet's dependency injection setup (`services
 
 | Endpoint | Does |
 |---|---|
-| `POST /documents` | Uploads a file (multipart form field `file`). Returns `202 Accepted` with the job id straight away; a background worker ingests it. |
+| `POST /documents` | Uploads a file (multipart form field `file`): PDF, Word, HTML, Markdown or text. Returns `202 Accepted` with the job id straight away, and a background worker ingests it; any other file gets `400`. |
 | `GET /jobs/{jobId}` | The job's state (`Queued`, `Running`, `Succeeded`, `Failed` or `Cancelled`), its chunk count and warnings. `404` for an unknown job. |
 | `POST /ask` | Takes `{"text": "question"}` and returns the answer, whether the documents held one, and the sources it cites. |
 
@@ -27,13 +27,15 @@ curl -H "Content-Type: application/json" -d "{\"text\": \"What command installs 
 {"text":"To install Quill with winget, run the command: winget install --id Quill.Quill --exact [1, 2].","isAnswered":true,"citations":[{"number":1,"sourceName":"install-guide.pdf","location":"p. 1"},{"number":2,"sourceName":"install-guide.pdf","location":"p. 3"}]}
 ```
 
-The document id is the uploaded file's name, so uploading a file with the same name replaces the earlier one. A real app would use its own ids and add authentication. For per-user or per-tenant documents, RagDotNet's access scopes keep each caller to their own documents; see the main [README](../../README.md).
+The document id is the uploaded file's name, without any folder part the client sent, so uploading a file with the same name replaces the earlier one. A real app would use its own ids and add authentication. For per-user or per-tenant documents, RagDotNet's access scopes keep each caller to their own documents; see the main [README](../../README.md).
 
 In your own app:
 
 ```
 dotnet add package RagDotNet.Hosting --prerelease
 dotnet add package RagDotNet.Readers.Pdf --prerelease
+dotnet add package RagDotNet.Readers.Docx --prerelease
+dotnet add package RagDotNet.Readers.Html --prerelease
 dotnet add package RagDotNet.VectorData.Sqlite --prerelease
 dotnet add package OllamaSharp
 ```

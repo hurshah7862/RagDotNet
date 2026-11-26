@@ -50,13 +50,26 @@ try
     foreach (string file in args)
     {
         Console.WriteLine($"Reading {Path.GetFileName(file)} (OCR takes a few seconds a page)...");
-        var result = await pipeline.IngestAsync(DocumentSource.FromFile(file));
-        Console.WriteLine($"{result.DocumentId}: {result.Status}, {result.ChunkCount} chunks");
-
-        // OcrLowConfidence means text was recognised but may hold mistakes; it is kept and searched anyway.
-        foreach (var warning in result.Warnings)
+        try
         {
-            Console.WriteLine($"  warning {warning.Code}: {warning.Message}");
+            var result = await pipeline.IngestAsync(DocumentSource.FromFile(file));
+            Console.WriteLine($"{Path.GetFileName(file)}: {result.Status}, {result.ChunkCount} chunks");
+
+            // OcrLowConfidence means text was recognised but may hold mistakes; it is kept and searched anyway.
+            foreach (var warning in result.Warnings)
+            {
+                Console.WriteLine($"  warning {warning.Code}: {warning.Message}");
+            }
+        }
+        catch (UnsupportedDocumentException ex)
+        {
+            // OCR reads scanned pages and images inside documents; a bare .png or .jpg is not a document format.
+            Console.WriteLine($"{Path.GetFileName(file)}: not read: {ex.Message}");
+        }
+        catch (DocumentReadException ex)
+        {
+            // A corrupt or password-protected file stops only that file.
+            Console.WriteLine($"{Path.GetFileName(file)}: not read: {ex.Message}");
         }
     }
 
