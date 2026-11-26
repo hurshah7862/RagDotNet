@@ -8,20 +8,20 @@ For anything larger than a small fix, open an issue first and describe what you 
 
 ## Building and testing
 
-You need the .NET SDK named in `global.json` (10.0.401 or a later 10.0 feature band). The libraries target net8.0 and net10.0.
+You need the .NET SDK named in `global.json` (10.0.401 or a later 10.0 feature band) and the .NET 8 runtime. The libraries target net8.0 and net10.0, and `dotnet test` runs most test projects on both; without the .NET 8 runtime the net8.0 runs fail. To test on net10.0 only, add `--framework net10.0`.
 
 ```
 dotnet build
 dotnet test
 ```
 
-Unit tests need no model, network or Docker. Some tests run only when their dependency is there:
+Unit tests need no model, network or Docker. The tests below need something more; without it they are skipped, not failed (except that with `CI=true` set, as on GitHub Actions, missing Tesseract fails the OCR tests, so CI can never pass without running them):
 
-- **OCR tests** need Tesseract and its English language data. On Linux, `sudo apt install tesseract-ocr tesseract-ocr-eng` and set `RAGDOTNET_TESSDATA=/usr/share/tesseract-ocr/5/tessdata`. See [docs/ocr.md](docs/ocr.md).
-- **Vector store tests** for PostgreSQL, Qdrant, Redis and SQL Server start containers through Testcontainers, so they need Docker and `RAGDOTNET_INTEGRATION=1`. See [docs/vector-stores.md](docs/vector-stores.md#how-stores-are-tested).
+- **OCR tests** need Tesseract and its English language data (`eng.traineddata`), found in `RAGDOTNET_TESSDATA`, else `/usr/share/tesseract-ocr/5/tessdata`. On Linux, `sudo apt install tesseract-ocr tesseract-ocr-eng` is enough. On Windows the package includes Tesseract, so download `eng.traineddata` from [tessdata_fast](https://github.com/tesseract-ocr/tessdata_fast) and point `RAGDOTNET_TESSDATA` at its folder. See [docs/ocr.md](docs/ocr.md).
+- **Vector store tests** for PostgreSQL, Qdrant, Redis and SQL Server (the in-memory and SQLite ones always run) start containers through Testcontainers, so they need Docker and `RAGDOTNET_INTEGRATION=1`. See [docs/vector-stores.md](docs/vector-stores.md#how-stores-are-tested).
 - **The Ollama end-to-end test** needs `RAGDOTNET_INTEGRATION=1` and Ollama running with `llama3.2:3b` and `nomic-embed-text` pulled.
 
-If you have Docker but not the SDK, the repository's SDK image has the SDK and Tesseract: build it with `docker build -t ragdotnet-sdk:ocr docker/sdk`, then `./docker/sdk/run.ps1 test RagDotNet.slnx` runs the tests in it. See [docker/sdk/README.md](docker/sdk/README.md).
+If you have Docker but not the SDK, the repository's SDK image has the SDK and Tesseract: build it with `docker build -t ragdotnet-sdk:ocr docker/sdk`, then `./docker/sdk/run.ps1 test RagDotNet.slnx` runs the tests in it (the script needs PowerShell, `pwsh` on Linux and macOS). See [docker/sdk/README.md](docker/sdk/README.md).
 
 ## Making a change
 
@@ -33,8 +33,8 @@ If you have Docker but not the SDK, the repository's SDK image has the SDK and T
 
 ## Commits and pull requests
 
-Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/) with the area in brackets, for example `feat(core): ...`, `fix(dataingestion): ...`, `docs(ocr): ...` or `build(packaging): ...`.
+Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/) with the area in parentheses where there is one, for example `feat(core): ...`, `fix(dataingestion): ...`, `docs(ocr): ...` or `build(packaging): ...`.
 
-`main` changes only through pull requests, and a pull request can be merged only when CI passes. The maintainer reviews every pull request. Keep a pull request to one change; a smaller one is reviewed sooner.
+`main` changes only through pull requests, and a pull request can be merged only when CI passes. The maintainer reviews each pull request before merging it. Keep a pull request to one change; a smaller one is reviewed sooner.
 
 By contributing, you agree that your contribution is licensed under the [MIT License](LICENSE).

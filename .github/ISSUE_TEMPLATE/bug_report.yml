@@ -29,5 +29,4 @@ body:
     id: repro
     attributes:
       label: Steps to reproduce
-      description: A small program or the steps that show the problem. Leave out private documents and keys.
-      render: csharp
+      description: A small program or the steps that show the problem; put code in a ```csharp block. Leave out private documents and keys.
