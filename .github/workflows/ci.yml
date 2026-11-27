@@ -166,9 +166,13 @@ jobs:
         run: dotnet test --project tests/RagDotNet.StoreTests --no-build --configuration Release --framework ${{ matrix.framework }} --minimum-expected-tests 443
 
   windows:
-    name: Windows unit and OCR tests (net8.0)
+    name: Windows unit and OCR tests (${{ matrix.framework }})
     runs-on: windows-latest
     timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        framework: [net8.0, net10.0]
     env:
       DOTNET_NOLOGO: true
       DOTNET_CLI_TELEMETRY_OPTOUT: true
@@ -195,38 +199,42 @@ jobs:
       - name: Build
         run: dotnet build --no-restore --configuration Release
 
-      - name: Test Core (net8.0)
-        run: dotnet test --project tests/RagDotNet.Core.Tests --no-build --configuration Release --framework net8.0
+      - name: Test Core (${{ matrix.framework }})
+        run: dotnet test --project tests/RagDotNet.Core.Tests --no-build --configuration Release --framework ${{ matrix.framework }}
 
-      - name: Test readers (net8.0)
-        run: dotnet test --project tests/RagDotNet.Readers.Tests --no-build --configuration Release --framework net8.0
+      - name: Test readers (${{ matrix.framework }})
+        run: dotnet test --project tests/RagDotNet.Readers.Tests --no-build --configuration Release --framework ${{ matrix.framework }}
 
-      - name: Test OCR (net8.0)
-        run: dotnet test --project tests/RagDotNet.Ocr.Tests --no-build --configuration Release --framework net8.0
+      - name: Test OCR (${{ matrix.framework }})
+        run: dotnet test --project tests/RagDotNet.Ocr.Tests --no-build --configuration Release --framework ${{ matrix.framework }}
 
-      - name: Test Lucene keyword index (net8.0)
-        run: dotnet test --project tests/RagDotNet.Keyword.Lucene.Tests --no-build --configuration Release --framework net8.0
+      - name: Test Lucene keyword index (${{ matrix.framework }})
+        run: dotnet test --project tests/RagDotNet.Keyword.Lucene.Tests --no-build --configuration Release --framework ${{ matrix.framework }}
 
-      - name: Test hosting (net8.0)
-        run: dotnet test --project tests/RagDotNet.Hosting.Tests --no-build --configuration Release --framework net8.0
+      - name: Test hosting (${{ matrix.framework }})
+        run: dotnet test --project tests/RagDotNet.Hosting.Tests --no-build --configuration Release --framework ${{ matrix.framework }}
 
-      - name: Test DataIngestion adapters (net8.0)
-        run: dotnet test --project tests/RagDotNet.DataIngestion.Tests --no-build --configuration Release --framework net8.0
+      - name: Test DataIngestion adapters (${{ matrix.framework }})
+        run: dotnet test --project tests/RagDotNet.DataIngestion.Tests --no-build --configuration Release --framework ${{ matrix.framework }}
 
-      - name: Test SQLite connector (net8.0)
-        run: dotnet test --project tests/RagDotNet.VectorData.Sqlite.Tests --no-build --configuration Release --framework net8.0
+      - name: Test SQLite connector (${{ matrix.framework }})
+        run: dotnet test --project tests/RagDotNet.VectorData.Sqlite.Tests --no-build --configuration Release --framework ${{ matrix.framework }}
 
       # SQLite needs no service, so the suite runs here too, on the win-x64 sqlite-vec native.
-      - name: Test store suite on SQLite (net8.0)
+      - name: Test store suite on SQLite (${{ matrix.framework }})
         env:
           RAGDOTNET_STORES_REQUIRED: 1
-        run: dotnet test --project tests/RagDotNet.StoreTests --no-build --configuration Release --framework net8.0 --filter-class "RagDotNet.StoreTests.Stores.Sqlite*" --minimum-expected-tests 78
+        run: dotnet test --project tests/RagDotNet.StoreTests --no-build --configuration Release --framework ${{ matrix.framework }} --filter-class "RagDotNet.StoreTests.Stores.Sqlite*" --minimum-expected-tests 78
 
   macos:
-    name: macOS SQLite tests (net8.0)
+    name: macOS SQLite tests (${{ matrix.framework }})
     # The only job that loads the osx-arm64 sqlite-vec native (macos-latest is Apple Silicon).
     runs-on: macos-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        framework: [net8.0, net10.0]
     env:
       DOTNET_NOLOGO: true
       DOTNET_CLI_TELEMETRY_OPTOUT: true
@@ -243,10 +251,10 @@ jobs:
           dotnet build tests/RagDotNet.VectorData.Sqlite.Tests --configuration Release
           dotnet build tests/RagDotNet.StoreTests --configuration Release
 
-      - name: Test SQLite connector (net8.0)
-        run: dotnet test --project tests/RagDotNet.VectorData.Sqlite.Tests --no-build --configuration Release --framework net8.0
+      - name: Test SQLite connector (${{ matrix.framework }})
+        run: dotnet test --project tests/RagDotNet.VectorData.Sqlite.Tests --no-build --configuration Release --framework ${{ matrix.framework }}
 
-      - name: Test store suite on SQLite (net8.0)
+      - name: Test store suite on SQLite (${{ matrix.framework }})
         env:
           RAGDOTNET_STORES_REQUIRED: 1
-        run: dotnet test --project tests/RagDotNet.StoreTests --no-build --configuration Release --framework net8.0 --filter-class "RagDotNet.StoreTests.Stores.Sqlite*" --minimum-expected-tests 78
+        run: dotnet test --project tests/RagDotNet.StoreTests --no-build --configuration Release --framework ${{ matrix.framework }} --filter-class "RagDotNet.StoreTests.Stores.Sqlite*" --minimum-expected-tests 78
