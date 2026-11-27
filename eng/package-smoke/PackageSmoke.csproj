@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <!-- Microsoft.Extensions.DataIngestion marks its APIs experimental. -->
+    <NoWarn>$(NoWarn);MEDI001</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- "*-*" takes the highest version, prerelease included; nuget.config maps RagDotNet.* to the local folder only,
+         which holds just the build under test. -->
+    <PackageReference Include="RagDotNet.Core" Version="*-*" />
+    <PackageReference Include="RagDotNet.Readers.Pdf" Version="*-*" />
+    <PackageReference Include="RagDotNet.Readers.Docx" Version="*-*" />
+    <PackageReference Include="RagDotNet.Readers.Html" Version="*-*" />
+    <PackageReference Include="RagDotNet.Readers.Pdf.Rendering" Version="*-*" />
+    <PackageReference Include="RagDotNet.Ocr.Tesseract" Version="*-*" />
+    <PackageReference Include="RagDotNet.VectorData.Sqlite" Version="*-*" />
+    <PackageReference Include="RagDotNet.Keyword.Lucene" Version="*-*" />
+    <PackageReference Include="RagDotNet.Hosting" Version="*-*" />
+    <PackageReference Include="RagDotNet.DataIngestion" Version="*-*" />
+
+    <!-- What an app brings itself: an in-memory store, a host and a Microsoft.Extensions.DataIngestion reader. -->
+    <PackageReference Include="CommunityToolkit.VectorData.InMemory" Version="1.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.14" />
+    <PackageReference Include="Microsoft.Extensions.DataIngestion.Markdig" Version="10.11.1-preview.1.26569.2" />
+  </ItemGroup>
+
+</Project>

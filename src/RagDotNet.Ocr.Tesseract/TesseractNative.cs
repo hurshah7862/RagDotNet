@@ -5,7 +5,8 @@ namespace RagDotNet.Ocr.Tesseract;
 
 /// <summary>
 /// Makes TesseractOCR find the system's Tesseract on Linux and macOS. TesseractOCR includes Windows binaries only; elsewhere
-/// it looks for files named <c>x64/libleptonica-1.85.0.dll.so</c> and <c>x64/libtesseract55.dll.so</c> and loads
+/// it looks for files named <c>x64/libleptonica-1.85.0.dll.so</c> and <c>x64/libtesseract55.dll.so</c> (<c>.dll.dylib</c> on
+/// macOS, under <c>x64/</c> even on Apple Silicon) and loads
 /// <c>libdl</c> by a name current glibc no longer ships. This creates those names as links to the installed libraries in a
 /// private, per-process temp folder (owner-only permissions), points TesseractOCR's loader at it, and maps <c>libdl</c> to its real name. Nothing in the
 /// application's folder or the system is changed.
@@ -47,11 +48,12 @@ internal static class TesseractNative
             try
             {
                 root = Directory.CreateTempSubdirectory("ragdotnet-tesseract-").FullName;
+                var suffix = mac ? ".dylib" : ".so";
                 foreach (var platform in new[] { "x64", "arm64" })
                 {
                     var folder = Directory.CreateDirectory(Path.Combine(root, platform)).FullName;
-                    File.CreateSymbolicLink(Path.Combine(folder, "libleptonica-1.85.0.dll.so"), leptonica);
-                    File.CreateSymbolicLink(Path.Combine(folder, "libtesseract55.dll.so"), tesseract);
+                    File.CreateSymbolicLink(Path.Combine(folder, "libleptonica-1.85.0.dll" + suffix), leptonica);
+                    File.CreateSymbolicLink(Path.Combine(folder, "libtesseract55.dll" + suffix), tesseract);
                 }
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
