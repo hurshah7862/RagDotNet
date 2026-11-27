@@ -7,7 +7,7 @@
 
 RagDotNet is a .NET library for retrieval-augmented generation (RAG). It ingests documents, chunks and embeds them into a vector store, and answers questions with cited sources, built on Microsoft.Extensions.AI and Microsoft.Extensions.VectorData.
 
-> **Preview.** The first preview, 1.0.0-preview.1, is on NuGet. The public API can still change before 1.0.0, and stored data may need re-ingesting after an update. Core ingestion, hybrid retrieval and reranking, cited answers, chat and query rewriting, three chunkers, PDF, DOCX and HTML readers, and OCR work today; more vector stores are still to come. Feedback and issues are welcome.
+> **Preview.** RagDotNet is in preview on NuGet; the badge above shows the latest version, and [releases](https://github.com/hurshah7862/RagDotNet/releases) lists what changed in each one. The public API can still change before 1.0.0, and stored data may need re-ingesting after an update. Core ingestion, hybrid retrieval and reranking, cited answers, chat and query rewriting, three chunkers, PDF, DOCX and HTML readers, OCR, and six tested vector stores work today. Feedback and issues are welcome.
 
 ## Why this exists
 
@@ -28,10 +28,10 @@ RagDotNet is for .NET developers who want an application to answer questions fro
 | Retrieval evaluation harness | Works |
 | OCR: Tesseract package, or your own provider (per image or whole document) | Works |
 | Hybrid search and reranking | Works |
-| More vector stores | In progress ([vector stores](docs/vector-stores.md)) |
+| Vector stores: in-memory, SQLite, PostgreSQL (pgvector), Qdrant, Redis and SQL Server 2025 tested; other Microsoft.Extensions.VectorData connectors may work | Works ([vector stores](docs/vector-stores.md)) |
 | Background ingestion queue (`RagDotNet.Hosting`) | Works ([hosting](docs/hosting.md)) |
 | Microsoft.Extensions.DataIngestion adapters (`RagDotNet.DataIngestion`, preview) | Works ([dataingestion](docs/dataingestion.md)) |
-| NuGet packages | 1.0.0-preview.1 published; released from tags ([publishing](docs/publishing.md)) |
+| NuGet packages | Previews published ([releases](https://github.com/hurshah7862/RagDotNet/releases)); released from tags ([publishing](docs/publishing.md)) |
 
 ## Install
 
