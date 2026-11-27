@@ -1,6 +1,7 @@
 // Checks the packages `dotnet pack` produced before anyone installs them.
 // Usage: dotnet run eng/check-packages.cs -- <packageDir> [--version <x.y.z[-label]>]
 // Prints one line per problem ("<PackageId>: <problem>") and exits 1 if there are any.
+#:property PublishAot=false
 
 using System.IO.Compression;
 using System.Text.RegularExpressions;
