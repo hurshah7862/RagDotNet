@@ -132,9 +132,13 @@ jobs:
         run: dotnet test --project tests/RagDotNet.Evaluation.Tests --no-build --configuration Release
 
   store-tests:
-    name: Store integration tests (net8.0)
+    name: Store integration tests (${{ matrix.framework }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        framework: [net8.0, net10.0]
     env:
       DOTNET_NOLOGO: true
       DOTNET_CLI_TELEMETRY_OPTOUT: true
@@ -158,8 +162,8 @@ jobs:
       # PgVector String/Guid, Qdrant Guid, Redis String/Guid, SqlServer Guid) + 1 Qdrant settings test + 2 SQL Server
       # settings tests. PgVector, Qdrant, Redis and SQL Server each start one container through Testcontainers; the SQL
       # Server image (the pinned 2025 image plus Full-Text Search) is built in the job, which takes a few minutes.
-      - name: Test stores (net8.0)
-        run: dotnet test --project tests/RagDotNet.StoreTests --no-build --configuration Release --framework net8.0 --minimum-expected-tests 443
+      - name: Test stores (${{ matrix.framework }})
+        run: dotnet test --project tests/RagDotNet.StoreTests --no-build --configuration Release --framework ${{ matrix.framework }} --minimum-expected-tests 443
 
   windows:
     name: Windows unit and OCR tests (net8.0)
