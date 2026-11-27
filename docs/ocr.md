@@ -43,16 +43,16 @@ Disposing waits for a recognition already running; calls after that throw `Objec
 |---|---|
 | Windows (x64) | Nothing: the package includes Tesseract. It needs the Microsoft Visual C++ Redistributable, which most machines already have. |
 | Linux | `sudo apt install tesseract-ocr` (Debian, Ubuntu), `sudo dnf install tesseract` (Fedora), or your distribution's package. The package finds the installed library itself; nothing needs to be copied or linked by hand. |
-| macOS | `brew install tesseract`. Expected to work the same way as Linux, but not tested yet. |
+| macOS | `brew install tesseract`, which includes English language data in `$(brew --prefix)/share/tessdata`. The package finds the library in `/opt/homebrew/lib` (Apple Silicon) or `/usr/local/lib` (Intel). |
 
-On Linux the package finds the system's `libtesseract` and `liblept`/`libleptonica` in the usual library folders, and makes them visible to the TesseractOCR wrapper through links in a new folder under the temp directory, created for each process with owner-only permissions and removed when the process exits. On a Linux distribution's own package the language data is usually in `/usr/share/tesseract-ocr/5/tessdata`.
+On Linux and macOS the package finds the system's `libtesseract` and `liblept`/`libleptonica` in the usual library folders, and makes them visible to the TesseractOCR wrapper through links in a new folder under the temp directory, created for each process with owner-only permissions and removed when the process exits. On a Linux distribution's own package the language data is usually in `/usr/share/tesseract-ocr/5/tessdata`.
 
 **When something is missing,** the error says what to install:
 
 - With dependency injection, the host fails at start with an `OptionsValidationException` naming the missing language file or the install command.
 - With the pipeline builder, `AddTesseractOcr` throws `OcrUnavailableException` with the same message.
 
-Tested on Ubuntu 24.04 (Tesseract 5.3) in this project's Docker image and in CI on Linux and Windows.
+Tested on Ubuntu 24.04 (Tesseract 5.3) in this project's Docker image, and in CI on Linux, Windows and macOS (Apple Silicon, Homebrew's Tesseract). CI also installs the packed packages into a fresh app and runs OCR with them on all three (see [publishing.md](publishing.md)); Intel Macs are not tested.
 
 ## PDF page rendering
 

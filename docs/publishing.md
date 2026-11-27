@@ -1,6 +1,6 @@
 # Publishing to NuGet
 
-Every CI run packs all ten packages and checks them (`eng/check-packages.cs`); the packages are kept as the `packages` artifact of each run for 7 days. Nothing reaches nuget.org until a `v*` tag is pushed, which runs `.github/workflows/publish.yml`.
+Every CI run packs all ten packages and checks them (`eng/check-packages.cs`). It then installs them into a fresh app (`eng/package-smoke`) on Linux, Windows and macOS, on net8.0 and net10.0, and uses each one, so a native library or dependency missing from a package fails CI. The packages are kept as the `packages` artifact of each run for 7 days. Nothing reaches nuget.org until a `v*` tag is pushed, which runs `.github/workflows/publish.yml`.
 
 ## One-time setup
 

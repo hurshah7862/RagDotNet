@@ -26,7 +26,7 @@ With the pipeline builder, call `.AddTesseractOcr(...)` the same way. It also ad
 
 - **Windows (x64):** nothing to install; the package includes Tesseract. It needs the Microsoft Visual C++ Redistributable, which most machines already have.
 - **Linux:** `sudo apt install tesseract-ocr` (Debian, Ubuntu) or your distribution's package; the library is found automatically.
-- **macOS:** `brew install tesseract` (expected to work like Linux, not tested yet).
+- **macOS:** `brew install tesseract`; the library is found automatically. Tested on Apple Silicon.
 
 If the library or a language file is missing, startup fails with a message saying what to install.
 
