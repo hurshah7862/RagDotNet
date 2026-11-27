@@ -75,6 +75,62 @@ jobs:
           path: artifacts/packages/*
           retention-days: 7
 
+  # Every package also ships a net10.0 build; this job runs the same unit tests against it.
+  net10:
+    name: Unit tests (net10.0)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+      RAGDOTNET_TESSDATA: /usr/share/tesseract-ocr/5/tessdata
+    steps:
+      - uses: actions/checkout@v4
+
+      # The SDK from global.json includes the 10.0 runtime.
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Install Tesseract
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Test Core (net10.0)
+        run: dotnet test --project tests/RagDotNet.Core.Tests --no-build --configuration Release --framework net10.0
+
+      - name: Test readers (net10.0)
+        run: dotnet test --project tests/RagDotNet.Readers.Tests --no-build --configuration Release --framework net10.0
+
+      - name: Test OCR (net10.0)
+        run: dotnet test --project tests/RagDotNet.Ocr.Tests --no-build --configuration Release --framework net10.0
+
+      - name: Test Lucene keyword index (net10.0)
+        run: dotnet test --project tests/RagDotNet.Keyword.Lucene.Tests --no-build --configuration Release --framework net10.0
+
+      - name: Test hosting (net10.0)
+        run: dotnet test --project tests/RagDotNet.Hosting.Tests --no-build --configuration Release --framework net10.0
+
+      - name: Test DataIngestion adapters (net10.0)
+        run: dotnet test --project tests/RagDotNet.DataIngestion.Tests --no-build --configuration Release --framework net10.0
+
+      - name: Test SQLite connector (net10.0)
+        run: dotnet test --project tests/RagDotNet.VectorData.Sqlite.Tests --no-build --configuration Release --framework net10.0
+
+      - name: Test store suite on SQLite (net10.0)
+        env:
+          RAGDOTNET_STORES_REQUIRED: 1
+        run: dotnet test --project tests/RagDotNet.StoreTests --no-build --configuration Release --framework net10.0 --filter-class "RagDotNet.StoreTests.Stores.Sqlite*" --minimum-expected-tests 78
+
+      # The evaluation harness targets net10.0 only; its tests use a fake Ollama server, so they need no model.
+      - name: Test evaluation harness (net10.0)
+        run: dotnet test --project tests/RagDotNet.Evaluation.Tests --no-build --configuration Release
+
   store-tests:
     name: Store integration tests (net8.0)
     runs-on: ubuntu-latest
