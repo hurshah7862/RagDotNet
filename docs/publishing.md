@@ -26,7 +26,7 @@ git push origin v1.0.0
 Tag a commit on `main` whose CI run passed. The publish job then:
 
 1. checks the tagged commit is on `main`, and stops if it is not;
-2. builds and runs the unit tests, as CI does;
+2. builds and runs the unit tests on net8.0 and net10.0, as CI does;
 3. packs every library under `src/`;
 4. checks the packages, including that their version matches the tag (`v1.0.0` must give `1.0.0`). A tag that MinVer did not pick up fails here, before anything is pushed;
 5. pushes the packages to nuget.org, then their symbol packages (`.snupkg`) in a second step.
