@@ -7,3 +7,4 @@ TestResults/
 .superpowers/
 src/RagDotNet.VectorData.Sqlite/natives/
 artifacts/
+eng/package-smoke/packages/

@@ -1,0 +1,3 @@
+<Project>
+  <!-- Stops the repository's Directory.Build.props from applying: this app builds like a user's project, against packages. -->
+</Project>
