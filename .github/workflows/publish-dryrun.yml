@@ -1,0 +1,137 @@
+# Publishes every package to nuget.org when a v* tag is pushed (git tag v1.2.3 && git push origin v1.2.3).
+# Before the first tag, set up nuget.org trusted publishing and the NUGET_USER repository variable: see docs/publishing.md.
+name: Publish dry run (temporary)
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  pack:
+    name: Dry run - test and pack
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+      RAGDOTNET_TESSDATA: /usr/share/tesseract-ocr/5/tessdata
+    steps:
+      # Full history: MinVer needs the tag and its history to version the packages.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+          dotnet-version: 8.0.x
+
+      - name: Install Tesseract
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      # The same unit tests as the CI workflow's Linux jobs, on both net8.0 and net10.0: without --framework,
+      # dotnet test runs every target framework of the project.
+      - name: Test Core (net8.0, net10.0)
+        run: dotnet test --project tests/RagDotNet.Core.Tests --no-build --configuration Release
+
+      - name: Test readers (net8.0, net10.0)
+        run: dotnet test --project tests/RagDotNet.Readers.Tests --no-build --configuration Release
+
+      - name: Test OCR (net8.0, net10.0)
+        run: dotnet test --project tests/RagDotNet.Ocr.Tests --no-build --configuration Release
+
+      - name: Test Lucene keyword index (net8.0, net10.0)
+        run: dotnet test --project tests/RagDotNet.Keyword.Lucene.Tests --no-build --configuration Release
+
+      - name: Test hosting (net8.0, net10.0)
+        run: dotnet test --project tests/RagDotNet.Hosting.Tests --no-build --configuration Release
+
+      - name: Test DataIngestion adapters (net8.0, net10.0)
+        run: dotnet test --project tests/RagDotNet.DataIngestion.Tests --no-build --configuration Release
+
+      - name: Test SQLite connector (net8.0, net10.0)
+        run: dotnet test --project tests/RagDotNet.VectorData.Sqlite.Tests --no-build --configuration Release
+
+      - name: Test store suite on SQLite (net8.0, net10.0)
+        env:
+          RAGDOTNET_STORES_REQUIRED: 1
+        run: dotnet test --project tests/RagDotNet.StoreTests --no-build --configuration Release --filter-class "RagDotNet.StoreTests.Stores.Sqlite*" --minimum-expected-tests 78
+
+      # The evaluation harness targets net10.0 only; its tests use a fake Ollama server, so they need no model.
+      - name: Test evaluation harness (net10.0)
+        run: dotnet test --project tests/RagDotNet.Evaluation.Tests --no-build --configuration Release
+
+      - name: Pack
+        run: dotnet pack --no-build --configuration Release --output artifacts/packages
+
+      # Fails before anything is pushed if the packages are not versioned from this tag (v1.2.3 -> 1.2.3).
+      - name: Check packages
+        run: dotnet run eng/check-packages.cs -- artifacts/packages
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages
+          path: artifacts/packages/*
+          retention-days: 7
+
+  # The same smoke test as CI: the packed packages, installed into a fresh app and used, on every platform and both
+  # frameworks. Nothing is pushed unless it passes everywhere.
+  smoke:
+    name: Dry run - package smoke test (${{ matrix.os }})
+    needs: pack
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+      SMOKE_REQUIRE_OCR: 1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+          dotnet-version: 8.0.x
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: packages
+          path: artifacts/packages
+
+      - name: Install Tesseract (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng
+          echo "RAGDOTNET_TESSDATA=/usr/share/tesseract-ocr/5/tessdata" >> "$GITHUB_ENV"
+
+      - name: Install Tesseract (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install tesseract
+          echo "RAGDOTNET_TESSDATA=$(brew --prefix)/share/tessdata" >> "$GITHUB_ENV"
+
+      # Tesseract itself is included in the package on Windows; only the language data is downloaded.
+      - name: Download English language data (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP 'tessdata'
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          Invoke-WebRequest https://github.com/tesseract-ocr/tessdata_fast/raw/main/eng.traineddata -OutFile (Join-Path $dir 'eng.traineddata')
+          "RAGDOTNET_TESSDATA=$dir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Smoke test (net8.0, net10.0)
+        shell: pwsh
+        run: ./eng/package-smoke/run.ps1 -Packages artifacts/packages
