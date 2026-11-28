@@ -10,15 +10,10 @@ permissions:
   contents: read
 
 jobs:
-  publish:
-    name: Test, pack and publish to nuget.org
+  pack:
+    name: Test and pack
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # Add required reviewers to this environment in the repository settings to approve each release by hand.
-    environment: nuget
-    permissions:
-      contents: read
-      id-token: write # trusted publishing: nuget.org exchanges this job's OIDC token for a short-lived API key
     env:
       DOTNET_NOLOGO: true
       DOTNET_CLI_TELEMETRY_OPTOUT: true
@@ -89,6 +84,89 @@ jobs:
       # Fails before anything is pushed if the packages are not versioned from this tag (v1.2.3 -> 1.2.3).
       - name: Check packages
         run: dotnet run eng/check-packages.cs -- artifacts/packages --version "${GITHUB_REF_NAME#v}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages
+          path: artifacts/packages/*
+          retention-days: 7
+
+  # The same smoke test as CI: the packed packages, installed into a fresh app and used, on every platform and both
+  # frameworks. Nothing is pushed unless it passes everywhere.
+  smoke:
+    name: Package smoke test (${{ matrix.os }})
+    needs: pack
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+      SMOKE_REQUIRE_OCR: 1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+          dotnet-version: 8.0.x
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: packages
+          path: artifacts/packages
+
+      - name: Install Tesseract (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng
+          echo "RAGDOTNET_TESSDATA=/usr/share/tesseract-ocr/5/tessdata" >> "$GITHUB_ENV"
+
+      - name: Install Tesseract (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install tesseract
+          echo "RAGDOTNET_TESSDATA=$(brew --prefix)/share/tessdata" >> "$GITHUB_ENV"
+
+      # Tesseract itself is included in the package on Windows; only the language data is downloaded.
+      - name: Download English language data (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP 'tessdata'
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          Invoke-WebRequest https://github.com/tesseract-ocr/tessdata_fast/raw/main/eng.traineddata -OutFile (Join-Path $dir 'eng.traineddata')
+          "RAGDOTNET_TESSDATA=$dir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Smoke test (net8.0, net10.0)
+        shell: pwsh
+        run: ./eng/package-smoke/run.ps1 -Packages artifacts/packages
+
+  # Pushes exactly the files the jobs above tested. Only this job can reach nuget.org.
+  publish:
+    name: Publish to nuget.org
+    needs: smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Add required reviewers to this environment in the repository settings to approve each release by hand.
+    # The approval is asked for only after the tests and the smoke test have passed.
+    environment: nuget
+    permissions:
+      contents: read
+      id-token: write # trusted publishing: nuget.org exchanges this job's OIDC token for a short-lived API key
+    steps:
+      # Only for `dotnet nuget push`: nothing is built here, so the repository is not checked out.
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: packages
+          path: artifacts/packages
 
       - name: Log in to nuget.org
         id: login

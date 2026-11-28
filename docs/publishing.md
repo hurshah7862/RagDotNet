@@ -12,7 +12,7 @@ The publish workflow uses [NuGet trusted publishing](https://learn.microsoft.com
    - Workflow file: `publish.yml`
    - Environment: `nuget`
 2. **In GitHub**, under *Settings → Secrets and variables → Actions → Variables*, add the repository variable `NUGET_USER` set to that nuget.org user name (the profile name, not the email address).
-3. **Optional:** under *Settings → Environments → nuget*, add yourself as a required reviewer. Each publish run then waits for your approval before it starts.
+3. **Optional:** under *Settings → Environments → nuget*, add yourself as a required reviewer. Each publish run then waits for your approval before it pushes, after the tests and the smoke test have passed.
 
 The `RagDotNet.*` package names were free on nuget.org on 2026-11-24. The first push of each package claims its name for the account behind the policy.
 
@@ -23,13 +23,11 @@ git tag v1.0.0
 git push origin v1.0.0
 ```
 
-Tag a commit on `main` whose CI run passed. The publish job then:
+Tag a commit on `main` whose CI run passed. The publish workflow then runs three jobs, each only if the one before passed:
 
-1. checks the tagged commit is on `main`, and stops if it is not;
-2. builds and runs the unit tests on net8.0 and net10.0, as CI does;
-3. packs every library under `src/`;
-4. checks the packages, including that their version matches the tag (`v1.0.0` must give `1.0.0`). A tag that MinVer did not pick up fails here, before anything is pushed;
-5. pushes the packages to nuget.org, then their symbol packages (`.snupkg`) in a second step.
+1. **Test and pack:** checks the tagged commit is on `main` and stops if it is not; builds and runs the unit tests on net8.0 and net10.0, as CI does; packs every library under `src/`; and checks the packages, including that their version matches the tag (`v1.0.0` must give `1.0.0`). A tag that MinVer did not pick up fails here.
+2. **Package smoke test:** installs the packed packages into a fresh app (`eng/package-smoke`) and uses each one, on Linux, Windows and macOS, on net8.0 and net10.0, as CI does.
+3. **Publish to nuget.org:** the only job with the `nuget` environment and the token for nuget.org. It pushes exactly the files the first two jobs tested: the packages, then their symbol packages (`.snupkg`) in a second step.
 
 nuget.org validates and indexes new packages, which takes a few minutes before they can be installed.
 
