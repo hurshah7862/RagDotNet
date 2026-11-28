@@ -240,15 +240,9 @@ internal sealed class RagPipeline(RagEngine engine, IAccessScope? accessScope = 
     private RagAnswer BuildAnswer(string text, UsageDetails? usage, IReadOnlyList<RetrievedChunk> context, IReadOnlyList<RetrievedChunk> retrieved)
     {
         var citations = CitationParser.Parse(text, context.Count)
-            .Select(n => new Citation(n, context[n - 1], Locate(context[n - 1])))
+            .Select(n => new Citation(n, context[n - 1], DocumentTags.Locate(context[n - 1])))
             .ToList();
         var builder = engine.Options.Prompt ?? new DefaultRagPromptBuilder();
         return new RagAnswer(text, citations, retrieved, usage, !string.IsNullOrWhiteSpace(text) && !builder.IsUnanswered(text));
-    }
-
-    private static string Locate(RetrievedChunk c)
-    {
-        if (c.PageStart is { } start) return PageLocation.Format(start, c.PageEnd);
-        return c.HeadingPath.Count > 0 ? string.Join(" > ", c.HeadingPath) : c.SourceName;
     }
 }

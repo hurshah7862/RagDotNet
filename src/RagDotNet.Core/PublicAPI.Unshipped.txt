@@ -962,3 +962,21 @@ RagDotNet.Retrieval.LlmRerankerOptions.MaxOutputTokens.get -> int
 RagDotNet.Retrieval.LlmRerankerOptions.MaxOutputTokens.set -> void
 static Microsoft.Extensions.DependencyInjection.RagHybridBuilderExtensions.AddLlmReranker(this RagDotNet.Configuration.IRagBuilder! builder, System.Action<RagDotNet.Retrieval.LlmRerankerOptions!>? configure = null) -> RagDotNet.Configuration.IRagBuilder!
 static RagDotNet.Configuration.LlmRerankerBuilderExtensions.AddLlmReranker(this RagDotNet.Configuration.RagPipelineBuilder! builder, System.Action<RagDotNet.Retrieval.LlmRerankerOptions!>? configure = null) -> RagDotNet.Configuration.RagPipelineBuilder!
+RagDotNet.Retrieval.RagSearchTool
+RagDotNet.Retrieval.RagSearchTool.GetCitations(string! answerText) -> System.Collections.Generic.IReadOnlyList<RagDotNet.Generation.Citation!>!
+RagDotNet.Retrieval.RagSearchTool.Sources.get -> System.Collections.Generic.IReadOnlyList<RagDotNet.Retrieval.RetrievedChunk!>!
+RagDotNet.Retrieval.RagSearchToolExtensions
+RagDotNet.Retrieval.RagSearchToolOptions
+RagDotNet.Retrieval.RagSearchToolOptions.Description.get -> string!
+RagDotNet.Retrieval.RagSearchToolOptions.Description.set -> void
+RagDotNet.Retrieval.RagSearchToolOptions.Name.get -> string!
+RagDotNet.Retrieval.RagSearchToolOptions.Name.set -> void
+RagDotNet.Retrieval.RagSearchToolOptions.RagSearchToolOptions() -> void
+RagDotNet.Retrieval.RagSearchToolOptions.Retrieval.get -> RagDotNet.Retrieval.RetrievalOptions?
+RagDotNet.Retrieval.RagSearchToolOptions.Retrieval.set -> void
+const RagDotNet.Retrieval.RagSearchTool.NoResultsText = "No passages in the documents matched this search." -> string!
+const RagDotNet.Retrieval.RagSearchToolOptions.DefaultName = "search_documents" -> string!
+override RagDotNet.Retrieval.RagSearchTool.Description.get -> string!
+override RagDotNet.Retrieval.RagSearchTool.JsonSchema.get -> System.Text.Json.JsonElement
+override RagDotNet.Retrieval.RagSearchTool.Name.get -> string!
+static RagDotNet.Retrieval.RagSearchToolExtensions.AsSearchTool(this RagDotNet.Pipeline.IRagPipeline! pipeline, RagDotNet.Retrieval.RagSearchToolOptions? options = null) -> RagDotNet.Retrieval.RagSearchTool!

@@ -43,6 +43,7 @@ foreach (var c in answer.Citations) Console.WriteLine($"[{c.Number}] {c.Chunk.So
 - Structure-aware, fixed-size and semantic chunkers, and your own through `AddChunker`.
 - Vector and hybrid retrieval (with an in-memory BM25 keyword index), optional reranking, cited answers and streaming.
 - Conversations and query rewriting (Condense, multi-query, HyDE).
+- Search as a tool for agents: `rag.AsSearchTool()` returns a Microsoft.Extensions.AI `AIFunction` that searches under the pipeline's access scope and maps the model's `[n]` citations back to passages.
 - Change detection on re-ingest, update and delete; tenant partitions and access filters applied inside every query; a tracked reindex when you switch embedding models.
 - OpenTelemetry-compatible tracing and metrics, with no OpenTelemetry package dependency.
 
