@@ -1,4 +1,3 @@
-using System.Security;
 using System.Text;
 using Microsoft.Extensions.AI;
 
@@ -24,23 +23,7 @@ public sealed class DefaultRagPromptBuilder : IRagPromptBuilder
     {
         ArgumentNullException.ThrowIfNull(context);
         var sb = new StringBuilder();
-        for (var i = 0; i < context.ContextChunks.Count; i++)
-        {
-            var c = context.ContextChunks[i];
-            sb.Append("<document id=\"").Append(i + 1).Append("\" source=\"").Append(Attr(c.SourceName)).Append('"');
-            if (c.PageStart is { } start)
-            {
-                sb.Append(" page=\"").Append(PageLocation.Format(start, c.PageEnd)).Append('"');
-            }
-            else if (c.HeadingPath.Count > 0)
-            {
-                sb.Append(" section=\"").Append(Attr(string.Join(" > ", c.HeadingPath))).Append('"');
-            }
-
-            sb.Append(">\n")
-              .Append(EscapeText(c.Text))
-              .Append("\n</document>\n");
-        }
+        for (var i = 0; i < context.ContextChunks.Count; i++) DocumentTags.Append(sb, i + 1, context.ContextChunks[i]);
 
         sb.Append("\nQuestion: ").Append(context.Question).Append("\n\n").Append(CitationReminder);
         var messages = new List<ChatMessage> { new(ChatRole.System, SystemPrompt) };
@@ -52,10 +35,4 @@ public sealed class DefaultRagPromptBuilder : IRagPromptBuilder
     /// <inheritdoc />
     public bool IsUnanswered(string answerText) =>
         answerText.AsSpan().Trim().StartsWith(NotAnsweredText, StringComparison.OrdinalIgnoreCase);
-
-    private static string EscapeText(string text) =>
-        text.Replace("</document", "&lt;/document", StringComparison.OrdinalIgnoreCase)
-            .Replace("<document", "&lt;document", StringComparison.OrdinalIgnoreCase);
-
-    private static string Attr(string value) => SecurityElement.Escape(value) ?? string.Empty;
 }

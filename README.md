@@ -21,6 +21,7 @@ RagDotNet is for .NET developers who want an application to answer questions fro
 | Chunking: structure-aware, fixed-size and semantic, with custom chunkers pluggable | Works |
 | Vector retrieval, cited answers, streaming | Works |
 | Conversations and query rewriting (Condense, multi-query, HyDE) | Works |
+| Search as a tool for agents (`AsSearchTool`, a Microsoft.Extensions.AI `AIFunction`) | Works |
 | Document lifecycle: change detection, update, delete | Works |
 | Access control: tenant partitions, read filters, permissions | Works |
 | Embedding-model tracking and reindex | Works |
@@ -173,6 +174,25 @@ new AccessScope(
 **Latency and cost.** Condense and the transformers run before retrieval, so they add to the time before the first streamed token. HyDE makes one chat call per query: with history, `MultiQueryTransformer(3)` and then `HydeQueryTransformer`, a question costs 6 chat calls before the answer (1 Condense, 1 MultiQuery, 4 HyDE for the original and 3 alternatives). A call that is refused (no Read permission, invalid options) or whose scope and filter can match nothing makes no chat calls.
 
 **Custom transformers.** Implement `IQueryTransformer.TransformAsync(QueryContext, CancellationToken)`. `QueryContext` has the `Question`, the windowed `History`, the current `Queries` (the previous step's output) and the `ChatClient`, which is null when none is configured. Return the new list of queries; empty and duplicate entries are dropped, and an empty result keeps the previous queries.
+
+## Search as a tool for agents
+
+`AskAsync` searches once and then answers. When the model should decide for itself when and what to search, for example in an assistant that also calls other tools, give it the search as a tool instead. `AsSearchTool()` returns a Microsoft.Extensions.AI `AIFunction`, so any chat client that invokes functions can call it:
+
+```csharp
+using RagDotNet.Retrieval;
+
+var search = rag.AsSearchTool(new RagSearchToolOptions { Description = "Searches the HR policies." });
+IChatClient client = new ChatClientBuilder(chat).UseFunctionInvocation().Build(); // Microsoft.Extensions.AI package
+
+var response = await client.GetResponseAsync(messages, new ChatOptions { Tools = [search] });
+foreach (var c in search.GetCitations(response.Text)) Console.WriteLine($"[{c.Number}] {c.Chunk.SourceName} — {c.Location}");
+```
+
+- **Access control.** The tool searches through the pipeline it was made from, so that pipeline's access scope, read filter and permissions apply to every search the model makes. With dependency injection, create the tool from the request's scoped `IRagPipeline`. A scope without `Read` makes the call fail with `RagAccessDeniedException`, as `RetrieveAsync` does.
+- **Numbering and citations.** Passages come back in the same escaped `<document>` tags as the answer prompt, with a note telling the model to treat their content as data. Numbers continue across every search made through one tool instance, and a passage found again keeps its number, so the model can cite `[1]` from its first search and `[4]` from its third. `GetCitations` maps those markers back to `Citation` records like `RagAnswer.Citations`, and `Sources` lists every passage returned. Create one tool per conversation or request, and read the citations from the same instance.
+- **Options.** `RagSearchToolOptions` sets the tool's `Name` (default `search_documents`; give each tool its own name if you register several), the `Description` the model reads, and the `RetrievalOptions` for every search (`TopK`, filters, hybrid, reranking). The model only chooses the query.
+- **What it doesn't do.** The tool doesn't run the answer prompt, so the system prompt that keeps the model to the documents is your app's to write. As with any tool output, a model may still follow instructions written inside a document; the access scope limits what it can read, not what it does with it.
 
 ## Hybrid search
 

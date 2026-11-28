@@ -17,6 +17,7 @@ using RagDotNet.Documents;
 using RagDotNet.Hosting;
 using RagDotNet.Ingestion;
 using RagDotNet.Pipeline;
+using RagDotNet.Retrieval;
 using RagDotNet.VectorData.Sqlite;
 
 if (args.Length != 1 || !Directory.Exists(args[0]))
@@ -63,7 +64,7 @@ static void Expect(bool condition, string message)
 }
 
 // Core, the three readers and the SQLite store, whose sqlite-vec native library must come from the package's runtimes/ folder.
-await Check("Core, readers, SQLite store: ingest, hybrid retrieve, cited answer", async () =>
+await Check("Core, readers, SQLite store: ingest, hybrid retrieve, cited answer, search tool", async () =>
 {
     var rag = new RagPipelineBuilder()
         .UseChatClient(new FakeChatClient())
@@ -97,6 +98,12 @@ await Check("Core, readers, SQLite store: ingest, hybrid retrieve, cited answer"
 
     var answer = await rag.AskAsync("How do I install it?");
     Expect(answer.Citations.Count > 0, $"no citations in \"{answer.Text}\"");
+
+    // The search tool, called the way a function-invoking chat client calls it.
+    var tool = rag.AsSearchTool();
+    var toolResult = await tool.InvokeAsync(new AIFunctionArguments { ["query"] = "install" });
+    Expect(toolResult is string s && s.Contains("<document id=\"1\"", StringComparison.Ordinal), $"search tool returned \"{toolResult}\"");
+    Expect(tool.GetCitations("See [1].").Count == 1, "search tool citation not mapped");
 });
 
 // The Lucene keyword index, kept on disk.
