@@ -47,7 +47,7 @@ public class SearchToolTests
     [InlineData("")]
     [InlineData("has space")]
     [InlineData("dot.name")]
-    [InlineData("a234567890123456789012345678901234567890123456789012345678901234")]
+    [InlineData("a2345678901234567890123456789012345678901234567890123456789012345")]
     public void Rejects_a_name_models_do_not_accept(string name)
     {
         var (rag, _, _, _, _) = Create();
